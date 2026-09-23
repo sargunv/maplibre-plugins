@@ -1,0 +1,144 @@
+{
+  "$comment": "Shared contract for the location indicator. Both the native Zig plugin and the maplibre-gl-js layer are tested against this file.",
+  "id": "location-indicator",
+  "layerType": "location-puck",
+  "native": {
+    "pluginId": "org.maplibre.plugins.location-puck",
+    "pluginVersion": "0.1.0",
+    "library": "maplibre-location-puck",
+    "entryPoint": "mln_location_puck_register"
+  },
+  "paint": {
+    "position": {
+      "type": "double2",
+      "default": [0, 0],
+      "doc": "Indicator [latitude, longitude]."
+    },
+    "bearing": {
+      "type": "rotation",
+      "default": 0,
+      "doc": "Heading in degrees clockwise from north; transitions take the shortest arc."
+    },
+    "perspective-compensation": {
+      "type": "float",
+      "default": 0.85,
+      "minimum": 0,
+      "maximum": 1,
+      "doc": "How much the indicator resists shrinking with perspective; core's default."
+    },
+    "tilt-displacement": {
+      "type": "float",
+      "default": 0,
+      "minimum": 0,
+      "doc": "Opposite top and shadow displacement under pitch, in logical pixels."
+    },
+    "bearing-radius": {
+      "type": "float",
+      "default": 18,
+      "minimum": 0,
+      "doc": "Arrow size in logical pixels, independent of puck size."
+    },
+    "bearing-visible": {
+      "type": "float",
+      "default": 0,
+      "minimum": 0,
+      "maximum": 1,
+      "doc": "Shows the arrow and bearing-accuracy sector when 1."
+    },
+    "accuracy-radius": {
+      "type": "float",
+      "default": 0,
+      "minimum": 0,
+      "doc": "Accuracy circle radius in meters."
+    },
+    "accuracy-border-width": {
+      "type": "float",
+      "default": 0,
+      "minimum": 0,
+      "doc": "Accuracy circle border width in logical pixels."
+    },
+    "bearing-accuracy": {
+      "type": "float",
+      "default": 0,
+      "minimum": 0,
+      "maximum": 180,
+      "doc": "Bearing-accuracy sector half-width in degrees."
+    },
+    "bearing-accuracy-radius": {
+      "type": "float",
+      "default": 64,
+      "minimum": 0,
+      "doc": "Bearing-accuracy sector radius in logical pixels."
+    },
+    "shadow-radius": {
+      "type": "float",
+      "default": 0,
+      "minimum": 0,
+      "doc": "Shadow radius in logical pixels."
+    },
+    "puck-radius": {
+      "type": "float",
+      "default": 8,
+      "minimum": 0,
+      "doc": "Puck fill radius in logical pixels."
+    },
+    "puck-border-width": {
+      "type": "float",
+      "default": 2,
+      "minimum": 0,
+      "doc": "Puck border width in logical pixels."
+    },
+    "pulse-radius": {
+      "type": "float",
+      "default": 0,
+      "minimum": 0,
+      "doc": "Maximum pulse ring radius in logical pixels; zero disables the pulse."
+    },
+    "pulse-period": {
+      "type": "float",
+      "default": 1.5,
+      "minimum": 0.1,
+      "doc": "Pulse period in seconds."
+    },
+    "puck-color": {
+      "type": "color",
+      "default": [0.17, 0.54, 0.94, 1],
+      "doc": "Puck fill."
+    },
+    "puck-border-color": {
+      "type": "color",
+      "default": [1, 1, 1, 1],
+      "doc": "Puck border."
+    },
+    "accuracy-color": {
+      "type": "color",
+      "default": [0.17, 0.54, 0.94, 0.15],
+      "doc": "Accuracy circle fill."
+    },
+    "accuracy-border-color": {
+      "type": "color",
+      "default": [0.17, 0.54, 0.94, 0.4],
+      "doc": "Accuracy circle border."
+    },
+    "bearing-accuracy-color": {
+      "type": "color",
+      "default": [0.17, 0.54, 0.94, 0.3],
+      "doc": "Sector fill; fades toward the outer edge."
+    },
+    "bearing-arrow-color": {
+      "type": "color",
+      "default": [1, 1, 1, 1],
+      "doc": "Arrow fill."
+    },
+    "shadow-color": {
+      "type": "color",
+      "default": [0, 0, 0, 0.25],
+      "doc": "Shadow."
+    },
+    "pulse-color": {
+      "type": "color",
+      "default": [0.17, 0.54, 0.94, 0.5],
+      "doc": "Pulse ring; fades out as it expands."
+    }
+  }
+}

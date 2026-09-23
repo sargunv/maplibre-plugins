@@ -1,0 +1,165 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Sargun Vohra <sargunv@users.noreply.github.com>
+Date: Tue, 22 Sep 2026 23:12:30 -0700
+Subject: [PATCH 1/6] Carry plugin animated layers (maplibre-native#4654)
+
+Adds the optional should_animate callback to the plugin layer ABI, so a
+plugin layer can keep a continuous-mode map repainting. Upstream:
+https://github.com/maplibre/maplibre-native/pull/4654
+
+Carried by maplibre-plugins from maplibre-native-ffi PR #731 until it lands
+upstream.
+---
+ .mise/bin/sync-submodules                     |   1 +
+ .../0022-plugin-animated-layers.patch         | 111 ++++++++++++++++++
+ patches/maplibre-native/README.md             |   7 ++
+ 3 files changed, 119 insertions(+)
+ create mode 100644 patches/maplibre-native/0022-plugin-animated-layers.patch
+
+diff --git a/.mise/bin/sync-submodules b/.mise/bin/sync-submodules
+index 637c306..60b3069 100755
+--- a/.mise/bin/sync-submodules
++++ b/.mise/bin/sync-submodules
+@@ -69,6 +69,7 @@ mln_patches=(
+   "$repo_root/patches/maplibre-native/0016-location-indicator-color-transitions.patch"
+   "$repo_root/patches/maplibre-native/0017-location-indicator-top-image-hit-testing.patch"
+   "$repo_root/patches/maplibre-native/0021-location-indicator-bearing-accuracy.patch"
++  "$repo_root/patches/maplibre-native/0022-plugin-animated-layers.patch"
+ )
+ 
+ # The patches overlap, so no single patch reverses cleanly on its own once the
+diff --git a/patches/maplibre-native/0022-plugin-animated-layers.patch b/patches/maplibre-native/0022-plugin-animated-layers.patch
+new file mode 100644
+index 0000000..84de346
+--- /dev/null
++++ b/patches/maplibre-native/0022-plugin-animated-layers.patch
+@@ -0,0 +1,111 @@
++diff --git a/include/mln/plugin/plugin_api.h b/include/mln/plugin/plugin_api.h
++index ed11e95e4e3..7fe5fee371c 100644
++--- a/include/mln/plugin/plugin_api.h
+++++ b/include/mln/plugin/plugin_api.h
++@@ -423,6 +423,16 @@ typedef float (*mln_plugin_query_radius_fn)(const mln_plugin_property_statistics
++                                             const mln_plugin_property_value_v1* camera_properties,
++                                             size_t camera_property_count);
++ 
+++/* Optional animation signal, consulted on the render thread during layer
+++ * evaluation with the camera-evaluated paint property values (the same array
+++ * shape as query_feature; feature-dependent properties evaluate without a
+++ * feature). The property array and its strings are borrowed for the call only.
+++ * A nonzero return marks the layer as animating, and the map keeps repainting;
+++ * return zero while the layer's animation is disabled. A null callback means
+++ * the layer never animates. It must support concurrent calls for different
+++ * maps. */
+++typedef uint8_t (*mln_plugin_should_animate_fn)(const mln_plugin_property_value_v1* properties, size_t property_count);
+++
++ typedef struct mln_plugin_layer_type_v1 {
++     uint32_t struct_size;
++     mln_plugin_string layer_type;
++@@ -439,6 +449,7 @@ typedef struct mln_plugin_layer_type_v1 {
++     mln_plugin_query_feature_fn query_feature;
++     mln_plugin_update_uniform_block_fn update_uniform_block;
++     mln_plugin_query_radius_fn get_query_radius;
+++    mln_plugin_should_animate_fn should_animate;
++ } mln_plugin_layer_type_v1;
++ 
++ typedef struct mln_plugin_descriptor_v1 {
++diff --git a/src/mln/plugin/plugin_registry.cpp b/src/mln/plugin/plugin_registry.cpp
++index 6bfb7313b62..9c53679bc92 100644
++--- a/src/mln/plugin/plugin_registry.cpp
+++++ b/src/mln/plugin/plugin_registry.cpp
++@@ -459,6 +459,7 @@ mln_plugin_status PluginRegistry::registerPlugin(const mln_plugin_descriptor_v1&
++         copiedLayerType.queryFeature = layerType.query_feature;
++         copiedLayerType.queryRadius = layerType.get_query_radius;
++         copiedLayerType.updateUniformBlock = layerType.update_uniform_block;
+++        copiedLayerType.shouldAnimate = layerType.should_animate;
++         if (!appendShaders(pluginID,
++                            layerType.shaders,
++                            layerType.shader_count,
++diff --git a/src/mln/plugin/plugin_registry.hpp b/src/mln/plugin/plugin_registry.hpp
++index c795c96a6ea..12b80907cfc 100644
++--- a/src/mln/plugin/plugin_registry.hpp
+++++ b/src/mln/plugin/plugin_registry.hpp
++@@ -89,6 +89,7 @@ struct LayerType {
++     mln_plugin_query_feature_fn queryFeature = nullptr;
++     mln_plugin_query_radius_fn queryRadius = nullptr;
++     mln_plugin_update_uniform_block_fn updateUniformBlock = nullptr;
+++    mln_plugin_should_animate_fn shouldAnimate = nullptr;
++     bool operator==(const LayerType&) const = default;
++ 
++     const PropertyDefinition* findProperty(const std::string& name) const;
++diff --git a/src/mln/renderer/layers/render_plugin_style_layer.cpp b/src/mln/renderer/layers/render_plugin_style_layer.cpp
++index 69d74b429c7..b6e4161ab39 100644
++--- a/src/mln/renderer/layers/render_plugin_style_layer.cpp
+++++ b/src/mln/renderer/layers/render_plugin_style_layer.cpp
++@@ -99,6 +99,27 @@ void RenderPluginStyleLayer::evaluate(const PropertyEvaluationParameters& parame
++     if (*evaluatedPaintSnapshot != evaluatedPluginProperties) {
++         evaluatedPaintSnapshot = std::make_shared<const style::PluginPropertyMap>(evaluatedPluginProperties);
++     }
+++    if (registration->shouldAnimate) {
+++        std::vector<style::PluginPropertyValue::EvaluationStorage> storage(definitions.size());
+++        std::vector<mln_plugin_property_value_v1> animationProperties;
+++        animationProperties.reserve(definitions.size());
+++        auto storageIt = storage.begin();
+++        for (const auto& definition : definitions) {
+++            const auto propertyIt = evaluatedPluginProperties.find(definition.name);
+++            const auto value = propertyIt == evaluatedPluginProperties.end()
+++                                   ? style::defaultPluginPropertyValue(definition)
+++                                   : propertyIt->second;
+++            mln_plugin_property_value_v1 property{};
+++            property.struct_size = sizeof(property);
+++            property.name = {definition.name.data(), definition.name.size()};
+++            property.value = value.evaluate(parameters.z, definition, *storageIt++);
+++            property.explicitly_set = impl.pluginProperties.contains(definition.name);
+++            animationProperties.push_back(property);
+++        }
+++        animated = registration->shouldAnimate(animationProperties.data(), animationProperties.size()) != 0;
+++    } else {
+++        animated = false;
+++    }
++     auto properties = makeMutable<style::PluginStyleLayerProperties>(
++         staticImmutableCast<style::PluginStyleLayer::Impl>(baseImpl), evaluatedPluginProperties);
++     properties->renderPasses = underlying_type(passes);
++@@ -107,9 +128,9 @@ void RenderPluginStyleLayer::evaluate(const PropertyEvaluationParameters& parame
++ }
++ 
++ bool RenderPluginStyleLayer::hasTransition() const {
++-    return std::any_of(transitioningPaintProperties.begin(),
++-                       transitioningPaintProperties.end(),
++-                       [](const auto& property) { return property.second.hasTransition(); });
+++    return animated || std::any_of(transitioningPaintProperties.begin(),
+++                                   transitioningPaintProperties.end(),
+++                                   [](const auto& property) { return property.second.hasTransition(); });
++ }
++ 
++ void RenderPluginStyleLayer::layerChanged(const TransitionParameters&,
++diff --git a/src/mln/renderer/layers/render_plugin_style_layer.hpp b/src/mln/renderer/layers/render_plugin_style_layer.hpp
++index e6ba914245a..52d79447b6e 100644
++--- a/src/mln/renderer/layers/render_plugin_style_layer.hpp
+++++ b/src/mln/renderer/layers/render_plugin_style_layer.hpp
++@@ -41,6 +41,8 @@ private:
++     style::PluginPropertyMap evaluatedPluginProperties;
++     std::shared_ptr<const style::PluginPropertyMap> evaluatedPaintSnapshot;
++     std::map<std::string, gfx::ShaderGroupPtr> shaderGroups;
+++    /// True while the layer reports an active animation.
+++    bool animated = false;
++ };
++ 
++ } // namespace mln
+diff --git a/patches/maplibre-native/README.md b/patches/maplibre-native/README.md
+index 79efb0c..0b932e8 100644
+--- a/patches/maplibre-native/README.md
++++ b/patches/maplibre-native/README.md
+@@ -119,6 +119,13 @@ fixtures with their binary reference images. Upstream:
+ [maplibre-native#4644](https://github.com/maplibre/maplibre-native/pull/4644),
+ at commit `02d9a4b2ccb4f3d15cdca438fd08ea6fa2cd530b`.
+ 
++`0022-plugin-animated-layers.patch` adds an optional `should_animate` callback
++to the plugin layer ABI. A layer whose callback returns nonzero counts as
++animating during evaluation, so continuous-mode maps report needs-repaint on
++every rendered frame while the animation is on. Upstream:
++[maplibre-native#4654](https://github.com/maplibre/maplibre-native/pull/4654),
++at commit `c9346eed9c732115bfcae1f4cb64edb2ad4f6550`.
++
+ Each patch is the squashed diff of its upstream branch, applied on top of the
+ patches before it, so a patch that adds a test next to an earlier patch's test
+ carries that placement rather than the branch's own context.

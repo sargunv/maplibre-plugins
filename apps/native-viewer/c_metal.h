@@ -1,0 +1,3 @@
+#include <SDL3/SDL.h>
+#include <SDL3/SDL_metal.h>
+#include <maplibre_native_c/plugin.h>

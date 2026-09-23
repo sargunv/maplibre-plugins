@@ -1,0 +1,21 @@
+.{
+    .name = .native_viewer,
+    .version = "0.1.0",
+    .minimum_zig_version = "0.16.0",
+    .dependencies = .{
+        // The patched maplibre-native-ffi checkout (see scripts/sync-ffi).
+        .maplibre_native_ffi = .{ .path = "../../third_party/maplibre-native-ffi" },
+        .location_indicator = .{ .path = "../../plugins/location-indicator/native" },
+        .sdl = .{
+            .url = "git+https://github.com/castholm/SDL.git#1b67d371a531ecb0499d4b80a865631c299f472a",
+            .hash = "sdl-0.5.2+3.4.12-SDL--qPKpwHc40bqAlYs7W9pXJVyLwsGDNa4shNXbOZr",
+        },
+        .zig_objc = .{
+            .url = "git+https://github.com/mitchellh/zig-objc.git#c8de82ff80281215ad92900866dab7103a8efa8b",
+            .hash = "zig_objc-0.0.0-Ir_Sp9gsAQCPAJc0oF5xoWePHWP6Y6tCphDeyNUThJoi",
+            .lazy = true,
+        },
+    },
+    .paths = .{""},
+    .fingerprint = 0x572e3ee8d1d8ced3,
+}

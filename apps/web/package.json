@@ -1,0 +1,21 @@
+{
+  "name": "@maplibre-plugins/web",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vp dev",
+    "build": "vp build",
+    "preview": "vp preview",
+    "check": "vp check"
+  },
+  "dependencies": {
+    "@maplibre-plugins/location-indicator": "workspace:*",
+    "maplibre-gl": "catalog:"
+  },
+  "devDependencies": {
+    "@types/geojson": "^7946.0.16",
+    "typescript": "catalog:",
+    "vite-plus": "catalog:"
+  }
+}

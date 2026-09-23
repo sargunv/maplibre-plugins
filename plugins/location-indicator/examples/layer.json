@@ -1,0 +1,16 @@
+{
+  "id": "puck",
+  "type": "location-puck",
+  "paint": {
+    "position": [37.7749, -122.4194],
+    "bearing": 35,
+    "bearing-visible": 1,
+    "accuracy-radius": 150,
+    "accuracy-border-width": 1.5,
+    "bearing-accuracy": 25,
+    "bearing-accuracy-radius": 90,
+    "shadow-radius": 14,
+    "tilt-displacement": 12,
+    "pulse-radius": 60
+  }
+}

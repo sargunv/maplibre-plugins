@@ -1,0 +1,65 @@
+#!/usr/bin/env bash
+# Checks out the pinned maplibre-native-ffi commit in third_party/ and applies
+# patches/maplibre-native-ffi/*.patch on top as commits (git am), so the
+# result can be edited and re-exported with `scripts/sync-ffi export`.
+#
+#   scripts/sync-ffi          # sync: pinned commit + patches
+#   scripts/sync-ffi export   # rewrite patches/ from the commits above the pin
+set -euo pipefail
+
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+sub="$repo_root/third_party/maplibre-native-ffi"
+patches="$repo_root/patches/maplibre-native-ffi"
+# The index entry covers both a committed and a freshly staged submodule pin.
+pin="$(git -C "$repo_root" rev-parse ":third_party/maplibre-native-ffi")"
+
+# `git add -A` records whatever the submodule's HEAD is, including the
+# applied patch commits, which only exist locally. Refuse a pin like that.
+if git -C "$sub" cat-file -e "$pin^{commit}" 2>/dev/null &&
+   git -C "$sub" log -1 --format=%B "$pin" | grep -q "Carried by maplibre-plugins"; then
+  echo "error: the staged submodule pin $pin is a carried patch commit, not an upstream commit." >&2
+  echo "       Restore it with: git update-index --cacheinfo 160000,<upstream sha>,third_party/maplibre-native-ffi" >&2
+  exit 1
+fi
+
+case "${1:-sync}" in
+  check-pin)
+    echo "pin $pin is an upstream commit"
+    ;;
+  sync)
+    if [ ! -f "$sub/mise.toml" ]; then
+      git -C "$repo_root" submodule update --init --depth 1 third_party/maplibre-native-ffi
+    fi
+    if ! git -C "$sub" cat-file -e "$pin^{commit}" 2>/dev/null; then
+      git -C "$sub" fetch --depth 1 origin "$pin"
+    fi
+    # Already synced: HEAD descends from the pin (the applied patches) and
+    # the tree is clean. Leave local commits alone so they can be exported.
+    if git -C "$sub" merge-base --is-ancestor "$pin" HEAD 2>/dev/null &&
+       [ "$(git -C "$sub" rev-parse HEAD)" != "$pin" ] &&
+       git -C "$sub" diff --quiet HEAD -- . ':!third_party'; then
+      :
+    else
+      git -C "$sub" checkout --force --detach "$pin"
+    fi
+    if [ "$(git -C "$sub" rev-parse HEAD)" = "$pin" ]; then
+      shopt -s nullglob
+      files=("$patches"/*.patch)
+      shopt -u nullglob
+      if [ "${#files[@]}" -gt 0 ]; then
+        git -C "$sub" -c user.name=maplibre-plugins -c user.email=sync@localhost \
+          am --3way --quiet "${files[@]}"
+      fi
+    fi
+    echo "maplibre-native-ffi at $(git -C "$sub" rev-parse --short HEAD) ($(git -C "$sub" rev-list --count "$pin..HEAD") patch(es) on $(git -C "$repo_root" rev-parse --short "$pin"))"
+    ;;
+  export)
+    rm -f "$patches"/*.patch
+    git -C "$sub" format-patch --zero-commit --no-signature -o "$patches" "$pin..HEAD" > /dev/null
+    ls "$patches"
+    ;;
+  *)
+    echo "usage: $0 [sync|export|check-pin]" >&2
+    exit 2
+    ;;
+esac

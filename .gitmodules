@@ -1,0 +1,5 @@
+[submodule "third_party/maplibre-native-ffi"]
+	path = third_party/maplibre-native-ffi
+	url = https://github.com/maplibre/maplibre-native-ffi.git
+	branch = main
+	ignore = all

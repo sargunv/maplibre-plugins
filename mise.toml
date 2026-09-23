@@ -1,0 +1,127 @@
+# Toolchain for the maplibre-plugins monorepo. Mise pins host tools; pnpm and
+# Zig's package manager install the rest behind their lockfiles.
+
+# Child mise.toml files under [monorepo].config_roots are addressed as
+# `//path:task`, e.g. `mise run //plugins/location-indicator/native:test`.
+monorepo_root = true
+
+[settings]
+experimental = true
+pin = true
+minimum_release_age = "3d"
+lockfile = true
+
+[monorepo]
+# Each native plugin and each native app is its own mise root, so tasks are
+# addressed as `//plugins/<name>/native:build` and `//apps/<name>:run`.
+config_roots = ["plugins/*/native", "apps/native-*"]
+lockfile = true
+
+[vars]
+zig_version = "0.16.0"
+# The maplibre-native-ffi CMake preset whose install directory the native apps
+# consume on this host. The checkout is the patched submodule by default;
+# override with MLN_FFI_DIR (another checkout) or MLN_NATIVE_INSTALL_DIR.
+host_native_preset = '{% if os() == "macos" %}macos-arm64-metal{% elif os() == "linux" %}linux-gnu-{{ arch() }}-egl{% else %}windows-{{ arch() }}-wgl{% endif %}'
+
+[env]
+MLN_FFI_DIR = "{{ env.MLN_FFI_DIR | default(value=config_root ~ '/third_party/maplibre-native-ffi') }}"
+MLN_NATIVE_INSTALL_DIR = "{{ env.MLN_NATIVE_INSTALL_DIR | default(value=env.MLN_FFI_DIR ~ '/build/' ~ vars.host_native_preset ~ '/install') }}"
+
+[tools]
+"aqua:dprint/dprint" = "0.57.4"
+"aqua:jdx/hk" = "2.0.1"
+"aqua:pnpm/pnpm" = "12.5.1"
+"core:node" = "24.21.0"
+"core:zig" = "{{vars.zig_version}}"
+
+[deps.pnpm]
+auto = true
+
+[hooks]
+postinstall = ["hk install --mise"]
+
+[tasks.check]
+description = "Run every formatter and linter in check mode."
+run = "hk check --all"
+
+[tasks.fix]
+description = "Run every formatter and linter and apply fixes."
+run = "hk fix --all"
+
+[tasks.test]
+description = "Run the JS unit tests and every native plugin's Zig tests."
+depends = ["test:js", "test:native"]
+
+[tasks."test:native"]
+description = "Run every native plugin's Zig unit tests (no native library needed)."
+run = '''
+for dir in plugins/*/native; do
+  echo "== $dir"
+  mise run "//$dir:test"
+done
+'''
+
+[tasks."test:js"]
+description = "Run the JS unit tests across the pnpm workspace."
+run = "pnpm -r --if-present test"
+
+[tasks.build]
+description = "Build the JS packages, the web gallery, and every native plugin."
+depends = ["build:js", "build:native"]
+
+[tasks."build:native"]
+description = "Build every native plugin shared library."
+run = '''
+for dir in plugins/*/native; do
+  echo "== $dir"
+  mise run "//$dir:build"
+done
+'''
+
+[tasks."build:js"]
+run = "pnpm -r --if-present build"
+
+[tasks.web]
+description = "Serve the web gallery with live reload for the JS plugins."
+run = "pnpm --filter @maplibre-plugins/web dev"
+
+[tasks."ffi:sync"]
+description = "Check out the pinned maplibre-native-ffi and apply patches/maplibre-native-ffi."
+run = "scripts/sync-ffi"
+
+[tasks."ffi:export-patches"]
+description = "Rewrite patches/maplibre-native-ffi from the commits in the submodule."
+run = "scripts/sync-ffi export"
+
+[tasks."ffi:build"]
+description = "Build the patched maplibre-native-ffi for this host (slow the first time)."
+depends = ["ffi:sync"]
+dir = "third_party/maplibre-native-ffi"
+run = "mise run build {{vars.host_native_preset}}"
+
+[tasks.sync-plugin-header]
+description = "Refresh the vendored plugin ABI header from the FFI install."
+run = '''
+src="$MLN_NATIVE_INSTALL_DIR/include/mln/plugin/plugin_api.h"
+test -f "$src" || { echo "no header at $src" >&2; exit 1; }
+cp "$src" third_party/mln-plugin-api/mln/plugin/plugin_api.h
+echo "copied $src; update the commit noted in third_party/mln-plugin-api/README.md"
+'''
+
+[tasks.sync-shaders]
+description = "Mirror plugins/*/shaders/*.glsl into the JS packages."
+run = "node scripts/sync-shaders.mjs"
+
+[tasks.native-info]
+description = "Show which maplibre-native-c install the native apps will use."
+run = '''
+echo "MLN_FFI_DIR=$MLN_FFI_DIR"
+echo "MLN_NATIVE_INSTALL_DIR=$MLN_NATIVE_INSTALL_DIR"
+if [ -f "$MLN_NATIVE_INSTALL_DIR/share/maplibre-native-c/artifact.json" ]; then
+  cat "$MLN_NATIVE_INSTALL_DIR/share/maplibre-native-c/artifact.json"
+else
+  echo "no install found; build maplibre-native-ffi or set MLN_NATIVE_INSTALL_DIR" >&2
+  exit 1
+fi
+'''

@@ -1,0 +1,207 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Sargun Vohra <sargunv@users.noreply.github.com>
+Date: Tue, 22 Sep 2026 23:19:05 -0700
+Subject: [PATCH 4/6] Carry plugin rotation properties
+
+Adds MLN_PLUGIN_VALUE_ROTATION to the plugin layer ABI: degrees in
+float_value whose transitions follow the shortest arc, like the built-in
+rotation properties. Not yet proposed upstream.
+
+Carried by maplibre-plugins from maplibre-native-ffi PR #731 until it lands
+upstream.
+---
+ .mise/bin/sync-submodules                     |   1 +
+ .../0025-plugin-rotation-properties.patch     | 156 ++++++++++++++++++
+ patches/maplibre-native/README.md             |   4 +
+ 3 files changed, 161 insertions(+)
+ create mode 100644 patches/maplibre-native/0025-plugin-rotation-properties.patch
+
+diff --git a/.mise/bin/sync-submodules b/.mise/bin/sync-submodules
+index 31c8860..d341709 100755
+--- a/.mise/bin/sync-submodules
++++ b/.mise/bin/sync-submodules
+@@ -72,6 +72,7 @@ mln_patches=(
+   "$repo_root/patches/maplibre-native/0022-plugin-animated-layers.patch"
+   "$repo_root/patches/maplibre-native/0023-source-free-plugin-layers.patch"
+   "$repo_root/patches/maplibre-native/0024-premultiply-plugin-default-colors.patch"
++  "$repo_root/patches/maplibre-native/0025-plugin-rotation-properties.patch"
+ )
+ 
+ # The patches overlap, so no single patch reverses cleanly on its own once the
+diff --git a/patches/maplibre-native/0025-plugin-rotation-properties.patch b/patches/maplibre-native/0025-plugin-rotation-properties.patch
+new file mode 100644
+index 0000000..ba82211
+--- /dev/null
++++ b/patches/maplibre-native/0025-plugin-rotation-properties.patch
+@@ -0,0 +1,156 @@
++diff --git a/include/mln/plugin/plugin_api.h b/include/mln/plugin/plugin_api.h
++--- a/include/mln/plugin/plugin_api.h
+++++ b/include/mln/plugin/plugin_api.h
++@@ -67,6 +67,8 @@ typedef enum mln_plugin_value_type {
++     MLN_PLUGIN_VALUE_STRING = 4,
++     /* Two doubles, for properties that carry geographic coordinates. */
++     MLN_PLUGIN_VALUE_DOUBLE2 = 5,
+++    /* Degrees in float_value; transitions follow the shortest arc. */
+++    MLN_PLUGIN_VALUE_ROTATION = 6,
++ } mln_plugin_value_type;
++ 
++ /* Expression dependencies accepted by a plugin property. */
++diff --git a/src/mln/plugin/plugin_registry.cpp b/src/mln/plugin/plugin_registry.cpp
++--- a/src/mln/plugin/plugin_registry.cpp
+++++ b/src/mln/plugin/plugin_registry.cpp
++@@ -20,6 +20,7 @@ std::string copyString(const mln_plugin_string& value) {
++ 
++ Value copyValue(const mln_plugin_value& value) {
++     switch (value.type) {
+++        case MLN_PLUGIN_VALUE_ROTATION:
++         case MLN_PLUGIN_VALUE_FLOAT:
++             return Value{static_cast<double>(value.data.float_value)};
++         case MLN_PLUGIN_VALUE_FLOAT2:
++@@ -335,6 +336,7 @@ bool appendProperties(const mln_plugin_property_descriptor_v1* properties,
++             return false;
++         }
++         const bool transitionableType = property.type == MLN_PLUGIN_VALUE_FLOAT ||
+++                                        property.type == MLN_PLUGIN_VALUE_ROTATION ||
++                                         property.type == MLN_PLUGIN_VALUE_FLOAT2 ||
++                                         property.type == MLN_PLUGIN_VALUE_COLOR ||
++                                         property.type == MLN_PLUGIN_VALUE_DOUBLE2;
++@@ -385,7 +387,7 @@ bool appendProperties(const mln_plugin_property_descriptor_v1* properties,
++             error = "plugin property has an invalid numeric range";
++             return false;
++         }
++-        if (property.type == MLN_PLUGIN_VALUE_FLOAT) {
+++        if (property.type == MLN_PLUGIN_VALUE_FLOAT || property.type == MLN_PLUGIN_VALUE_ROTATION) {
++             const auto value = numericValue<double>(defaultValue);
++             if (!value || !inRange(*value)) {
++                 error = "plugin property default is outside its numeric range";
++@@ -500,16 +502,16 @@ mln_plugin_status PluginRegistry::registerPlugin(const mln_plugin_descriptor_v1&
++         for (const auto& shader : copiedLayerType.shaders) {
++             for (const auto& binding : shader.propertyBindings) {
++                 const auto* property = copiedLayerType.findProperty(binding.propertyName);
++-                const bool encodingMatches = property != nullptr &&
++-                                             ((property->type == MLN_PLUGIN_VALUE_FLOAT &&
++-                                               binding.encoding == MLN_PLUGIN_PROPERTY_ENCODING_FLOAT) ||
++-                                              (property->type == MLN_PLUGIN_VALUE_FLOAT2 &&
++-                                               binding.encoding == MLN_PLUGIN_PROPERTY_ENCODING_FLOAT2) ||
++-                                              (property->type == MLN_PLUGIN_VALUE_COLOR &&
++-                                               binding.encoding == MLN_PLUGIN_PROPERTY_ENCODING_COLOR) ||
++-                                              (property->type == MLN_PLUGIN_VALUE_STRING &&
++-                                               !property->enumValues.empty() &&
++-                                               binding.encoding == MLN_PLUGIN_PROPERTY_ENCODING_ENUM_FLOAT));
+++                const bool encodingMatches =
+++                    property != nullptr &&
+++                    (((property->type == MLN_PLUGIN_VALUE_FLOAT || property->type == MLN_PLUGIN_VALUE_ROTATION) &&
+++                      binding.encoding == MLN_PLUGIN_PROPERTY_ENCODING_FLOAT) ||
+++                     (property->type == MLN_PLUGIN_VALUE_FLOAT2 &&
+++                      binding.encoding == MLN_PLUGIN_PROPERTY_ENCODING_FLOAT2) ||
+++                     (property->type == MLN_PLUGIN_VALUE_COLOR &&
+++                      binding.encoding == MLN_PLUGIN_PROPERTY_ENCODING_COLOR) ||
+++                     (property->type == MLN_PLUGIN_VALUE_STRING && !property->enumValues.empty() &&
+++                      binding.encoding == MLN_PLUGIN_PROPERTY_ENCODING_ENUM_FLOAT));
++                 if (property == nullptr || !encodingMatches) {
++                     error = "plugin shader property binding references an incompatible paint property";
++                     return MLN_PLUGIN_STATUS_INVALID_ARGUMENT;
++@@ -594,6 +596,7 @@ bool PluginRegistry::valueMatches(mln_plugin_value_type type, const Value& value
++         return value.getDouble() || value.getInt() || value.getUint();
++     };
++     switch (type) {
+++        case MLN_PLUGIN_VALUE_ROTATION:
++         case MLN_PLUGIN_VALUE_FLOAT:
++             return numeric();
++         case MLN_PLUGIN_VALUE_STRING:
++diff --git a/src/mln/renderer/buckets/plugin_bucket.cpp b/src/mln/renderer/buckets/plugin_bucket.cpp
++--- a/src/mln/renderer/buckets/plugin_bucket.cpp
+++++ b/src/mln/renderer/buckets/plugin_bucket.cpp
++@@ -72,6 +72,7 @@ mln_plugin_value decodedValue(const std::array<float, 4>& input, const plugin::P
++     value.struct_size = sizeof(value);
++     value.type = type;
++     switch (type) {
+++        case MLN_PLUGIN_VALUE_ROTATION:
++         case MLN_PLUGIN_VALUE_FLOAT:
++             value.data.float_value = input[0];
++             break;
++diff --git a/src/mln/style/plugin_property.cpp b/src/mln/style/plugin_property.cpp
++--- a/src/mln/style/plugin_property.cpp
+++++ b/src/mln/style/plugin_property.cpp
++@@ -55,6 +55,11 @@ float interpolationFactor(const PropertyValue<T>& value, float bucketZoom, float
++ template <class T>
++ T defaultValue(const plugin::PropertyDefinition& definition);
++ 
+++template <>
+++Rotation defaultValue<Rotation>(const plugin::PropertyDefinition& definition) {
+++    return Rotation{numericValue<double>(definition.defaultValue).value_or(0.0)};
+++}
+++
++ template <>
++ float defaultValue<float>(const plugin::PropertyDefinition& definition) {
++     return numericValue<float>(definition.defaultValue).value_or(0.0f);
++@@ -100,6 +105,8 @@ auto withPropertyType(mln_plugin_value_type type, Fn&& fn) {
++     switch (type) {
++         case MLN_PLUGIN_VALUE_FLOAT:
++             return fn.template operator()<float>();
+++        case MLN_PLUGIN_VALUE_ROTATION:
+++            return fn.template operator()<Rotation>();
++         case MLN_PLUGIN_VALUE_FLOAT2:
++             return fn.template operator()<std::array<float, 2>>();
++         case MLN_PLUGIN_VALUE_DOUBLE2:
++@@ -129,6 +136,9 @@ mln_plugin_value toPluginValue(const T& value, PluginPropertyValue::EvaluationSt
++     if constexpr (std::is_same_v<T, float>) {
++         result.type = MLN_PLUGIN_VALUE_FLOAT;
++         result.data.float_value = value;
+++    } else if constexpr (std::is_same_v<T, Rotation>) {
+++        result.type = MLN_PLUGIN_VALUE_ROTATION;
+++        result.data.float_value = static_cast<float>(value.getAngle());
++     } else if constexpr (std::is_same_v<T, std::array<float, 2>>) {
++         result.type = MLN_PLUGIN_VALUE_FLOAT2;
++         result.data.float2_value = {value[0], value[1]};
++@@ -176,7 +186,7 @@ bool validateConstant(const plugin::PropertyDefinition& definition,
++         return (!definition.minimum || number >= *definition.minimum) &&
++                (!definition.maximum || number <= *definition.maximum);
++     };
++-    if (definition.type == MLN_PLUGIN_VALUE_FLOAT) {
+++    if (definition.type == MLN_PLUGIN_VALUE_FLOAT || definition.type == MLN_PLUGIN_VALUE_ROTATION) {
++         const auto number = numericValue<double>(value);
++         if (!number || !inRange(*number)) {
++             error.message = "value is outside the allowed range for plugin property '" + definition.name + "'";
++diff --git a/src/mln/style/plugin_property.hpp b/src/mln/style/plugin_property.hpp
++--- a/src/mln/style/plugin_property.hpp
+++++ b/src/mln/style/plugin_property.hpp
++@@ -3,6 +3,7 @@
++ #include <mln/plugin/plugin_api.h>
++ #include <mln/style/property_value.hpp>
++ #include <mln/style/properties.hpp>
+++#include <mln/style/rotation.hpp>
++ #include <mln/style/style_property.hpp>
++ #include <mln/style/transition_options.hpp>
++ #include <mln/util/chrono.hpp>
++@@ -28,6 +29,7 @@ struct Error;
++ class PluginPropertyValue {
++ public:
++     using TypedValue = std::variant<PropertyValue<float>,
+++                                    PropertyValue<Rotation>,
++                                     PropertyValue<std::array<float, 2>>,
++                                     PropertyValue<std::array<double, 2>>,
++                                     PropertyValue<Color>,
++@@ -83,6 +85,7 @@ public:
++ 
++ private:
++     using TypedValue = std::variant<Transitioning<PropertyValue<float>>,
+++                                    Transitioning<PropertyValue<Rotation>>,
++                                     Transitioning<PropertyValue<std::array<float, 2>>>,
++                                     Transitioning<PropertyValue<std::array<double, 2>>>,
++                                     Transitioning<PropertyValue<Color>>,
+diff --git a/patches/maplibre-native/README.md b/patches/maplibre-native/README.md
+index d97fca6..f8bbb7b 100644
+--- a/patches/maplibre-native/README.md
++++ b/patches/maplibre-native/README.md
+@@ -144,6 +144,10 @@ default colors when they are adopted into the style system, matching the
+ premultiplied-alpha `Color` invariant that style-parsed colors already honor.
+ This patch is local-only: it is not upstreamed, and no upstream PR exists.
+ 
++`0025-plugin-rotation-properties.patch` adds a rotation property type to the
++plugin ABI. Rotation transitions follow the shortest arc. This patch is
++local-only: it is not upstreamed, and no upstream PR exists.
++
+ Each patch is the squashed diff of its upstream branch, applied on top of the
+ patches before it, so a patch that adds a test next to an earlier patch's test
+ carries that placement rather than the branch's own context.

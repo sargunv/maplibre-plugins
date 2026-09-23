@@ -1,0 +1,11 @@
+minimumReleaseAge: 4320 # 3-day release cooldown, mirrors mise minimum_release_age
+packages:
+  - "plugins/*/js"
+  - "apps/web"
+catalog:
+  "@maplibre/maplibre-gl-style-spec": "^26.4.4"
+  maplibre-gl: "^6.10.0"
+  typescript: "^5.9.3"
+  vite-plus: "^0.3.3"
+catalogMode: strict
+cleanupUnusedCatalogs: true

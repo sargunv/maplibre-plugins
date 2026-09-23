@@ -1,0 +1,225 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Sargun Vohra <sargunv@users.noreply.github.com>
+Date: Tue, 22 Sep 2026 23:19:05 -0700
+Subject: [PATCH 6/6] Carry plugin frame queries
+
+Lets a source-free plugin layer return GeoJSON features with world-pixel
+hit envelopes each frame, indexed through the native dynamic feature index
+so rendered-feature queries hit them. Not yet proposed upstream.
+
+Carried by maplibre-plugins from maplibre-native-ffi PR #731 until it lands
+upstream.
+---
+ .mise/bin/sync-submodules                     |   1 +
+ .../0027-plugin-frame-queries.patch           | 173 ++++++++++++++++++
+ patches/maplibre-native/README.md             |   5 +
+ 3 files changed, 179 insertions(+)
+ create mode 100644 patches/maplibre-native/0027-plugin-frame-queries.patch
+
+diff --git a/.mise/bin/sync-submodules b/.mise/bin/sync-submodules
+index e707bfb..f674664 100755
+--- a/.mise/bin/sync-submodules
++++ b/.mise/bin/sync-submodules
+@@ -74,6 +74,7 @@ mln_patches=(
+   "$repo_root/patches/maplibre-native/0024-premultiply-plugin-default-colors.patch"
+   "$repo_root/patches/maplibre-native/0025-plugin-rotation-properties.patch"
+   "$repo_root/patches/maplibre-native/0026-plugin-unproject-screen.patch"
++  "$repo_root/patches/maplibre-native/0027-plugin-frame-queries.patch"
+ )
+ 
+ # The patches overlap, so no single patch reverses cleanly on its own once the
+diff --git a/patches/maplibre-native/0027-plugin-frame-queries.patch b/patches/maplibre-native/0027-plugin-frame-queries.patch
+new file mode 100644
+index 0000000..e12f54e
+--- /dev/null
++++ b/patches/maplibre-native/0027-plugin-frame-queries.patch
+@@ -0,0 +1,173 @@
++diff --git a/include/mln/plugin/plugin_api.h b/include/mln/plugin/plugin_api.h
++--- a/include/mln/plugin/plugin_api.h
+++++ b/include/mln/plugin/plugin_api.h
++@@ -361,6 +361,22 @@ typedef struct mln_plugin_feature_vertex_range_v1 {
++     uint32_t vertex_count;
++ } mln_plugin_feature_vertex_range_v1;
++ 
+++/* Source-free rendered features use the same world-pixel bounding envelopes as
+++ * native dynamic layers. Points are Mercator world pixels at the frame zoom.
+++ * Each feature is a single GeoJSON Feature; polygons are independent hit areas. */
+++typedef struct mln_plugin_query_polygon_v1 {
+++    uint32_t struct_size;
+++    const mln_plugin_double2* points;
+++    size_t point_count;
+++} mln_plugin_query_polygon_v1;
+++
+++typedef struct mln_plugin_frame_feature_v1 {
+++    uint32_t struct_size;
+++    mln_plugin_string geojson;
+++    const mln_plugin_query_polygon_v1* polygons;
+++    size_t polygon_count;
+++} mln_plugin_frame_feature_v1;
+++
++ /* The bucket struct is host-owned. All views written into it, including nested
++  * drawable strings/arrays, indices, vertex bytes and feature ranges, remain
++  * plugin-owned and valid until destroy_layout. On success the host copies them
++@@ -378,6 +394,9 @@ typedef struct mln_plugin_bucket_v1 {
++     float query_radius;
++     const mln_plugin_feature_vertex_range_v1* feature_vertex_ranges;
++     size_t feature_vertex_range_count;
+++    /* Frame-only views, copied before the next callback on this thread. */
+++    const mln_plugin_frame_feature_v1* frame_features;
+++    size_t frame_feature_count;
++ } mln_plugin_bucket_v1;
++ 
++ /*
++diff --git a/src/mln/renderer/layers/render_plugin_style_layer.cpp b/src/mln/renderer/layers/render_plugin_style_layer.cpp
++--- a/src/mln/renderer/layers/render_plugin_style_layer.cpp
+++++ b/src/mln/renderer/layers/render_plugin_style_layer.cpp
++@@ -1,5 +1,6 @@
++ #include <mln/renderer/layers/render_plugin_style_layer.hpp>
++ 
+++#include <mln/geometry/feature_index.hpp>
++ #include <mln/gfx/context.hpp>
++ #include <mln/gfx/color_mode.hpp>
++ #include <mln/gfx/cull_face_mode.hpp>
++@@ -22,6 +23,7 @@
++ #include <mln/renderer/paint_parameters.hpp>
++ #include <mln/shaders/program_parameters.hpp>
++ #include <mln/shaders/shader_program_base.hpp>
+++#include <mln/style/conversion/geojson.hpp>
++ #include <mln/style/plugin_property.hpp>
++ #include <mln/util/logging.hpp>
++ #include <mln/util/projection.hpp>
++@@ -29,6 +31,7 @@
++ #include <mapbox/cheap_ruler.hpp>
++ 
++ #include <chrono>
+++#include <cmath>
++ #include <cstring>
++ #include <set>
++ 
++@@ -93,6 +96,43 @@ void destinationToLatLng(const mln_plugin_frame_context_v1* context,
++ 
++ RenderPluginStyleLayer::~RenderPluginStyleLayer() = default;
++ 
+++void RenderPluginStyleLayer::populateDynamicRenderFeatureIndex(DynamicFeatureIndex& index) const {
+++    for (const auto& [feature, envelope] : frameFeatures) index.insert(feature, envelope);
+++}
+++
+++bool RenderPluginStyleLayer::copyFrameFeatures(const mln_plugin_bucket_v1& output) {
+++    if (output.frame_feature_count && !output.frame_features) return false;
+++    for (size_t i = 0; i < output.frame_feature_count; ++i) {
+++        const auto& input = output.frame_features[i];
+++        if (input.struct_size < sizeof(input) || !input.geojson.data || (input.polygon_count && !input.polygons))
+++            return false;
+++        style::conversion::Error error;
+++        auto json = style::conversion::parseGeoJSON(std::string(input.geojson.data, input.geojson.size), error);
+++        if (!json || !json->is<GeoJSONFeature>()) return false;
+++        auto feature = std::make_shared<Feature>(json->get<GeoJSONFeature>());
+++        feature->sourceLayer = getID();
+++        auto envelope = std::make_shared<mapbox::geometry::multi_polygon<int64_t>>();
+++        for (size_t j = 0; j < input.polygon_count; ++j) {
+++            const auto& polygon = input.polygons[j];
+++            if (polygon.struct_size < sizeof(polygon) || polygon.point_count < 3 || !polygon.points) return false;
+++            mapbox::geometry::linear_ring<int64_t> ring;
+++            for (size_t k = 0; k < polygon.point_count; ++k) {
+++                const auto& point = polygon.points[k];
+++                // A strict bound avoids undefined conversion at INT64_MAX rounded to double.
+++                constexpr double limit = 9223372036854775808.0;
+++                if (!std::isfinite(point.x) || !std::isfinite(point.y) || point.x <= -limit || point.x >= limit ||
+++                    point.y <= -limit || point.y >= limit)
+++                    return false;
+++                ring.emplace_back(static_cast<int64_t>(point.x), static_cast<int64_t>(point.y));
+++            }
+++            ring.push_back(ring.front());
+++            envelope->push_back({std::move(ring)});
+++        }
+++        frameFeatures.emplace_back(std::move(feature), std::move(envelope));
+++    }
+++    return true;
+++}
+++
++ RenderPluginStyleLayer::RenderPluginStyleLayer(Immutable<style::PluginStyleLayer::Impl> impl)
++     : RenderLayer(makeMutable<style::PluginStyleLayerProperties>(std::move(impl))) {
++     // Unlike generated layers, a plugin layer has no generated evaluated
++@@ -403,6 +443,7 @@ void RenderPluginStyleLayer::updateFrame(gfx::ShaderRegistry& shaders,
++     frameContext.project_mercator = &projectToMercatorPixels;
++     frameContext.destination = &destinationToLatLng;
++     frameContext.unproject_screen = &unprojectScreen;
+++    frameFeatures.clear();
++ 
++     mln_plugin_bucket_v1 output{};
++     output.struct_size = sizeof(output);
++@@ -410,22 +451,24 @@ void RenderPluginStyleLayer::updateFrame(gfx::ShaderRegistry& shaders,
++         Log::Error(Event::Style, "Plugin layer '" + getID() + "' failed to build its frame");
++         removeAllDrawables();
++         frameBucket.reset();
+++        frameFeatures.clear();
++         return;
++     }
++ 
++-    // Copy the frame bucket. Feature ranges do not exist for source-free
++-    // layers, and neither does feature hit-testing.
+++    // Copy geometry and query snapshots before another plugin callback runs.
++     if (output.vertex_stream_count == 0 || output.drawable_count == 0 || output.index_count == 0) {
++         removeAllDrawables();
++         frameBucket.reset();
+++        frameFeatures.clear();
++         return;
++     }
++ 
++     auto nextBucket = std::make_shared<PluginBucket>(registration);
++-    if (!nextBucket->copyGeometry(output) || output.feature_vertex_range_count != 0) {
+++    if (!nextBucket->copyGeometry(output) || output.feature_vertex_range_count != 0 || !copyFrameFeatures(output)) {
++         Log::Error(Event::Style, "Plugin layer '" + getID() + "' returned a malformed frame bucket");
++         removeAllDrawables();
++         frameBucket.reset();
+++        frameFeatures.clear();
++         return;
++     }
++     const auto zoom = static_cast<float>(state.getZoom());
++diff --git a/src/mln/renderer/layers/render_plugin_style_layer.hpp b/src/mln/renderer/layers/render_plugin_style_layer.hpp
++--- a/src/mln/renderer/layers/render_plugin_style_layer.hpp
+++++ b/src/mln/renderer/layers/render_plugin_style_layer.hpp
++@@ -2,6 +2,7 @@
++ 
++ #include <mln/renderer/render_layer.hpp>
++ #include <mln/style/layers/plugin_style_layer.hpp>
+++#include <mln/util/feature.hpp>
++ 
++ #include <map>
++ #include <memory>
++@@ -34,7 +35,10 @@ public:
++                                 const mat4&,
++                                 const FeatureState&) const override;
++ 
+++    void populateDynamicRenderFeatureIndex(DynamicFeatureIndex&) const override;
+++
++ private:
+++    bool copyFrameFeatures(const mln_plugin_bucket_v1&);
++     void transition(const TransitionParameters&) override;
++     void evaluate(const PropertyEvaluationParameters&) override;
++     void layerChanged(const TransitionParameters&,
++@@ -61,6 +65,8 @@ private:
++ 
++     // Owns frame geometry and binders while drawables reference them.
++     std::shared_ptr<PluginBucket> frameBucket;
+++    using FrameFeature = std::pair<std::shared_ptr<Feature>, std::shared_ptr<mapbox::geometry::multi_polygon<int64_t>>>;
+++    std::vector<FrameFeature> frameFeatures;
++ };
++ 
++ } // namespace mln
+diff --git a/patches/maplibre-native/README.md b/patches/maplibre-native/README.md
+index a01eece..f414728 100644
+--- a/patches/maplibre-native/README.md
++++ b/patches/maplibre-native/README.md
+@@ -152,6 +152,11 @@ local-only: it is not upstreamed, and no upstream PR exists.
+ `project_screen`, to the source-free frame context. This patch is local-only:
+ it is not upstreamed, and no upstream PR exists.
+ 
++`0027-plugin-frame-queries.patch` adds source-free feature snapshots to the
++plugin ABI. Frame queries use the native dynamic feature index and copy the
++plugin's GeoJSON and world-pixel envelopes. This patch is local-only: it is
++not upstreamed, and no upstream PR exists.
++
+ Each patch is the squashed diff of its upstream branch, applied on top of the
+ patches before it, so a patch that adds a test next to an earlier patch's test
+ carries that placement rather than the branch's own context.

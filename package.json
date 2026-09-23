@@ -1,0 +1,12 @@
+{
+  "name": "maplibre-plugins",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "pnpm -r --if-present build",
+    "test": "pnpm -r --if-present test",
+    "dev": "pnpm --filter @maplibre-plugins/web dev"
+  },
+  "devDependencies": { "typescript": "catalog:", "vite-plus": "catalog:" },
+  "packageManager": "pnpm@12.5.1"
+}

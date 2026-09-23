@@ -1,0 +1,8 @@
+.{
+    .name = .location_indicator,
+    .version = "0.1.0",
+    .minimum_zig_version = "0.16.0",
+    .dependencies = .{},
+    .paths = .{""},
+    .fingerprint = 0x9fe14bc5e28a4abc,
+}

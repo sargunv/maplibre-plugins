@@ -1,0 +1,80 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Sargun Vohra <sargunv@users.noreply.github.com>
+Date: Tue, 22 Sep 2026 23:12:30 -0700
+Subject: [PATCH 3/6] Carry premultiplied plugin default colors (maplibre-native#4663)
+
+Premultiplies registered plugin default colors when the style system
+adopts them, matching style-parsed colors. Merged upstream as
+https://github.com/maplibre/maplibre-native/pull/4663 on 2026-09-21; drop
+this patch once the FFI moves its maplibre-native pin past it.
+
+Carried by maplibre-plugins from maplibre-native-ffi PR #731 until it lands
+upstream.
+---
+ .mise/bin/sync-submodules                     |  1 +
+ ...24-premultiply-plugin-default-colors.patch | 27 +++++++++++++++++++
+ patches/maplibre-native/README.md             |  5 ++++
+ 3 files changed, 33 insertions(+)
+ create mode 100644 patches/maplibre-native/0024-premultiply-plugin-default-colors.patch
+
+diff --git a/.mise/bin/sync-submodules b/.mise/bin/sync-submodules
+index 8b79168..31c8860 100755
+--- a/.mise/bin/sync-submodules
++++ b/.mise/bin/sync-submodules
+@@ -71,6 +71,7 @@ mln_patches=(
+   "$repo_root/patches/maplibre-native/0021-location-indicator-bearing-accuracy.patch"
+   "$repo_root/patches/maplibre-native/0022-plugin-animated-layers.patch"
+   "$repo_root/patches/maplibre-native/0023-source-free-plugin-layers.patch"
++  "$repo_root/patches/maplibre-native/0024-premultiply-plugin-default-colors.patch"
+ )
+ 
+ # The patches overlap, so no single patch reverses cleanly on its own once the
+diff --git a/patches/maplibre-native/0024-premultiply-plugin-default-colors.patch b/patches/maplibre-native/0024-premultiply-plugin-default-colors.patch
+new file mode 100644
+index 0000000..45685f7
+--- /dev/null
++++ b/patches/maplibre-native/0024-premultiply-plugin-default-colors.patch
+@@ -0,0 +1,27 @@
++diff --git a/include/mln/plugin/plugin_api.h b/include/mln/plugin/plugin_api.h
++index 80db38ef804..9fec4636270 100644
++--- a/include/mln/plugin/plugin_api.h
+++++ b/include/mln/plugin/plugin_api.h
++@@ -101,6 +101,8 @@ typedef struct mln_plugin_double2 {
++     double y;
++ } mln_plugin_double2;
++ 
+++/* Straight-alpha color. The host premultiplies registered defaults when it
+++ * adopts them into the style system. */
++ typedef struct mln_plugin_color {
++     float r;
++     float g;
++diff --git a/src/mln/style/plugin_property.cpp b/src/mln/style/plugin_property.cpp
++index 413324f98d0..1fa0128d16a 100644
++--- a/src/mln/style/plugin_property.cpp
+++++ b/src/mln/style/plugin_property.cpp
++@@ -84,7 +84,8 @@ Color defaultValue<Color>(const plugin::PropertyDefinition& definition) {
++     if (const auto* array = definition.defaultValue.getArray(); array && array->size() == result.size()) {
++         for (size_t i = 0; i < result.size(); ++i) result[i] = numericValue<float>((*array)[i]).value_or(0.0f);
++     }
++-    return {result[0], result[1], result[2], result[3]};
+++    // Registered defaults arrive straight; Color is premultiplied.
+++    return {result[0] * result[3], result[1] * result[3], result[2] * result[3], result[3]};
++ }
++ 
++ template <>
+diff --git a/patches/maplibre-native/README.md b/patches/maplibre-native/README.md
+index caf74d0..d97fca6 100644
+--- a/patches/maplibre-native/README.md
++++ b/patches/maplibre-native/README.md
+@@ -139,6 +139,11 @@ styles with no sources. They cannot declare data-driven properties and receive
+ no feature hit-testing. This patch is local-only: it is not upstreamed, and no
+ upstream PR exists.
+ 
++`0024-premultiply-plugin-default-colors.patch` premultiplies registered plugin
++default colors when they are adopted into the style system, matching the
++premultiplied-alpha `Color` invariant that style-parsed colors already honor.
++This patch is local-only: it is not upstreamed, and no upstream PR exists.
++
+ Each patch is the squashed diff of its upstream branch, applied on top of the
+ patches before it, so a patch that adds a test next to an earlier patch's test
+ carries that placement rather than the branch's own context.

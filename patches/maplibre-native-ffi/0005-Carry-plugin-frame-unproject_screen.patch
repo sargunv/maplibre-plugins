@@ -1,0 +1,91 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Sargun Vohra <sargunv@users.noreply.github.com>
+Date: Tue, 22 Sep 2026 23:19:05 -0700
+Subject: [PATCH 5/6] Carry plugin frame unproject_screen
+
+Adds unproject_screen, the inverse of project_screen, to the source-free
+frame context so a plugin can measure a screen pixel in world units under
+pitch. Not yet proposed upstream.
+
+Carried by maplibre-plugins from maplibre-native-ffi PR #731 until it lands
+upstream.
+---
+ .mise/bin/sync-submodules                     |  1 +
+ .../0026-plugin-unproject-screen.patch        | 40 +++++++++++++++++++
+ patches/maplibre-native/README.md             |  4 ++
+ 3 files changed, 45 insertions(+)
+ create mode 100644 patches/maplibre-native/0026-plugin-unproject-screen.patch
+
+diff --git a/.mise/bin/sync-submodules b/.mise/bin/sync-submodules
+index d341709..e707bfb 100755
+--- a/.mise/bin/sync-submodules
++++ b/.mise/bin/sync-submodules
+@@ -73,6 +73,7 @@ mln_patches=(
+   "$repo_root/patches/maplibre-native/0023-source-free-plugin-layers.patch"
+   "$repo_root/patches/maplibre-native/0024-premultiply-plugin-default-colors.patch"
+   "$repo_root/patches/maplibre-native/0025-plugin-rotation-properties.patch"
++  "$repo_root/patches/maplibre-native/0026-plugin-unproject-screen.patch"
+ )
+ 
+ # The patches overlap, so no single patch reverses cleanly on its own once the
+diff --git a/patches/maplibre-native/0026-plugin-unproject-screen.patch b/patches/maplibre-native/0026-plugin-unproject-screen.patch
+new file mode 100644
+index 0000000..7d3cd7d
+--- /dev/null
++++ b/patches/maplibre-native/0026-plugin-unproject-screen.patch
+@@ -0,0 +1,40 @@
++diff --git a/include/mln/plugin/plugin_api.h b/include/mln/plugin/plugin_api.h
++--- a/include/mln/plugin/plugin_api.h
+++++ b/include/mln/plugin/plugin_api.h
++@@ -504,6 +504,9 @@ typedef struct mln_plugin_frame_context_v1 {
++     double proj_matrix[16];
++     mln_plugin_project_mercator_fn project_mercator;
++     mln_plugin_destination_fn destination;
+++    /* Inverse of project_screen, in y-down logical pixels. */
+++    void (*unproject_screen)(
+++        const struct mln_plugin_frame_context_v1* context, double x, double y, double* latitude, double* longitude);
++ } mln_plugin_frame_context_v1;
++ 
++ /* Per-frame geometry for a source-free layer, called on a render thread once
++diff --git a/src/mln/renderer/layers/render_plugin_style_layer.cpp b/src/mln/renderer/layers/render_plugin_style_layer.cpp
++--- a/src/mln/renderer/layers/render_plugin_style_layer.cpp
+++++ b/src/mln/renderer/layers/render_plugin_style_layer.cpp
++@@ -53,6 +53,15 @@ void projectScreenToPixels(
++     *outY = state->getSize().height - coordinate.y;
++ }
++ 
+++void unprojectScreen(
+++    const mln_plugin_frame_context_v1* context, double x, double y, double* latitude, double* longitude) {
+++    if (!context || !latitude || !longitude || !context->project_state) return;
+++    const auto& state = *static_cast<const TransformState*>(context->project_state);
+++    const auto position = state.screenCoordinateToLatLng({x, state.getSize().height - y});
+++    *latitude = position.latitude();
+++    *longitude = position.longitude();
+++}
+++
++ void projectToMercatorPixels(
++     const mln_plugin_frame_context_v1* context, double latitude, double longitude, double* outX, double* outY) {
++     if (!context || !outX || !outY) return;
++@@ -393,6 +402,7 @@ void RenderPluginStyleLayer::updateFrame(gfx::ShaderRegistry& shaders,
++     std::copy(projMatrix.begin(), projMatrix.end(), frameContext.proj_matrix);
++     frameContext.project_mercator = &projectToMercatorPixels;
++     frameContext.destination = &destinationToLatLng;
+++    frameContext.unproject_screen = &unprojectScreen;
++ 
++     mln_plugin_bucket_v1 output{};
++     output.struct_size = sizeof(output);
+diff --git a/patches/maplibre-native/README.md b/patches/maplibre-native/README.md
+index f8bbb7b..a01eece 100644
+--- a/patches/maplibre-native/README.md
++++ b/patches/maplibre-native/README.md
+@@ -148,6 +148,10 @@ This patch is local-only: it is not upstreamed, and no upstream PR exists.
+ plugin ABI. Rotation transitions follow the shortest arc. This patch is
+ local-only: it is not upstreamed, and no upstream PR exists.
+ 
++`0026-plugin-unproject-screen.patch` adds `unproject_screen`, the inverse of
++`project_screen`, to the source-free frame context. This patch is local-only:
++it is not upstreamed, and no upstream PR exists.
++
+ Each patch is the squashed diff of its upstream branch, applied on top of the
+ patches before it, so a patch that adds a test next to an earlier patch's test
+ carries that placement rather than the branch's own context.

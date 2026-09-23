@@ -1,0 +1,8 @@
+node_modules/
+dist/
+zig-out/
+.zig-cache/
+zig-pkg/
+mise.local.toml
+.DS_Store
+*.log

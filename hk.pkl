@@ -1,0 +1,46 @@
+// hk orchestrates the formatters and linters for pre-commit, `mise run check`,
+// and `mise run fix`. dprint owns formatting; vp owns JS/TS lint checks.
+
+amends "package://github.com/jdx/hk/releases/download/v2.0.1/hk@2.0.1#/Config.pkl"
+import "package://github.com/jdx/hk/releases/download/v2.0.1/hk@2.0.1#/Builtins.pkl"
+
+local lintSteps = new Mapping<String, Step> {
+  ["dprint"] = (Builtins.dprint) {
+    batch = true
+  }
+  ["vp-check"] {
+    glob = List("**/*.ts", "**/*.tsx", "**/*.js", "**/*.jsx", "**/*.mts")
+    exclude = List("third_party/**", "**/dist/**")
+    check = "pnpm exec vp check --no-fmt {{files}}"
+    fix = "pnpm exec vp check --no-fmt --fix {{files}}"
+  }
+  // The JS packages embed each plugin's shared GLSL through a generated
+  // module; keep it current whenever the .glsl changes.
+  ["sync-shaders"] {
+    glob = List("plugins/*/shaders/*.glsl", "plugins/*/js/src/generated/*.glsl.ts")
+    check = "node scripts/sync-shaders.mjs --check"
+    fix = "node scripts/sync-shaders.mjs"
+  }
+  // The submodule pin must be an upstream commit, never one of the carried
+  // patch commits `git add -A` would pick up from the patched checkout.
+  ["ffi-pin"] {
+    check = "scripts/sync-ffi check-pin"
+  }
+  // Zig has no linter; `zig build` type-checks each native root through its
+  // own mise task, which `mise run test` covers.
+}
+
+hooks {
+  ["pre-commit"] {
+    fix = true
+    stash = "git"
+    steps { ...lintSteps }
+  }
+  ["check"] {
+    steps { ...lintSteps }
+  }
+  ["fix"] {
+    fix = true
+    steps { ...lintSteps }
+  }
+}
