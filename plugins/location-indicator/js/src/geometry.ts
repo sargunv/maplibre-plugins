@@ -16,16 +16,16 @@ export interface FrameContext {
   timeSeconds: number;
   /** Camera pitch in radians. */
   pitch: number;
+  /** Camera bearing in degrees clockwise from north, as the map reports it. */
+  bearing: number;
+  /** Distance from the camera to the map center in logical pixels. */
+  cameraToCenterDistance: number;
   /** Framebuffer pixels per logical pixel. */
   pixelRatio: number;
-  /** Viewport height in logical pixels. */
-  viewportHeight: number;
   /** Maps latitude/longitude to Mercator world pixels at the frame zoom, unwrapped toward the camera center. */
   projectMercator(latitude: number, longitude: number): Point;
-  /** Maps latitude/longitude to logical screen pixels, y down. */
-  projectScreen(latitude: number, longitude: number): Point;
-  /** Inverse of projectScreen. */
-  unprojectScreen(x: number, y: number): readonly [number, number];
+  /** Clip-space w of a Mercator world-pixel position: its depth from the camera. */
+  clipW(x: number, y: number): number;
   /** Moves distanceMeters from a position along bearingDegrees clockwise from north. */
   destination(
     latitude: number,
@@ -174,11 +174,6 @@ function rotate(x: Point, y: Point, angle: number): [Point, Point] {
   ];
 }
 
-function screenToWorld(ctx: FrameContext, x: number, y: number): Point {
-  const [lat, lon] = ctx.unprojectScreen(x, y);
-  return ctx.projectMercator(lat, lon);
-}
-
 function empty(
   origin: Point,
   feature: FrameGeometry["feature"],
@@ -207,28 +202,28 @@ export function buildFrame(ctx: FrameContext): FrameGeometry {
     geometry: { type: "Point", coordinates: [lon, lat] },
     properties: {},
   };
-  if (ctx.viewportHeight <= 0) return empty(center, feature);
-
   const frame = new FrameBuilder(center);
-  const [sx, sy] = ctx.projectScreen(lat, lon);
-  const left = screenToWorld(ctx, sx - 1, sy);
-  const pixelWorldSize = Math.hypot(center[0] - left[0], center[1] - left[1]);
+  const w = ctx.clipW(center[0], center[1]);
+  if (!Number.isFinite(w) || w <= 0 || !(ctx.cameraToCenterDistance > 0)) {
+    return empty(center, feature);
+  }
+  // World pixels per screen pixel at the indicator: the perspective ratio the
+  // built-in layers use, clip w over the camera-to-center distance.
+  const pixelWorldSize = w / ctx.cameraToCenterDistance;
   const compensation = number(paint, "perspective-compensation");
   const s =
     1 -
     compensation +
     Math.min(Math.max(pixelWorldSize, 0.8), 10.1) * compensation;
 
-  // Core picks the shift direction at the bottom of the viewport, where
-  // perspective convergence is least exaggerated.
-  const bottom = screenToWorld(ctx, sx, ctx.viewportHeight - 1);
-  const above = screenToWorld(ctx, sx, ctx.viewportHeight - 2);
-  const shiftLength = Math.hypot(above[0] - bottom[0], above[1] - bottom[1]);
-  const displacement = ctx.pitch * number(paint, "tilt-displacement") * s;
-  const shiftScale = shiftLength > 0 ? displacement / shiftLength : 0;
+  // Tilt displacement moves along screen-up on the ground, which is the
+  // camera bearing in world pixels (y down).
+  const displacement =
+    ctx.pitch * number(paint, "tilt-displacement") * s * pixelWorldSize;
+  const bearingRadians = (ctx.bearing * Math.PI) / 180;
   const shift: Point = [
-    (above[0] - bottom[0]) * shiftScale,
-    (above[1] - bottom[1]) * shiftScale,
+    Math.sin(bearingRadians) * displacement,
+    -Math.cos(bearingRadians) * displacement,
   ];
   const top: Point = [center[0] + shift[0], center[1] + shift[1]];
   const shadowCenter: Point = [center[0] - shift[0], center[1] - shift[1]];
@@ -321,17 +316,19 @@ export function buildFrame(ctx: FrameContext): FrameGeometry {
     );
   }
 
+  // The arrow rides with the puck: both lift under tilt displacement while
+  // the shadow, accuracy circle, and sector stay on the ground.
   const arrowRadius = number(paint, "bearing-radius");
   if (visible > 0 && arrowRadius > 0) {
     frame.quad(
-      center,
+      top,
       scale(groundX, arrowRadius),
       scale(groundY, arrowRadius),
       [Style.arrow, 0, 0, 0],
       color(paint, "bearing-arrow-color", visible),
       CLEAR,
     );
-    frame.queryQuad(center, arrowRadius * s, bearing);
+    frame.queryQuad(top, arrowRadius * s, bearing);
   }
 
   if (outer > 0) {

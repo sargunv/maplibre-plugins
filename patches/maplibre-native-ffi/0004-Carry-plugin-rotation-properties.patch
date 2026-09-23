@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Sargun Vohra <sargunv@users.noreply.github.com>
-Date: Tue, 22 Sep 2026 23:19:05 -0700
-Subject: [PATCH 4/6] Carry plugin rotation properties
+Date: Tue, 22 Sep 2026 23:26:39 -0700
+Subject: [PATCH 4/5] Carry plugin rotation properties
 
 Adds MLN_PLUGIN_VALUE_ROTATION to the plugin layer ABI: degrees in
 float_value whose transitions follow the shortest arc, like the built-in
@@ -191,12 +191,12 @@ index 0000000..ba82211
 +                                     Transitioning<PropertyValue<std::array<double, 2>>>,
 +                                     Transitioning<PropertyValue<Color>>,
 diff --git a/patches/maplibre-native/README.md b/patches/maplibre-native/README.md
-index d97fca6..f8bbb7b 100644
+index 94824a9..81a7f57 100644
 --- a/patches/maplibre-native/README.md
 +++ b/patches/maplibre-native/README.md
-@@ -144,6 +144,10 @@ default colors when they are adopted into the style system, matching the
- premultiplied-alpha `Color` invariant that style-parsed colors already honor.
- This patch is local-only: it is not upstreamed, and no upstream PR exists.
+@@ -141,6 +141,10 @@ premultiplied-alpha `Color` invariant that style-parsed colors already honor.
+ Upstream:
+ [maplibre-native#4663](https://github.com/maplibre/maplibre-native/pull/4663).
  
 +`0025-plugin-rotation-properties.patch` adds a rotation property type to the
 +plugin ABI. Rotation transitions follow the shortest arc. This patch is

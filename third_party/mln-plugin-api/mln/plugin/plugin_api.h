@@ -470,13 +470,6 @@ typedef uint8_t (*mln_plugin_should_animate_fn)(const mln_plugin_property_value_
 
 struct mln_plugin_frame_context_v1;
 
-/* Maps a latitude/longitude to logical screen pixels, with y growing
- * downward, unwrapping the longitude for the shortest path from the camera
- * center. The function and the context's project_state storage are borrowed
- * for the duration of build_frame. */
-typedef void (*mln_plugin_project_screen_fn)(
-    const struct mln_plugin_frame_context_v1* context, double latitude, double longitude, double* out_x, double* out_y);
-
 /* Maps a latitude/longitude to mercator world pixels, unwrapping the
  * longitude for the shortest path from the camera center. Borrowed for the
  * duration of build_frame. */
@@ -515,17 +508,17 @@ typedef struct mln_plugin_frame_context_v1 {
     float pixel_ratio;
     /* NDC units per logical pixel, matching the uniform context. */
     float pixels_to_gl_units[2];
+    /* Distance from the camera to the map center in logical pixels, matching
+     * the uniform context. camera_to_center_distance / clip_w is the screen
+     * scale of a world pixel at a projected point. */
+    float camera_to_center_distance;
     /* Opaque host storage for the projection helpers. */
     const void* project_state;
-    mln_plugin_project_screen_fn project_screen;
     /* This frame's projection matrix: mercator world pixels to clip space,
      * with pitch, bearing, roll, viewport mode, and insets applied. */
     double proj_matrix[16];
     mln_plugin_project_mercator_fn project_mercator;
     mln_plugin_destination_fn destination;
-    /* Inverse of project_screen, in y-down logical pixels. */
-    void (*unproject_screen)(
-        const struct mln_plugin_frame_context_v1* context, double x, double y, double* latitude, double* longitude);
 } mln_plugin_frame_context_v1;
 
 /* Per-frame geometry for a source-free layer, called on a render thread once

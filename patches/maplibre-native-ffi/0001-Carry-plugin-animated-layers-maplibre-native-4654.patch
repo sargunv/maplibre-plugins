@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Sargun Vohra <sargunv@users.noreply.github.com>
-Date: Tue, 22 Sep 2026 23:12:30 -0700
-Subject: [PATCH 1/6] Carry plugin animated layers (maplibre-native#4654)
+Date: Tue, 22 Sep 2026 23:26:38 -0700
+Subject: [PATCH 1/5] Carry plugin animated layers (maplibre-native#4654)
 
 Adds the optional should_animate callback to the plugin layer ABI, so a
 plugin layer can keep a continuous-mode map repainting. Upstream:
@@ -12,8 +12,8 @@ upstream.
 ---
  .mise/bin/sync-submodules                     |   1 +
  .../0022-plugin-animated-layers.patch         | 111 ++++++++++++++++++
- patches/maplibre-native/README.md             |   7 ++
- 3 files changed, 119 insertions(+)
+ patches/maplibre-native/README.md             |   6 +
+ 3 files changed, 118 insertions(+)
  create mode 100644 patches/maplibre-native/0022-plugin-animated-layers.patch
 
 diff --git a/.mise/bin/sync-submodules b/.mise/bin/sync-submodules
@@ -146,10 +146,10 @@ index 0000000..84de346
 + 
 + } // namespace mln
 diff --git a/patches/maplibre-native/README.md b/patches/maplibre-native/README.md
-index 79efb0c..0b932e8 100644
+index 79efb0c..82b9f03 100644
 --- a/patches/maplibre-native/README.md
 +++ b/patches/maplibre-native/README.md
-@@ -119,6 +119,13 @@ fixtures with their binary reference images. Upstream:
+@@ -119,6 +119,12 @@ fixtures with their binary reference images. Upstream:
  [maplibre-native#4644](https://github.com/maplibre/maplibre-native/pull/4644),
  at commit `02d9a4b2ccb4f3d15cdca438fd08ea6fa2cd530b`.
  
@@ -157,8 +157,7 @@ index 79efb0c..0b932e8 100644
 +to the plugin layer ABI. A layer whose callback returns nonzero counts as
 +animating during evaluation, so continuous-mode maps report needs-repaint on
 +every rendered frame while the animation is on. Upstream:
-+[maplibre-native#4654](https://github.com/maplibre/maplibre-native/pull/4654),
-+at commit `c9346eed9c732115bfcae1f4cb64edb2ad4f6550`.
++[maplibre-native#4654](https://github.com/maplibre/maplibre-native/pull/4654).
 +
  Each patch is the squashed diff of its upstream branch, applied on top of the
  patches before it, so a patch that adds a test next to an earlier patch's test

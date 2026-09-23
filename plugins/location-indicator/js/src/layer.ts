@@ -299,24 +299,23 @@ export class LocationPuckLayer implements CustomLayerInterface {
     const centerLongitude = map.getCenter().lng;
     const projectMercator = (lat: number, lon: number): Point =>
       this.projectMercator(lat, lon, worldSize, centerLongitude);
-    const unwrap = (lon: number) =>
-      lon + 360 * Math.round((centerLongitude - lon) / 360);
+    // mainMatrix maps unit Mercator coordinates to clip space; its w is the
+    // depth the built-in shaders divide the camera distance by.
+    const m = args.defaultProjectionData.mainMatrix;
+    const clipW = (x: number, y: number) =>
+      (m[3] ?? 0) * (x / worldSize) +
+      (m[7] ?? 0) * (y / worldSize) +
+      (m[15] ?? 0);
 
     const geometry = buildFrame({
       paint,
       timeSeconds: time / 1000,
       pitch: (map.getPitch() * Math.PI) / 180,
+      bearing: map.getBearing(),
+      cameraToCenterDistance: (0.5 * height) / Math.tan(args.fov / 2),
       pixelRatio: gl.drawingBufferWidth / width,
-      viewportHeight: height,
       projectMercator,
-      projectScreen: (lat, lon) => {
-        const p = map.project([unwrap(lon), lat]);
-        return [p.x, p.y];
-      },
-      unprojectScreen: (x, y) => {
-        const p = map.unproject([x, y]);
-        return [p.lat, p.lng];
-      },
+      clipW,
       destination,
     });
     this.lastFrame = { geometry, worldSize, centerLongitude };

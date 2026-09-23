@@ -1,7 +1,8 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Sargun Vohra <sargunv@users.noreply.github.com>
-Date: Tue, 22 Sep 2026 23:12:30 -0700
-Subject: [PATCH 3/6] Carry premultiplied plugin default colors (maplibre-native#4663)
+Date: Tue, 22 Sep 2026 23:26:38 -0700
+Subject: [PATCH 3/5] Carry premultiplied plugin default colors
+ (maplibre-native#4663)
 
 Premultiplies registered plugin default colors when the style system
 adopts them, matching style-parsed colors. Merged upstream as
@@ -13,8 +14,8 @@ upstream.
 ---
  .mise/bin/sync-submodules                     |  1 +
  ...24-premultiply-plugin-default-colors.patch | 27 +++++++++++++++++++
- patches/maplibre-native/README.md             |  5 ++++
- 3 files changed, 33 insertions(+)
+ patches/maplibre-native/README.md             |  6 +++++
+ 3 files changed, 34 insertions(+)
  create mode 100644 patches/maplibre-native/0024-premultiply-plugin-default-colors.patch
 
 diff --git a/.mise/bin/sync-submodules b/.mise/bin/sync-submodules
@@ -63,17 +64,18 @@ index 0000000..45685f7
 + 
 + template <>
 diff --git a/patches/maplibre-native/README.md b/patches/maplibre-native/README.md
-index caf74d0..d97fca6 100644
+index 6f8867c..94824a9 100644
 --- a/patches/maplibre-native/README.md
 +++ b/patches/maplibre-native/README.md
-@@ -139,6 +139,11 @@ styles with no sources. They cannot declare data-driven properties and receive
- no feature hit-testing. This patch is local-only: it is not upstreamed, and no
+@@ -135,6 +135,12 @@ camera-to-center distance, a mercator world projection, and a ground-offset
+ destination helper. This patch is local-only: it is not upstreamed, and no
  upstream PR exists.
  
 +`0024-premultiply-plugin-default-colors.patch` premultiplies registered plugin
 +default colors when they are adopted into the style system, matching the
 +premultiplied-alpha `Color` invariant that style-parsed colors already honor.
-+This patch is local-only: it is not upstreamed, and no upstream PR exists.
++Upstream:
++[maplibre-native#4663](https://github.com/maplibre/maplibre-native/pull/4663).
 +
  Each patch is the squashed diff of its upstream branch, applied on top of the
  patches before it, so a patch that adds a test next to an earlier patch's test

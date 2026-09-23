@@ -1,19 +1,21 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Sargun Vohra <sargunv@users.noreply.github.com>
-Date: Tue, 22 Sep 2026 23:12:30 -0700
-Subject: [PATCH 2/6] Carry source-free plugin layers
+Date: Tue, 22 Sep 2026 23:26:38 -0700
+Subject: [PATCH 2/5] Carry source-free plugin layers
 
 Adds the source_free flag and build_frame callback to the plugin layer
 ABI: a layer with no style source receives its geometry from a per-frame
-callback with camera-evaluated paint values. Not yet proposed upstream.
+callback with camera-evaluated paint values, the projection matrix, the
+camera-to-center distance, and mercator and destination helpers. Not yet
+proposed upstream.
 
 Carried by maplibre-plugins from maplibre-native-ffi PR #731 until it lands
 upstream.
 ---
  .mise/bin/sync-submodules                     |    1 +
- .../0023-source-free-plugin-layers.patch      | 1011 +++++++++++++++++
- patches/maplibre-native/README.md             |   13 +
- 3 files changed, 1025 insertions(+)
+ .../0023-source-free-plugin-layers.patch      | 1010 +++++++++++++++++
+ patches/maplibre-native/README.md             |   10 +
+ 3 files changed, 1021 insertions(+)
  create mode 100644 patches/maplibre-native/0023-source-free-plugin-layers.patch
 
 diff --git a/.mise/bin/sync-submodules b/.mise/bin/sync-submodules
@@ -30,13 +32,14 @@ index 60b3069..8b79168 100755
  # The patches overlap, so no single patch reverses cleanly on its own once the
 diff --git a/patches/maplibre-native/0023-source-free-plugin-layers.patch b/patches/maplibre-native/0023-source-free-plugin-layers.patch
 new file mode 100644
-index 0000000..f5f9524
+index 0000000..3ee4eb5
 --- /dev/null
 +++ b/patches/maplibre-native/0023-source-free-plugin-layers.patch
-@@ -0,0 +1,1011 @@
+@@ -0,0 +1,1010 @@
++diff --git a/include/mln/plugin/plugin_api.h b/include/mln/plugin/plugin_api.h
 +--- a/include/mln/plugin/plugin_api.h
 ++++ b/include/mln/plugin/plugin_api.h
-+@@ -65,6 +65,8 @@
++@@ -65,6 +65,8 @@ typedef enum mln_plugin_value_type {
 +     MLN_PLUGIN_VALUE_FLOAT2 = 2,
 +     MLN_PLUGIN_VALUE_COLOR = 3,
 +     MLN_PLUGIN_VALUE_STRING = 4,
@@ -45,7 +48,7 @@ index 0000000..f5f9524
 + } mln_plugin_value_type;
 + 
 + /* Expression dependencies accepted by a plugin property. */
-+@@ -94,6 +96,11 @@
++@@ -94,6 +96,11 @@ typedef struct mln_plugin_float2 {
 +     float y;
 + } mln_plugin_float2;
 + 
@@ -57,7 +60,7 @@ index 0000000..f5f9524
 + typedef struct mln_plugin_color {
 +     float r;
 +     float g;
-+@@ -104,6 +111,7 @@
++@@ -104,6 +111,7 @@ typedef struct mln_plugin_color {
 + typedef union mln_plugin_value_data {
 +     float float_value;
 +     mln_plugin_float2 float2_value;
@@ -65,7 +68,7 @@ index 0000000..f5f9524
 +     mln_plugin_color color_value;
 +     mln_plugin_string string_value;
 + } mln_plugin_value_data;
-+@@ -433,6 +441,75 @@
++@@ -433,6 +441,71 @@ typedef float (*mln_plugin_query_radius_fn)(const mln_plugin_property_statistics
 +  * maps. */
 + typedef uint8_t (*mln_plugin_should_animate_fn)(const mln_plugin_property_value_v1* properties, size_t property_count);
 + 
@@ -74,13 +77,6 @@ index 0000000..f5f9524
 ++/* ------------------------------------------------------------------------- */
 ++
 ++struct mln_plugin_frame_context_v1;
-++
-++/* Maps a latitude/longitude to logical screen pixels, with y growing
-++ * downward, unwrapping the longitude for the shortest path from the camera
-++ * center. The function and the context's project_state storage are borrowed
-++ * for the duration of build_frame. */
-++typedef void (*mln_plugin_project_screen_fn)(
-++    const struct mln_plugin_frame_context_v1* context, double latitude, double longitude, double* out_x, double* out_y);
 ++
 ++/* Maps a latitude/longitude to mercator world pixels, unwrapping the
 ++ * longitude for the shortest path from the camera center. Borrowed for the
@@ -120,9 +116,12 @@ index 0000000..f5f9524
 ++    float pixel_ratio;
 ++    /* NDC units per logical pixel, matching the uniform context. */
 ++    float pixels_to_gl_units[2];
+++    /* Distance from the camera to the map center in logical pixels, matching
+++     * the uniform context. camera_to_center_distance / clip_w is the screen
+++     * scale of a world pixel at a projected point. */
+++    float camera_to_center_distance;
 ++    /* Opaque host storage for the projection helpers. */
 ++    const void* project_state;
-++    mln_plugin_project_screen_fn project_screen;
 ++    /* This frame's projection matrix: mercator world pixels to clip space,
 ++     * with pitch, bearing, roll, viewport mode, and insets applied. */
 ++    double proj_matrix[16];
@@ -141,7 +140,7 @@ index 0000000..f5f9524
 + typedef struct mln_plugin_layer_type_v1 {
 +     uint32_t struct_size;
 +     mln_plugin_string layer_type;
-+@@ -450,6 +527,16 @@
++@@ -450,6 +523,16 @@ typedef struct mln_plugin_layer_type_v1 {
 +     mln_plugin_update_uniform_block_fn update_uniform_block;
 +     mln_plugin_query_radius_fn get_query_radius;
 +     mln_plugin_should_animate_fn should_animate;
@@ -158,9 +157,10 @@ index 0000000..f5f9524
 + } mln_plugin_layer_type_v1;
 + 
 + typedef struct mln_plugin_descriptor_v1 {
++diff --git a/src/mln/layout/plugin_layout.cpp b/src/mln/layout/plugin_layout.cpp
 +--- a/src/mln/layout/plugin_layout.cpp
 ++++ b/src/mln/layout/plugin_layout.cpp
-+@@ -79,101 +79,7 @@
++@@ -79,101 +79,7 @@ void PluginLayout::createBucket(const ImagePositions&,
 +     }
 + 
 +     auto bucket = std::make_shared<PluginBucket>(registration);
@@ -263,9 +263,10 @@ index 0000000..f5f9524
 + 
 +     std::map<uint64_t, std::size_t> drawableVertexCounts;
 +     for (const auto& drawable : bucket->drawables) drawableVertexCounts.emplace(drawable.key, drawable.vertexCount);
++diff --git a/src/mln/plugin/plugin_registry.cpp b/src/mln/plugin/plugin_registry.cpp
 +--- a/src/mln/plugin/plugin_registry.cpp
 ++++ b/src/mln/plugin/plugin_registry.cpp
-+@@ -25,6 +25,8 @@
++@@ -25,6 +25,8 @@ Value copyValue(const mln_plugin_value& value) {
 +         case MLN_PLUGIN_VALUE_FLOAT2:
 +             return Value{mapbox::base::ValueArray{static_cast<double>(value.data.float2_value.x),
 +                                                   static_cast<double>(value.data.float2_value.y)}};
@@ -274,7 +275,7 @@ index 0000000..f5f9524
 +         case MLN_PLUGIN_VALUE_COLOR:
 +             return Value{mapbox::base::ValueArray{static_cast<double>(value.data.color_value.r),
 +                                                   static_cast<double>(value.data.color_value.g),
-+@@ -334,7 +336,8 @@
++@@ -334,7 +336,8 @@ bool appendProperties(const mln_plugin_property_descriptor_v1* properties,
 +         }
 +         const bool transitionableType = property.type == MLN_PLUGIN_VALUE_FLOAT ||
 +                                         property.type == MLN_PLUGIN_VALUE_FLOAT2 ||
@@ -284,7 +285,7 @@ index 0000000..f5f9524
 +         if (property.supports_transitions && !transitionableType) {
 +             error = "plugin transitions require an interpolatable paint property";
 +             return false;
-+@@ -436,10 +439,23 @@
++@@ -436,12 +439,25 @@ mln_plugin_status PluginRegistry::registerPlugin(const mln_plugin_descriptor_v1&
 +             error = "plugin layer type is malformed or has no supported backend";
 +             return MLN_PLUGIN_STATUS_INVALID_ARGUMENT;
 +         }
@@ -300,18 +301,20 @@ index 0000000..f5f9524
 ++                            !layerType.destroy_layout || layerType.geometry_type_mask == 0 ||
 ++                            (layerType.geometry_type_mask & ~validGeometryMask) != 0)) {
 +             error = "geometry plugin requires source layout callbacks and a valid geometry mask";
-++            return MLN_PLUGIN_STATUS_INVALID_ARGUMENT;
-++        }
++             return MLN_PLUGIN_STATUS_INVALID_ARGUMENT;
++         }
 ++        if (sourceFree && !layerType.build_frame) {
 ++            error = "source-free plugin layers require a frame callback";
 ++            return MLN_PLUGIN_STATUS_INVALID_ARGUMENT;
 ++        }
 ++        if (!sourceFree && layerType.build_frame) {
 ++            error = "frame callbacks apply only to source-free plugin layers";
-+             return MLN_PLUGIN_STATUS_INVALID_ARGUMENT;
-+         }
+++            return MLN_PLUGIN_STATUS_INVALID_ARGUMENT;
+++        }
 +         const auto type = copyString(layerType.layer_type);
-+@@ -460,6 +476,8 @@
++         if (!layerTypeKeys.emplace(type).second) {
++             error = "plugin descriptor contains duplicate layer types";
++@@ -460,6 +476,8 @@ mln_plugin_status PluginRegistry::registerPlugin(const mln_plugin_descriptor_v1&
 +         copiedLayerType.queryRadius = layerType.get_query_radius;
 +         copiedLayerType.updateUniformBlock = layerType.update_uniform_block;
 +         copiedLayerType.shouldAnimate = layerType.should_animate;
@@ -320,7 +323,7 @@ index 0000000..f5f9524
 +         if (!appendShaders(pluginID,
 +                            layerType.shaders,
 +                            layerType.shader_count,
-+@@ -501,6 +519,10 @@
++@@ -501,6 +519,10 @@ mln_plugin_status PluginRegistry::registerPlugin(const mln_plugin_descriptor_v1&
 +         for (const auto& property : copiedLayerType.properties) {
 +             const auto dataDependencies = MLN_PLUGIN_EXPRESSION_FEATURE | MLN_PLUGIN_EXPRESSION_COMPOSITE |
 +                                           MLN_PLUGIN_EXPRESSION_FEATURE_STATE;
@@ -331,7 +334,7 @@ index 0000000..f5f9524
 +             if ((property.expressionCapabilities & dataDependencies) == 0) continue;
 +             const bool bound = std::any_of(
 +                 copiedLayerType.shaders.begin(), copiedLayerType.shaders.end(), [&](const auto& shader) {
-+@@ -577,9 +599,10 @@
++@@ -577,9 +599,10 @@ bool PluginRegistry::valueMatches(mln_plugin_value_type type, const Value& value
 +         case MLN_PLUGIN_VALUE_STRING:
 +             return value.getString() != nullptr;
 +         case MLN_PLUGIN_VALUE_FLOAT2:
@@ -343,9 +346,10 @@ index 0000000..f5f9524
 +             return array && array->size() == size && std::all_of(array->begin(), array->end(), [](const auto& item) {
 +                        return item.getDouble() || item.getInt() || item.getUint();
 +                    });
++diff --git a/src/mln/plugin/plugin_registry.hpp b/src/mln/plugin/plugin_registry.hpp
 +--- a/src/mln/plugin/plugin_registry.hpp
 ++++ b/src/mln/plugin/plugin_registry.hpp
-+@@ -90,6 +90,8 @@
++@@ -90,6 +90,8 @@ struct LayerType {
 +     mln_plugin_query_radius_fn queryRadius = nullptr;
 +     mln_plugin_update_uniform_block_fn updateUniformBlock = nullptr;
 +     mln_plugin_should_animate_fn shouldAnimate = nullptr;
@@ -354,7 +358,7 @@ index 0000000..f5f9524
 +     bool operator==(const LayerType&) const = default;
 + 
 +     const PropertyDefinition* findProperty(const std::string& name) const;
-+@@ -101,12 +103,13 @@
++@@ -101,12 +103,13 @@ struct RegisteredLayer final : LayerType {
 +     explicit RegisteredLayer(LayerType definition)
 +         : LayerType(std::move(definition)),
 +           info{type.c_str(),
@@ -371,9 +375,10 @@ index 0000000..f5f9524
 + 
 +     RegisteredLayer(const RegisteredLayer&) = delete;
 +     RegisteredLayer& operator=(const RegisteredLayer&) = delete;
++diff --git a/src/mln/plugin/plugin_style_layer_factory.cpp b/src/mln/plugin/plugin_style_layer_factory.cpp
 +--- a/src/mln/plugin/plugin_style_layer_factory.cpp
 ++++ b/src/mln/plugin/plugin_style_layer_factory.cpp
-+@@ -11,9 +11,12 @@
++@@ -11,9 +11,12 @@ const style::LayerTypeInfo* PluginStyleLayerFactory::getTypeInfo() const noexcep
 + 
 + std::unique_ptr<style::Layer> PluginStyleLayerFactory::createLayer(
 +     const std::string& id, const style::conversion::Convertible& value) noexcept {
@@ -389,6 +394,7 @@ index 0000000..f5f9524
 + }
 + 
 + std::unique_ptr<RenderLayer> PluginStyleLayerFactory::createRenderLayer(Immutable<style::Layer::Impl> impl) noexcept {
++diff --git a/src/mln/renderer/buckets/plugin_bucket.cpp b/src/mln/renderer/buckets/plugin_bucket.cpp
 +--- a/src/mln/renderer/buckets/plugin_bucket.cpp
 ++++ b/src/mln/renderer/buckets/plugin_bucket.cpp
 +@@ -1,6 +1,7 @@
@@ -399,7 +405,7 @@ index 0000000..f5f9524
 + #include <mln/renderer/render_layer.hpp>
 + #include <mln/style/plugin_property.hpp>
 + #include <mln/tile/geometry_tile_data.hpp>
-+@@ -510,4 +511,130 @@
++@@ -510,4 +511,130 @@ PluginPaintPropertyBinders* PluginBucket::paintBinders(const std::string& layerI
 +     return drawable == layer->second.end() ? nullptr : &drawable->second;
 + }
 + 
@@ -530,9 +536,10 @@ index 0000000..f5f9524
 ++}
 ++
 + } // namespace mln
++diff --git a/src/mln/renderer/buckets/plugin_bucket.hpp b/src/mln/renderer/buckets/plugin_bucket.hpp
 +--- a/src/mln/renderer/buckets/plugin_bucket.hpp
 ++++ b/src/mln/renderer/buckets/plugin_bucket.hpp
-+@@ -170,6 +170,7 @@
++@@ -170,6 +170,7 @@ struct PluginAttributeBinding {
 +     uint32_t streamID = 0;
 +     uint32_t byteOffset = 0;
 +     gfx::AttributeDataType type = gfx::AttributeDataType::Invalid;
@@ -540,17 +547,18 @@ index 0000000..f5f9524
 + };
 + 
 + struct PluginDrawableDefinition {
-+@@ -185,6 +186,10 @@
-+     explicit PluginBucket(plugin::RegisteredLayerPtr registration_)
++@@ -186,6 +187,10 @@ public:
 +         : registration(std::move(registration_)) {}
 +     ~PluginBucket() override = default;
-++
++ 
 ++    // Validates and copies plugin geometry into a new bucket.
 ++    bool copyGeometry(const mln_plugin_bucket_v1&);
 ++    bool hasSameGeometry(const PluginBucket&) const;
-+ 
+++
 +     void upload(gfx::UploadPass&) override { uploaded = true; }
 +     bool hasData() const override { return indices && !indices->empty() && !drawables.empty(); }
++     float getQueryRadius(const RenderLayer&) const override;
++diff --git a/src/mln/renderer/layers/render_plugin_style_layer.cpp b/src/mln/renderer/layers/render_plugin_style_layer.cpp
 +--- a/src/mln/renderer/layers/render_plugin_style_layer.cpp
 ++++ b/src/mln/renderer/layers/render_plugin_style_layer.cpp
 +@@ -16,13 +16,20 @@
@@ -564,10 +572,9 @@ index 0000000..f5f9524
 + #include <mln/shaders/program_parameters.hpp>
 + #include <mln/shaders/shader_program_base.hpp>
 + #include <mln/style/plugin_property.hpp>
-+-
 ++#include <mln/util/logging.hpp>
 ++#include <mln/util/projection.hpp>
-++
++ 
 ++#include <mapbox/cheap_ruler.hpp>
 ++
 ++#include <chrono>
@@ -575,24 +582,10 @@ index 0000000..f5f9524
 + #include <set>
 + 
 + namespace mln {
-+@@ -32,7 +39,50 @@
++@@ -32,8 +39,37 @@ const style::PluginStyleLayer::Impl& pluginImpl(const Immutable<style::Layer::Im
 +     return static_cast<const style::PluginStyleLayer::Impl&>(*impl);
 + }
 + 
-++void projectScreenToPixels(
-++    const mln_plugin_frame_context_v1* context, double latitude, double longitude, double* outX, double* outY) {
-++    if (!context || !outX || !outY) return;
-++    const auto* state = static_cast<const TransformState*>(context->project_state);
-++    if (!state) return;
-++    // The ABI promises y-down logical pixels with antimeridian unwrapping;
-++    // latLngToScreenCoordinate returns wrapped y-up.
-++    auto unwrapped = LatLng(latitude, longitude).wrapped();
-++    unwrapped.unwrapForShortestPath(state->getLatLng(LatLng::Wrapped));
-++    const auto coordinate = state->latLngToScreenCoordinate(unwrapped);
-++    *outX = coordinate.x;
-++    *outY = state->getSize().height - coordinate.y;
-++}
-++
 ++void projectToMercatorPixels(
 ++    const mln_plugin_frame_context_v1* context, double latitude, double longitude, double* outX, double* outY) {
 ++    if (!context || !outX || !outY) return;
@@ -621,12 +614,13 @@ index 0000000..f5f9524
 ++}
 ++
 + } // namespace
-++
-++RenderPluginStyleLayer::~RenderPluginStyleLayer() = default;
 + 
+++RenderPluginStyleLayer::~RenderPluginStyleLayer() = default;
+++
 + RenderPluginStyleLayer::RenderPluginStyleLayer(Immutable<style::PluginStyleLayer::Impl> impl)
 +     : RenderLayer(makeMutable<style::PluginStyleLayerProperties>(std::move(impl))) {
-+@@ -142,14 +192,26 @@
++     // Unlike generated layers, a plugin layer has no generated evaluated
++@@ -142,14 +178,26 @@ void RenderPluginStyleLayer::layerChanged(const TransitionParameters&,
 +     // drawable whose geometry actually changed.
 + }
 + 
@@ -654,7 +648,7 @@ index 0000000..f5f9524
 +     if (!renderTiles || renderTiles->empty()) {
 +         removeAllDrawables();
 +         return;
-+@@ -259,6 +321,168 @@
++@@ -259,6 +307,168 @@ void RenderPluginStyleLayer::update(gfx::ShaderRegistry& shaders,
 +     }
 + }
 + 
@@ -723,8 +717,8 @@ index 0000000..f5f9524
 ++    frameContext.pixel_ratio = parameters.pixelRatio;
 ++    frameContext.pixels_to_gl_units[0] = parameters.pixelsToGLUnits[0];
 ++    frameContext.pixels_to_gl_units[1] = parameters.pixelsToGLUnits[1];
+++    frameContext.camera_to_center_distance = static_cast<float>(state.getCameraToCenterDistance());
 ++    frameContext.project_state = &state;
-++    frameContext.project_screen = &projectScreenToPixels;
 ++    mat4 projMatrix;
 ++    state.getProjMatrix(projMatrix);
 ++    std::copy(projMatrix.begin(), projMatrix.end(), frameContext.proj_matrix);
@@ -823,7 +817,7 @@ index 0000000..f5f9524
 + bool RenderPluginStyleLayer::queryIntersectsFeature(const GeometryCoordinates& queryGeometry,
 +                                                     const GeometryTileFeature& feature,
 +                                                     float zoom,
-+@@ -267,7 +491,9 @@
++@@ -267,7 +477,9 @@ bool RenderPluginStyleLayer::queryIntersectsFeature(const GeometryCoordinates& q
 +                                                     const mat4& tileMatrix,
 +                                                     const FeatureState& featureState) const {
 +     const auto& registration = pluginImpl(baseImpl).registration;
@@ -834,6 +828,7 @@ index 0000000..f5f9524
 +     const plugin::FeatureView pluginFeature(feature);
 +     std::vector<mln_plugin_tile_point_v1> query;
 +     query.reserve(queryGeometry.size());
++diff --git a/src/mln/renderer/layers/render_plugin_style_layer.hpp b/src/mln/renderer/layers/render_plugin_style_layer.hpp
 +--- a/src/mln/renderer/layers/render_plugin_style_layer.hpp
 ++++ b/src/mln/renderer/layers/render_plugin_style_layer.hpp
 +@@ -4,13 +4,19 @@
@@ -843,10 +838,10 @@ index 0000000..f5f9524
 ++#include <memory>
 + 
 + namespace mln {
-++
++ 
 ++class PluginBucket;
 ++class PluginPaintPropertyBinders;
-+ 
+++
 + class RenderPluginStyleLayer final : public RenderLayer {
 + public:
 +     explicit RenderPluginStyleLayer(Immutable<style::PluginStyleLayer::Impl>);
@@ -857,7 +852,7 @@ index 0000000..f5f9524
 + 
 +     void update(gfx::ShaderRegistry&,
 +                 gfx::Context&,
-+@@ -37,12 +43,24 @@
++@@ -37,12 +43,24 @@ private:
 +     bool hasTransition() const override;
 +     bool hasCrossfade() const override { return false; }
 + 
@@ -882,9 +877,10 @@ index 0000000..f5f9524
 + };
 + 
 + } // namespace mln
++diff --git a/src/mln/renderer/render_orchestrator.cpp b/src/mln/renderer/render_orchestrator.cpp
 +--- a/src/mln/renderer/render_orchestrator.cpp
 ++++ b/src/mln/renderer/render_orchestrator.cpp
-+@@ -457,33 +457,39 @@
++@@ -401,33 +401,39 @@ std::unique_ptr<RenderTree> RenderOrchestrator::createRenderTree(
 +                 continue;
 +             }
 + 
@@ -930,11 +926,10 @@ index 0000000..f5f9524
 +             }
 +         }
 +-        addChanges(changes);
-+-    }
 ++        renderItemsEmplaceHint = layerRenderItems.emplace_hint(
 ++            renderItemsEmplaceHint, layer, nullptr, static_cast<uint32_t>(index));
 ++        updateList[index] = true;
-++    }
++     }
 ++    for (size_t i = 0; i < updateList.size(); i++) {
 ++        if (orderedLayers[i].get().isLayerRenderable() != updateList[i]) {
 ++            orderedLayers[i].get().markLayerRenderable(updateList[i], changes);
@@ -944,9 +939,10 @@ index 0000000..f5f9524
 + 
 +     renderTreeParameters->loaded = updateParameters->styleLoaded && isLoaded();
 +     if (!isMapModeContinuous && !renderTreeParameters->loaded) {
++diff --git a/src/mln/style/conversion/constant.cpp b/src/mln/style/conversion/constant.cpp
 +--- a/src/mln/style/conversion/constant.cpp
 ++++ b/src/mln/style/conversion/constant.cpp
-+@@ -229,6 +229,8 @@
++@@ -229,6 +229,8 @@ std::optional<std::array<float, N>> Converter<std::array<float, N>>::operator()(
 +     return result;
 + }
 + 
@@ -955,31 +951,34 @@ index 0000000..f5f9524
 + template std::optional<std::array<float, 2>> Converter<std::array<float, 2>>::operator()(const Convertible&,
 +                                                                                          Error&) const;
 + template std::optional<std::array<float, 3>> Converter<std::array<float, 3>>::operator()(const Convertible&,
++diff --git a/src/mln/style/conversion/function.cpp b/src/mln/style/conversion/function.cpp
 +--- a/src/mln/style/conversion/function.cpp
 ++++ b/src/mln/style/conversion/function.cpp
-+@@ -141,6 +141,8 @@
-+                                                                                            Error&,
++@@ -142,6 +142,8 @@ template std::optional<PropertyExpression<Position>> convertFunctionToExpression
 +                                                                                            bool);
 + template std::optional<PropertyExpression<RasterResamplingType>> convertFunctionToExpression<RasterResamplingType>(
-++    const Convertible&, Error&, bool);
-++template std::optional<PropertyExpression<std::array<double, 2>>> convertFunctionToExpression<std::array<double, 2>>(
 +     const Convertible&, Error&, bool);
+++template std::optional<PropertyExpression<std::array<double, 2>>> convertFunctionToExpression<std::array<double, 2>>(
+++    const Convertible&, Error&, bool);
 + template std::optional<PropertyExpression<std::array<float, 2>>> convertFunctionToExpression<std::array<float, 2>>(
 +     const Convertible&, Error&, bool);
++ template std::optional<PropertyExpression<std::array<float, 4>>> convertFunctionToExpression<std::array<float, 4>>(
++diff --git a/src/mln/style/conversion/property_value.cpp b/src/mln/style/conversion/property_value.cpp
 +--- a/src/mln/style/conversion/property_value.cpp
 ++++ b/src/mln/style/conversion/property_value.cpp
-+@@ -70,6 +70,8 @@
-+                                                                                          bool,
++@@ -71,6 +71,8 @@ template std::optional<PropertyValue<float>> Converter<PropertyValue<float>>::op
 +                                                                                          bool) const;
 + template std::optional<PropertyValue<std::array<float, 2>>> Converter<PropertyValue<std::array<float, 2>>>::operator()(
-++    conversion::Convertible const&, conversion::Error&, bool, bool) const;
-++template std::optional<PropertyValue<std::array<double, 2>>> Converter<PropertyValue<std::array<double, 2>>>::operator()(
 +     conversion::Convertible const&, conversion::Error&, bool, bool) const;
+++template std::optional<PropertyValue<std::array<double, 2>>> Converter<PropertyValue<std::array<double, 2>>>::operator()(
+++    conversion::Convertible const&, conversion::Error&, bool, bool) const;
 + template std::optional<PropertyValue<std::array<float, 4>>> Converter<PropertyValue<std::array<float, 4>>>::operator()(
 +     conversion::Convertible const&, conversion::Error&, bool, bool) const;
++ template std::optional<PropertyValue<std::vector<float>>> Converter<PropertyValue<std::vector<float>>>::operator()(
++diff --git a/src/mln/style/expression/value.cpp b/src/mln/style/expression/value.cpp
 +--- a/src/mln/style/expression/value.cpp
 ++++ b/src/mln/style/expression/value.cpp
-+@@ -367,6 +367,10 @@
++@@ -367,6 +367,10 @@ template type::Type valueTypeToExpressionType<Rotation>();
 + template type::Type valueTypeToExpressionType<std::array<float, 2>>();
 + template struct ValueConverter<std::array<float, 2>>;
 + 
@@ -990,12 +989,14 @@ index 0000000..f5f9524
 + template type::Type valueTypeToExpressionType<std::array<float, 4>>();
 + template struct ValueConverter<std::array<float, 4>>;
 + 
++diff --git a/src/mln/style/plugin_property.cpp b/src/mln/style/plugin_property.cpp
 +--- a/src/mln/style/plugin_property.cpp
 ++++ b/src/mln/style/plugin_property.cpp
-+@@ -70,6 +70,15 @@
++@@ -69,6 +69,15 @@ std::array<float, 2> defaultValue<std::array<float, 2>>(const plugin::PropertyDe
++     return result;
 + }
 + 
-+ template <>
+++template <>
 ++std::array<double, 2> defaultValue<std::array<double, 2>>(const plugin::PropertyDefinition& definition) {
 ++    std::array<double, 2> result{};
 ++    if (const auto* array = definition.defaultValue.getArray(); array && array->size() == result.size()) {
@@ -1004,11 +1005,10 @@ index 0000000..f5f9524
 ++    return result;
 ++}
 ++
-++template <>
++ template <>
 + Color defaultValue<Color>(const plugin::PropertyDefinition& definition) {
 +     std::array<float, 4> result{};
-+     if (const auto* array = definition.defaultValue.getArray(); array && array->size() == result.size()) {
-+@@ -92,6 +101,8 @@
++@@ -92,6 +101,8 @@ auto withPropertyType(mln_plugin_value_type type, Fn&& fn) {
 +             return fn.template operator()<float>();
 +         case MLN_PLUGIN_VALUE_FLOAT2:
 +             return fn.template operator()<std::array<float, 2>>();
@@ -1017,7 +1017,7 @@ index 0000000..f5f9524
 +         case MLN_PLUGIN_VALUE_COLOR:
 +             return fn.template operator()<Color>();
 +         case MLN_PLUGIN_VALUE_STRING:
-+@@ -120,6 +131,9 @@
++@@ -120,6 +131,9 @@ mln_plugin_value toPluginValue(const T& value, PluginPropertyValue::EvaluationSt
 +     } else if constexpr (std::is_same_v<T, std::array<float, 2>>) {
 +         result.type = MLN_PLUGIN_VALUE_FLOAT2;
 +         result.data.float2_value = {value[0], value[1]};
@@ -1027,9 +1027,10 @@ index 0000000..f5f9524
 +     } else if constexpr (std::is_same_v<T, Color>) {
 +         result.type = MLN_PLUGIN_VALUE_COLOR;
 +         result.data.color_value = {value.r, value.g, value.b, value.a};
++diff --git a/src/mln/style/plugin_property.hpp b/src/mln/style/plugin_property.hpp
 +--- a/src/mln/style/plugin_property.hpp
 ++++ b/src/mln/style/plugin_property.hpp
-+@@ -29,6 +29,7 @@
++@@ -29,6 +29,7 @@ class PluginPropertyValue {
 + public:
 +     using TypedValue = std::variant<PropertyValue<float>,
 +                                     PropertyValue<std::array<float, 2>>,
@@ -1037,7 +1038,7 @@ index 0000000..f5f9524
 +                                     PropertyValue<Color>,
 +                                     PropertyValue<std::string>>;
 + 
-+@@ -83,6 +84,7 @@
++@@ -83,6 +84,7 @@ public:
 + private:
 +     using TypedValue = std::variant<Transitioning<PropertyValue<float>>,
 +                                     Transitioning<PropertyValue<std::array<float, 2>>>,
@@ -1046,24 +1047,21 @@ index 0000000..f5f9524
 +                                     Transitioning<PropertyValue<std::string>>>;
 +     TypedValue value;
 diff --git a/patches/maplibre-native/README.md b/patches/maplibre-native/README.md
-index 0b932e8..caf74d0 100644
+index 82b9f03..6f8867c 100644
 --- a/patches/maplibre-native/README.md
 +++ b/patches/maplibre-native/README.md
-@@ -126,6 +126,19 @@ every rendered frame while the animation is on. Upstream:
- [maplibre-native#4654](https://github.com/maplibre/maplibre-native/pull/4654),
- at commit `c9346eed9c732115bfcae1f4cb64edb2ad4f6550`.
+@@ -125,6 +125,16 @@ animating during evaluation, so continuous-mode maps report needs-repaint on
+ every rendered frame while the animation is on. Upstream:
+ [maplibre-native#4654](https://github.com/maplibre/maplibre-native/pull/4654).
  
 +`0023-source-free-plugin-layers.patch` adds an optional `source_free` flag and a
 +`build_frame` callback to the plugin layer ABI. A source-free layer takes no
 +source in the style, skips tile layout, and instead receives its geometry from
 +the callback on every rendered frame, drawing through the same shaders and
 +uniform tweaker as tile-driven layers. The frame context carries the
-+camera-evaluated paint values, a y-down screen projection, a mercator world
-+projection, a ground-offset destination helper, and the frame's full projection
-+matrix. Frame and tile geometry share validation. Unchanged frame geometry
-+retains its drawables and paint bindings. Source-free layers also render in
-+styles with no sources. They cannot declare data-driven properties and receive
-+no feature hit-testing. This patch is local-only: it is not upstreamed, and no
++camera-evaluated paint values, the frame's projection matrix, the
++camera-to-center distance, a mercator world projection, and a ground-offset
++destination helper. This patch is local-only: it is not upstreamed, and no
 +upstream PR exists.
 +
  Each patch is the squashed diff of its upstream branch, applied on top of the

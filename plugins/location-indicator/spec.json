@@ -24,13 +24,13 @@
       "default": 0.85,
       "minimum": 0,
       "maximum": 1,
-      "doc": "How much the indicator resists shrinking with perspective; core's default."
+      "doc": "How much the indicator resists shrinking with distance from the camera; 1 keeps a constant screen size, 0 scales with the map."
     },
     "tilt-displacement": {
       "type": "float",
       "default": 0,
       "minimum": 0,
-      "doc": "Opposite top and shadow displacement under pitch, in logical pixels."
+      "doc": "Under pitch, lifts the puck and arrow up-screen and pushes the shadow down-screen by this many logical pixels per radian of pitch."
     },
     "bearing-radius": {
       "type": "float",

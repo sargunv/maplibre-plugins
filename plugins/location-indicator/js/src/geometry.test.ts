@@ -37,20 +37,15 @@ function context(
     paint,
     timeSeconds: 0,
     pitch: 0,
+    bearing: 0,
+    // Clip w is 1 everywhere, so one world pixel is one screen pixel.
+    cameraToCenterDistance: 1,
     pixelRatio: 1,
-    viewportHeight: 200,
     projectMercator: (lat, lon) => [
       lon * PIXELS_PER_DEGREE,
       -lat * PIXELS_PER_DEGREE,
     ],
-    projectScreen: (lat, lon) => [
-      100 + lon * PIXELS_PER_DEGREE,
-      100 - lat * PIXELS_PER_DEGREE,
-    ],
-    unprojectScreen: (x, y) => [
-      (100 - y) / PIXELS_PER_DEGREE,
-      (x - 100) / PIXELS_PER_DEGREE,
-    ],
+    clipW: () => 1,
     destination: (lat, lon, distance, bearing) => [
       lat + (distance / 100_000) * Math.cos((bearing * Math.PI) / 180),
       lon + (distance / 100_000) * Math.sin((bearing * Math.PI) / 180),
@@ -128,22 +123,32 @@ describe("buildFrame", () => {
     expect(invalid.feature).toBeNull();
   });
 
-  it("shares core compensation and displaces top and shadow oppositely", () => {
+  it("lifts the puck and arrow and lowers the shadow under tilt", () => {
     const paint = defaults({
       "shadow-radius": 12,
       "tilt-displacement": 10,
       "bearing-visible": 1,
     });
     const frame = buildFrame(context(paint, { pitch: 0.5 }));
-    // Shadow, arrow, puck: the shadow moves south, the arrow stays, the puck moves north.
+    // Shadow, arrow, puck: the shadow moves down-screen, the arrow and puck
+    // up-screen, by pitch × displacement pixels (0.5 × 10 = 5 world pixels).
     expect(quadCenterY(frame, 0)).toBeCloseTo(5, 6);
-    expect(quadCenterY(frame, 4)).toBeCloseTo(0, 6);
+    expect(quadCenterY(frame, 4)).toBeCloseTo(-5, 6);
     expect(quadCenterY(frame, 8)).toBeCloseTo(-5, 6);
     expect(frame.queryPolygons).toHaveLength(2);
+    for (const polygon of frame.queryPolygons) {
+      expect((polygon[0]![1] + polygon[2]![1]) / 2).toBeCloseTo(-5, 6);
+    }
     const puck = frame.queryPolygons[1]!;
-    expect((puck[0]![1] + puck[2]![1]) / 2).toBeCloseTo(-5, 6);
     expect(containsPoint(puck, [0, -5])).toBe(true);
     expect(containsPoint(puck, [0, 20])).toBe(false);
+
+    // With the camera bearing 90°, screen-up is east.
+    const east = buildFrame(context(paint, { pitch: 0.5, bearing: 90 }));
+    const [x0, y0] = position(east, 8);
+    const [x2, y2] = position(east, 10);
+    expect((x0 + x2) / 2).toBeCloseTo(5, 6);
+    expect((y0 + y2) / 2).toBeCloseTo(0, 6);
 
     const noPuck = buildFrame(
       context(defaults({ ...paintOf(paint), "puck-radius": 0 }), {
@@ -154,13 +159,10 @@ describe("buildFrame", () => {
     expect(noPuck.vertexCount).toBe(8);
   });
 
-  it("clamps the inverse perspective scale like core", () => {
-    const zoomedIn: Partial<FrameContext> = {
-      projectMercator: (lat, lon) => [lon * 50, -lat * 50],
-      projectScreen: (lat, lon) => [100 + lon * 100, 100 - lat * 100],
-      unprojectScreen: (x, y) => [(100 - y) / 100, (x - 100) / 100],
-    };
-    // Two screen pixels per world pixel: the world size of a pixel is 0.5, clamped to 0.8.
+  it("scales with the perspective ratio and clamps it like core", () => {
+    // Two screen pixels per world pixel (w = 1, camera distance 2): the world
+    // size of a pixel is 0.5, clamped to 0.8.
+    const zoomedIn: Partial<FrameContext> = { cameraToCenterDistance: 2 };
     const compensated = buildFrame(
       context(defaults({ "puck-radius": 8 }), zoomedIn),
     );
@@ -177,6 +179,22 @@ describe("buildFrame", () => {
       2 * 1.15 * 10,
       6,
     );
+
+    // Far from the camera (w = 3) the puck grows by the compensated ratio.
+    const far = buildFrame(
+      context(defaults({ "puck-radius": 8, "perspective-compensation": 1 }), {
+        clipW: () => 3,
+      }),
+    );
+    expect(position(far, 1)[0] - position(far, 0)[0]).toBeCloseTo(
+      2 * 1.15 * 10 * 3,
+      6,
+    );
+
+    // Behind the camera there is nothing to draw.
+    expect(
+      buildFrame(context(defaults(), { clipW: () => -1 })).vertexCount,
+    ).toBe(0);
   });
 
   it("points the arrow along the bearing", () => {

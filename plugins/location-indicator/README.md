@@ -29,6 +29,11 @@ hides the arrow and the bearing-accuracy sector.
 }
 ```
 
+Sizes are logical pixels at the indicator, scaled by `perspective-compensation`
+so the puck keeps its size as the map pitches away. `tilt-displacement` lifts
+the puck and arrow up-screen and pushes the shadow down-screen under pitch; the
+accuracy circle and sector stay on the ground.
+
 Property changes animate over the transition duration (300 ms by default).
 Bearings take the shortest arc, so 350 to 10 degrees animates through north. Use
 continuous longitudes when animating across the antimeridian.

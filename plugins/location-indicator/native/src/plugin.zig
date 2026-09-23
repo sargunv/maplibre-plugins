@@ -307,19 +307,10 @@ fn projectWorld(m: [16]f64, x: f64, y: f64) [4]f64 {
     return result;
 }
 
-fn screenToWorld(ctx: *const c.mln_plugin_frame_context_v1, x: f64, y: f64) [2]f64 {
-    var lat: f64 = 0;
-    var lon: f64 = 0;
-    ctx.unproject_screen.?(ctx, x, y, &lat, &lon);
-    var result: [2]f64 = undefined;
-    ctx.project_mercator.?(ctx, lat, lon, &result[0], &result[1]);
-    return result;
-}
-
 fn buildFrame(context: [*c]const c.mln_plugin_frame_context_v1, bucket: [*c]c.mln_plugin_bucket_v1) callconv(.c) c.mln_plugin_status {
     if (context == null or bucket == null) return c.MLN_PLUGIN_STATUS_INVALID_ARGUMENT;
     const ctx: *const c.mln_plugin_frame_context_v1 = @ptrCast(context);
-    if (ctx.struct_size < @sizeOf(c.mln_plugin_frame_context_v1) or ctx.project_mercator == null or ctx.project_screen == null or ctx.unproject_screen == null or ctx.destination == null or ctx.properties == null or ctx.property_count != property_descriptors.len) return c.MLN_PLUGIN_STATUS_INVALID_ARGUMENT;
+    if (ctx.struct_size < @sizeOf(c.mln_plugin_frame_context_v1) or ctx.project_mercator == null or ctx.destination == null or ctx.properties == null or ctx.property_count != property_descriptors.len or !(ctx.camera_to_center_distance > 0)) return c.MLN_PLUGIN_STATUS_INVALID_ARGUMENT;
     const props = ctx.properties[0..ctx.property_count];
     const pos = value(props, "position").data.double2_value;
     if (!std.math.isFinite(pos.x) or !std.math.isFinite(pos.y) or @abs(pos.x) > 90) return c.MLN_PLUGIN_STATUS_INVALID_ARGUMENT;
@@ -337,19 +328,16 @@ fn buildFrame(context: [*c]const c.mln_plugin_frame_context_v1, bucket: [*c]c.ml
     }
     const world_x: [4]f64 = m[0..4].*;
     const world_y: [4]f64 = m[4..8].*;
-    var sx: f64 = 0;
-    var sy: f64 = 0;
-    ctx.project_screen.?(ctx, pos.x, pos.y, &sx, &sy);
-    const left = screenToWorld(ctx, sx - 1, sy);
-    const pixel_world_size = @sqrt((cx - left[0]) * (cx - left[0]) + (cy - left[1]) * (cy - left[1]));
+    // World pixels per screen pixel at the indicator: the perspective ratio
+    // the built-in layers use, clip w over the camera-to-center distance.
+    const pixel_world_size = center[3] / @as(f64, ctx.camera_to_center_distance);
     const compensation = number(props, "perspective-compensation");
     const scale = (1 - compensation) + std.math.clamp(pixel_world_size, 0.8, 10.1) * compensation;
-    const bottom = screenToWorld(ctx, sx, @as(f64, @floatFromInt(ctx.viewport_height)) - 1);
-    const above = screenToWorld(ctx, sx, @as(f64, @floatFromInt(ctx.viewport_height)) - 2);
-    const shift_length = @sqrt((above[0] - bottom[0]) * (above[0] - bottom[0]) + (above[1] - bottom[1]) * (above[1] - bottom[1]));
-    const displacement = ctx.pitch * number(props, "tilt-displacement") * scale;
-    const shift_scale = if (shift_length > 0) displacement / shift_length else 0;
-    const shift = [2]f64{ (above[0] - bottom[0]) * shift_scale, (above[1] - bottom[1]) * shift_scale };
+    // Tilt displacement moves along screen-up on the ground. The host's bearing
+    // is the negated camera bearing in radians, so screen-up in world pixels
+    // (y down) is (-sin, -cos).
+    const displacement = ctx.pitch * number(props, "tilt-displacement") * scale * pixel_world_size;
+    const shift = [2]f64{ -@sin(ctx.bearing) * displacement, -@cos(ctx.bearing) * displacement };
     const top_world = [2]f64{ cx + shift[0], cy + shift[1] };
     const top = projectWorld(m, top_world[0], top_world[1]);
     const shadow_center = projectWorld(m, cx - shift[0], cy - shift[1]);
@@ -397,10 +385,12 @@ fn buildFrame(context: [*c]const c.mln_plugin_frame_context_v1, bucket: [*c]c.ml
         const pulse_radius = (outer + 2) * (1 - phase) + @max(pulse, outer + 2) * phase;
         scratch.quad(center, mul(ground_direction[0], pulse_radius), mul(ground_direction[1], pulse_radius), .{ 3, 1.5 * ratio, 0, 0 }, color(props, "pulse-color", 1 - phase), clear);
     }
+    // The arrow rides with the puck: both lift under tilt displacement while
+    // the shadow, accuracy circle, and sector stay on the ground.
     const arrow_radius = number(props, "bearing-radius");
     if (visible > 0 and arrow_radius > 0) {
-        scratch.quad(center, mul(ground_direction[0], arrow_radius), mul(ground_direction[1], arrow_radius), .{ 4, 0, 0, 0 }, color(props, "bearing-arrow-color", visible), clear);
-        scratch.queryQuad(.{ cx, cy }, arrow_radius * scale, bearing);
+        scratch.quad(top, mul(ground_direction[0], arrow_radius), mul(ground_direction[1], arrow_radius), .{ 4, 0, 0, 0 }, color(props, "bearing-arrow-color", visible), clear);
+        scratch.queryQuad(top_world, arrow_radius * scale, bearing);
     }
     if (outer > 0) {
         scratch.quad(top, mul(ground_direction[0], outer), mul(ground_direction[1], outer), .{ 0, @floatCast(border / outer), 0, 1 }, color(props, "puck-color", 1), color(props, "puck-border-color", 1));
@@ -470,14 +460,6 @@ fn testProject(_: [*c]const c.mln_plugin_frame_context_v1, latitude: f64, longit
     y[0] = latitude;
 }
 
-fn testScreen(ctx: [*c]const c.mln_plugin_frame_context_v1, lat: f64, lon: f64, x: [*c]f64, y: [*c]f64) callconv(.c) void {
-    x[0] = 100 + (lon * ctx[0].proj_matrix[0] + ctx[0].proj_matrix[12]) * 100;
-    y[0] = 100 - (lat * ctx[0].proj_matrix[5] + ctx[0].proj_matrix[13]) * 100;
-}
-fn testUnproject(ctx: [*c]const c.mln_plugin_frame_context_v1, x: f64, y: f64, lat: [*c]f64, lon: [*c]f64) callconv(.c) void {
-    lat[0] = ((100 - y) / 100 - ctx[0].proj_matrix[13]) / ctx[0].proj_matrix[5];
-    lon[0] = ((x - 100) / 100 - ctx[0].proj_matrix[12]) / ctx[0].proj_matrix[0];
-}
 fn testDestination(_: [*c]const c.mln_plugin_frame_context_v1, lat: f64, lon: f64, distance: f64, bearing: f64, out_lat: [*c]f64, out_lon: [*c]f64) callconv(.c) void {
     out_lat[0] = lat - distance / 100_000 * @cos(std.math.degreesToRadians(bearing));
     out_lon[0] = lon + distance / 100_000 * @sin(std.math.degreesToRadians(bearing));
@@ -506,10 +488,10 @@ fn testContext(properties: []const c.mln_plugin_property_value_v1) c.mln_plugin_
         .viewport_height = 200,
         .pixel_ratio = 1,
         .pixels_to_gl_units = .{ 0.01, -0.01 },
+        // Clip w is 1 everywhere, so one world pixel is one screen pixel.
+        .camera_to_center_distance = 1,
         .proj_matrix = .{ 0.01, 0, 0, 0, 0, -0.01, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1 },
         .project_mercator = testProject,
-        .project_screen = testScreen,
-        .unproject_screen = testUnproject,
         .destination = testDestination,
     };
 }
@@ -618,7 +600,7 @@ test "pulse uses frame time and hidden components emit no geometry" {
     try std.testing.expectEqual(@as(c.mln_plugin_status, c.MLN_PLUGIN_STATUS_INVALID_ARGUMENT), buildFrame(&ctx, &bucket));
 }
 
-test "ground components share core compensation and opposite tilt displacement" {
+test "tilt displacement lifts the puck and arrow and lowers the shadow" {
     var props = testProperties();
     testSet(&props, "shadow-radius", 12);
     testSet(&props, "tilt-displacement", 10);
@@ -627,12 +609,20 @@ test "ground components share core compensation and opposite tilt displacement" 
     ctx.pitch = 0.5;
     var bucket = std.mem.zeroes(c.mln_plugin_bucket_v1);
     try std.testing.expectEqual(@as(c.mln_plugin_status, c.MLN_PLUGIN_STATUS_OK), buildFrame(&ctx, &bucket));
-    // World north moves the top up and the shadow down; bearing stays at ground level.
+    // Shadow, arrow, puck: the shadow moves down-screen, the arrow and puck
+    // up-screen, by pitch × displacement pixels (0.5 × 10 = 5 world pixels).
     try std.testing.expectApproxEqAbs(@as(f32, -0.05), (scratch.vertices[0].position[1] + scratch.vertices[2].position[1]) / 2, 0.000001);
-    try std.testing.expectApproxEqAbs(@as(f32, 0), (scratch.vertices[4].position[1] + scratch.vertices[6].position[1]) / 2, 0.000001);
+    try std.testing.expectApproxEqAbs(@as(f32, 0.05), (scratch.vertices[4].position[1] + scratch.vertices[6].position[1]) / 2, 0.000001);
     try std.testing.expectApproxEqAbs(@as(f32, 0.05), (scratch.vertices[8].position[1] + scratch.vertices[10].position[1]) / 2, 0.000001);
     try std.testing.expectEqual(@as(usize, 2), scratch.query_count);
+    try std.testing.expectApproxEqAbs(@as(f64, -5), (scratch.query_points[0][0].y + scratch.query_points[0][2].y) / 2, 0.000001);
     try std.testing.expectApproxEqAbs(@as(f64, -5), (scratch.query_points[1][0].y + scratch.query_points[1][2].y) / 2, 0.000001);
+    // A camera bearing of 90° (host bearing -π/2) turns screen-up into east.
+    ctx.bearing = -std.math.pi / 2.0;
+    try std.testing.expectEqual(@as(c.mln_plugin_status, c.MLN_PLUGIN_STATUS_OK), buildFrame(&ctx, &bucket));
+    try std.testing.expectApproxEqAbs(@as(f32, 0.05), (scratch.vertices[8].position[0] + scratch.vertices[10].position[0]) / 2, 0.000001);
+    try std.testing.expectApproxEqAbs(@as(f32, 0), (scratch.vertices[8].position[1] + scratch.vertices[10].position[1]) / 2, 0.000001);
+    ctx.bearing = 0;
     testSet(&props, "puck-radius", 0);
     try std.testing.expectEqual(@as(c.mln_plugin_status, c.MLN_PLUGIN_STATUS_OK), buildFrame(&ctx, &bucket));
     try std.testing.expectEqual(@as(usize, 1), scratch.query_count);
@@ -640,13 +630,19 @@ test "ground components share core compensation and opposite tilt displacement" 
     testSet(&props, "shadow-radius", 0);
     testSet(&props, "bearing-visible", 0);
     testSet(&props, "puck-radius", 8);
-    ctx.proj_matrix[0] = 0.02;
-    ctx.proj_matrix[5] = -0.02;
+    // Two screen pixels per world pixel (w = 1, camera distance 2): core clamps
+    // the inverse scale to 0.8.
+    ctx.camera_to_center_distance = 2;
     try std.testing.expectEqual(@as(c.mln_plugin_status, c.MLN_PLUGIN_STATUS_OK), buildFrame(&ctx, &bucket));
-    // At two screen pixels per world pixel, core clamps the inverse scale to 0.8.
     const compensated_width = scratch.vertices[1].position[0] - scratch.vertices[0].position[0];
-    try std.testing.expectApproxEqAbs(@as(f32, 2 * 1.15 * 10 * 0.02 * (0.15 + 0.8 * 0.85)), compensated_width, 0.000001);
+    try std.testing.expectApproxEqAbs(@as(f32, 2 * 1.15 * 10 * 0.01 * (0.15 + 0.8 * 0.85)), compensated_width, 0.000001);
     testSet(&props, "perspective-compensation", 0);
     try std.testing.expectEqual(@as(c.mln_plugin_status, c.MLN_PLUGIN_STATUS_OK), buildFrame(&ctx, &bucket));
-    try std.testing.expectApproxEqAbs(@as(f32, 2 * 1.15 * 10 * 0.02), scratch.vertices[1].position[0] - scratch.vertices[0].position[0], 0.000001);
+    try std.testing.expectApproxEqAbs(@as(f32, 2 * 1.15 * 10 * 0.01), scratch.vertices[1].position[0] - scratch.vertices[0].position[0], 0.000001);
+    // Far from the camera (w = 3) the puck grows by the compensated ratio.
+    ctx.camera_to_center_distance = 1;
+    ctx.proj_matrix[15] = 3;
+    testSet(&props, "perspective-compensation", 1);
+    try std.testing.expectEqual(@as(c.mln_plugin_status, c.MLN_PLUGIN_STATUS_OK), buildFrame(&ctx, &bucket));
+    try std.testing.expectApproxEqAbs(@as(f32, 2 * 1.15 * 10 * 0.01 * 3), scratch.vertices[1].position[0] - scratch.vertices[0].position[0], 0.000001);
 }
