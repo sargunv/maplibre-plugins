@@ -57,8 +57,19 @@ with the ordinary add-layer call. Rendered-feature queries return a GeoJSON
 Point for hits on the arrow or puck envelopes.
 
 The plugin builds against the plugin ABI header alone and has no link dependency
-on the host. It needs a host built with the source-free plugin patches
-(maplibre-native-ffi PR #731).
+on the host.
+
+### Required native patches
+
+From `patches/maplibre-native-ffi/` this plugin needs every carried patch:
+
+| Patch                                      | Used for                                                     |
+| ------------------------------------------ | ------------------------------------------------------------ |
+| `0001` plugin animated layers              | `should_animate` drives the pulse ring                       |
+| `0002` source-free plugin layers           | `build_frame` supplies the geometry; the layer has no source |
+| `0003` premultiplied plugin default colors | color defaults and values arrive premultiplied               |
+| `0004` plugin rotation properties          | `bearing` transitions along the shortest arc                 |
+| `0005` plugin frame queries                | rendered-feature hit envelopes for the puck and arrow        |
 
 ## Web
 

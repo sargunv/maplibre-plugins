@@ -1,0 +1,72 @@
+{
+  "$comment": "Shared contract for the animated water shoreline. Both the native Zig plugin and the maplibre-gl-js layer are tested against this file.",
+  "id": "water",
+  "layerType": "water-shore",
+  "native": {
+    "pluginId": "org.maplibre.plugins.water",
+    "pluginVersion": "0.1.0",
+    "library": "maplibre-water",
+    "entryPoint": "mln_water_register"
+  },
+  "geometry": "polygon",
+  "paint": {
+    "shore-width": {
+      "type": "float",
+      "default": 48,
+      "minimum": 0,
+      "doc": "Width of the animated band, in logical pixels, from the shoreline into the water."
+    },
+    "shore-color": {
+      "type": "color",
+      "default": [0.62, 0.9, 0.96, 0.55],
+      "doc": "Shallow-water tint at the shoreline; fades out across the band."
+    },
+    "foam-color": {
+      "type": "color",
+      "default": [1, 1, 1, 0.92],
+      "doc": "Color of the breaking crests and the wash at the shoreline."
+    },
+    "wave-count": {
+      "type": "float",
+      "default": 3,
+      "minimum": 0,
+      "maximum": 12,
+      "doc": "Number of crests across the band; 0 leaves only the wash."
+    },
+    "wave-speed": {
+      "type": "float",
+      "default": 0.3,
+      "minimum": -3,
+      "maximum": 3,
+      "doc": "Crests per second travelling toward the shore; negative moves them out to sea and 0 freezes every animation."
+    },
+    "wave-wobble": {
+      "type": "float",
+      "default": 0.5,
+      "minimum": 0,
+      "maximum": 1,
+      "doc": "How irregular the crests are: 0 draws smooth lines parallel to the shore, 1 breaks them into wobbling patches."
+    },
+    "foam-length": {
+      "type": "float",
+      "default": 0.3,
+      "minimum": 0,
+      "maximum": 1,
+      "doc": "How far behind each crest its foam trails, as a fraction of the crest spacing."
+    },
+    "wash-strength": {
+      "type": "float",
+      "default": 0.8,
+      "minimum": 0,
+      "maximum": 1,
+      "doc": "Strength of the bubbling wash right at the shoreline."
+    },
+    "opacity": {
+      "type": "float",
+      "default": 1,
+      "minimum": 0,
+      "maximum": 1,
+      "doc": "Opacity of the whole effect."
+    }
+  }
+}

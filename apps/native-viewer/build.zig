@@ -6,6 +6,7 @@ const maplibre_build = @import("maplibre_native_ffi");
 /// and entry point to the viewer.
 const plugins = [_]struct { name: []const u8, dependency: []const u8, artifact: []const u8, entry_point: []const u8 }{
     .{ .name = "location-indicator", .dependency = "location_indicator", .artifact = "maplibre-location-puck", .entry_point = "mln_location_puck_register" },
+    .{ .name = "water", .dependency = "water", .artifact = "maplibre-water", .entry_point = "mln_water_register" },
 };
 
 const BuildOptions = struct {

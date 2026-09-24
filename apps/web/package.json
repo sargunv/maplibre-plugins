@@ -11,6 +11,8 @@
   },
   "dependencies": {
     "@maplibre-plugins/location-indicator": "workspace:*",
+    "@maplibre-plugins/paint": "workspace:*",
+    "@maplibre-plugins/water": "workspace:*",
     "maplibre-gl": "catalog:"
   },
   "devDependencies": {

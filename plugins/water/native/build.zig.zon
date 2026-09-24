@@ -1,0 +1,8 @@
+.{
+    .name = .water,
+    .version = "0.1.0",
+    .minimum_zig_version = "0.16.0",
+    .dependencies = .{},
+    .paths = .{""},
+    .fingerprint = 0xfb3314da354e4fb3,
+}

@@ -10,6 +10,7 @@ Layer plugins for MapLibre, each implemented twice from one shared spec:
 | Plugin                                           | Layer type      | Status                                 |
 | ------------------------------------------------ | --------------- | -------------------------------------- |
 | [location-indicator](plugins/location-indicator) | `location-puck` | native + web; needs FFI plugin patches |
+| [water](plugins/water)                           | `water-shore`   | native + web; needs FFI plugin patches |
 
 ## Try it
 
@@ -27,6 +28,7 @@ patches, which this repo vendors: a maplibre-native-ffi submodule plus
 ```bash
 mise run ffi:build
 mise run //apps/native-viewer:run location-indicator
+mise run //apps/native-viewer:run water -- --before landcover-ice-shelf
 ```
 
 See [AGENTS.md](AGENTS.md) for the repo layout and conventions.

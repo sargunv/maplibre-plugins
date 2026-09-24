@@ -1,5 +1,6 @@
 minimumReleaseAge: 4320 # 3-day release cooldown, mirrors mise minimum_release_age
 packages:
+  - "packages/*"
   - "plugins/*/js"
   - "apps/web"
 catalog:

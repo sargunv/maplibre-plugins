@@ -1,7 +1,7 @@
 {
-  "name": "@maplibre-plugins/location-indicator",
+  "name": "@maplibre-plugins/paint",
   "version": "0.1.0",
-  "description": "Procedural location indicator layer for maplibre-gl-js, sharing its spec and shader with the MapLibre Native plugin.",
+  "description": "Paint property evaluation and transitions shared by the maplibre-gl-js plugin layers: style-spec expressions, CSS colors, and MapLibre Native style transitions.",
   "sideEffects": false,
   "type": "module",
   "exports": {
@@ -9,18 +9,12 @@
   },
   "files": ["dist"],
   "scripts": { "build": "vp pack", "test": "vp test run", "check": "vp check" },
-  "dependencies": {
-    "@maplibre-plugins/paint": "workspace:*",
-    "@maplibre/maplibre-gl-style-spec": "catalog:"
-  },
+  "dependencies": { "@maplibre/maplibre-gl-style-spec": "catalog:" },
   "devDependencies": {
-    "@types/geojson": "^7946.0.16",
     "@types/node": "^24.0.0",
-    "maplibre-gl": "catalog:",
     "typescript": "catalog:",
     "vite-plus": "catalog:"
   },
-  "peerDependencies": { "maplibre-gl": "^6.0.0" },
   "publishConfig": {
     "exports": {
       ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" }

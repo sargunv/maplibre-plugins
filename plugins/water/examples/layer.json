@@ -1,0 +1,23 @@
+{
+  "id": "water-shore",
+  "type": "water-shore",
+  "source": "openmaptiles",
+  "source-layer": "water",
+  "filter": ["!=", ["get", "brunnel"], "tunnel"],
+  "paint": {
+    "shore-width": [
+      "interpolate",
+      ["exponential", 1.5],
+      ["zoom"],
+      10,
+      6,
+      13,
+      24,
+      16,
+      64
+    ],
+    "wave-count": 3,
+    "wave-speed": 0.3,
+    "wave-wobble": 0.5
+  }
+}

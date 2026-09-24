@@ -1,7 +1,7 @@
 {
-  "name": "@maplibre-plugins/location-indicator",
+  "name": "@maplibre-plugins/water",
   "version": "0.1.0",
-  "description": "Procedural location indicator layer for maplibre-gl-js, sharing its spec and shader with the MapLibre Native plugin.",
+  "description": "Animated shoreline layer for maplibre-gl-js, sharing its spec and shader with the MapLibre Native plugin.",
   "sideEffects": false,
   "type": "module",
   "exports": {
@@ -10,8 +10,10 @@
   "files": ["dist"],
   "scripts": { "build": "vp pack", "test": "vp test run", "check": "vp check" },
   "dependencies": {
+    "@mapbox/vector-tile": "^3.0.0",
     "@maplibre-plugins/paint": "workspace:*",
-    "@maplibre/maplibre-gl-style-spec": "catalog:"
+    "@maplibre/maplibre-gl-style-spec": "catalog:",
+    "pbf": "^5.1.2"
   },
   "devDependencies": {
     "@types/geojson": "^7946.0.16",

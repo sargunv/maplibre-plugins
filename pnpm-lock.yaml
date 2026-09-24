@@ -193,6 +193,12 @@ importers:
       '@maplibre-plugins/location-indicator':
         specifier: workspace:*
         version: link:../../plugins/location-indicator/js
+      '@maplibre-plugins/paint':
+        specifier: workspace:*
+        version: link:../../packages/paint
+      '@maplibre-plugins/water':
+        specifier: workspace:*
+        version: link:../../plugins/water/js
       maplibre-gl:
         specifier: 'catalog:'
         version: 6.10.0
@@ -207,11 +213,61 @@ importers:
         specifier: 'catalog:'
         version: 0.3.3(@types/node@24.13.6)(typescript@5.9.3)
 
-  plugins/location-indicator/js:
+  packages/paint:
     dependencies:
       '@maplibre/maplibre-gl-style-spec':
         specifier: 'catalog:'
         version: 26.4.4
+    devDependencies:
+      '@types/node':
+        specifier: ^24.0.0
+        version: 24.13.6
+      typescript:
+        specifier: 'catalog:'
+        version: 5.9.3
+      vite-plus:
+        specifier: 'catalog:'
+        version: 0.3.3(@types/node@24.13.6)(typescript@5.9.3)
+
+  plugins/location-indicator/js:
+    dependencies:
+      '@maplibre-plugins/paint':
+        specifier: workspace:*
+        version: link:../../../packages/paint
+      '@maplibre/maplibre-gl-style-spec':
+        specifier: 'catalog:'
+        version: 26.4.4
+    devDependencies:
+      '@types/geojson':
+        specifier: ^7946.0.16
+        version: 7946.0.16
+      '@types/node':
+        specifier: ^24.0.0
+        version: 24.13.6
+      maplibre-gl:
+        specifier: 'catalog:'
+        version: 6.10.0
+      typescript:
+        specifier: 'catalog:'
+        version: 5.9.3
+      vite-plus:
+        specifier: 'catalog:'
+        version: 0.3.3(@types/node@24.13.6)(typescript@5.9.3)
+
+  plugins/water/js:
+    dependencies:
+      '@mapbox/vector-tile':
+        specifier: ^3.0.0
+        version: 3.0.0
+      '@maplibre-plugins/paint':
+        specifier: workspace:*
+        version: link:../../../packages/paint
+      '@maplibre/maplibre-gl-style-spec':
+        specifier: 'catalog:'
+        version: 26.4.4
+      pbf:
+        specifier: ^5.1.2
+        version: 5.1.2
     devDependencies:
       '@types/geojson':
         specifier: ^7946.0.16

@@ -20,8 +20,13 @@ maplibre-gl-js implementation, plus apps to preview them live.
     needs no native library.
   - `js/` — TypeScript package implementing a maplibre-gl-js custom layer with
     the same paint properties.
+  - Source-free plugins (the puck) build their geometry every frame; tile-driven
+    plugins (water) get the source's features per tile through the layout
+    callbacks, and the JS twin reads the same tiles from the map's tile manager.
+- `packages/paint/` — `@maplibre-plugins/paint`: paint evaluation and
+  MapLibre-style transitions shared by every JS plugin layer.
 - `apps/web/` — Vite gallery: the JS plugins on a live map with spec-driven
-  controls. `mise run web`.
+  controls (`apps/web/src/controls.ts`). `mise run web`.
 - `apps/native-viewer/` — windowed Zig viewer (SDL3) that loads a native plugin
   into maplibre-native-c and shows its example layer on a live map, re-applying
   the layer JSON whenever the file changes.
@@ -45,6 +50,7 @@ mise run web            # gallery dev server with live reload (http://localhost:
 mise run ffi:build      # sync + patch + build maplibre-native-ffi for this host (slow once)
 mise run native-info    # which maplibre-native-c install the native apps use
 mise run //apps/native-viewer:run location-indicator     # windowed live viewer
+mise run //apps/native-viewer:run water -- --before landcover-ice-shelf --zoom 15
 mise run //plugins/location-indicator/native:test
 mise tasks ls --all     # everything
 ```
@@ -70,6 +76,10 @@ sync-plugin-header` after `ffi:build`.
   first; the Zig and JS spec-parity tests then tell you what to update.
 - Shared shader code lives only in `plugins/<name>/shaders/`. Never edit
   `js/src/generated/`; run `node scripts/sync-shaders.mjs`.
+- Each plugin README lists which of `patches/maplibre-native-ffi/` it requires
+  and what for; update it when a plugin starts using a new host feature.
+- Geometry builders come in twins (`native/src/layout.zig` and
+  `js/src/layout.ts`) tested against the same fixtures; change both.
 - Native plugins never link maplibre-native-c: the host passes the register
   function into the plugin's entry point.
 - JS layers render premultiplied colors and keep the same component order,

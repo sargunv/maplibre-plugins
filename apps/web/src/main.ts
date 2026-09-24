@@ -92,12 +92,16 @@ map.on("load", () => {
   map.on("mousemove", (e: MapMouseEvent) => {
     const hit = view.hitTest(e.point);
     map.getCanvas().style.cursor = hit ? "pointer" : "";
-    status.textContent = `${e.lngLat.lat.toFixed(5)}, ${e.lngLat.lng.toFixed(5)} · zoom ${map.getZoom().toFixed(2)}${hit ? " · over indicator" : ""}`;
+    status.textContent = `${e.lngLat.lat.toFixed(5)}, ${e.lngLat.lng.toFixed(5)} · zoom ${map.getZoom().toFixed(2)}${hit ? " · over feature" : ""}`;
   });
   map.on("click", (e: MapMouseEvent) => {
     const feature = view.queryFeature(e.point);
     if (feature) {
-      status.textContent = `clicked feature: ${JSON.stringify(feature.geometry.coordinates)}`;
+      const summary =
+        feature.geometry.type === "Point"
+          ? JSON.stringify(feature.geometry.coordinates)
+          : `${feature.geometry.type} ${JSON.stringify(feature.properties)}`;
+      status.textContent = `clicked feature: ${summary}`;
     }
   });
 });
