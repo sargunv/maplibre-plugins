@@ -1,5 +1,11 @@
 # maplibre-plugins
 
+> **Vibe-coded. Not fit for use.** Everything in this repository was written by
+> an AI coding agent as an experiment in what MapLibre Native's plugin API can
+> and cannot do. It is unreviewed, untested beyond its own unit tests, depends
+> on unmerged MapLibre Native patches, and may break, mislead, or disappear at
+> any time. Do not build on it.
+
 Layer plugins for MapLibre, each implemented twice from one shared spec:
 
 - **Native**: a Zig shared library for MapLibre Native's C plugin ABI, loaded
