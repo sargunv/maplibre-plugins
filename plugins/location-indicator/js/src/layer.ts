@@ -12,7 +12,6 @@ import {
   FLOATS_PER_VERTEX,
   type FrameGeometry,
   type Point,
-  shouldAnimate,
 } from "./geometry.ts";
 import {
   compile,
@@ -289,7 +288,7 @@ export class LocationPuckLayer implements CustomLayerInterface {
 
     const time = now();
     const paint = this.evaluate(zoom, time);
-    if (shouldAnimate(paint) || this.active(time)) map.triggerRepaint();
+    if (this.active(time)) map.triggerRepaint();
 
     const worldSize = TILE_SIZE * 2 ** zoom;
     const canvas = map.getCanvas();
@@ -309,7 +308,6 @@ export class LocationPuckLayer implements CustomLayerInterface {
 
     const geometry = buildFrame({
       paint,
-      timeSeconds: time / 1000,
       pitch: (map.getPitch() * Math.PI) / 180,
       bearing: map.getBearing(),
       cameraToCenterDistance: (0.5 * height) / Math.tan(args.fov / 2),

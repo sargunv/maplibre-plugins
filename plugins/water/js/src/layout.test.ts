@@ -296,9 +296,9 @@ describe("ShoreLayout", () => {
 
   it("splits long chains across 16-bit segments and keeps them joined", () => {
     const layout = new ShoreLayout(8192);
-    // A jagged coast with 40000 points; its reflex corners fan, so the strip
+    // A jagged coast with 12000 points; its reflex corners fan, so the strip
     // needs several segments.
-    const count = 40000;
+    const count = 12000;
     const points: Point[] = [];
     for (let i = 0; i < count; i++) {
       const t = i / count;

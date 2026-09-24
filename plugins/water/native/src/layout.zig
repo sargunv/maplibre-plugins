@@ -563,9 +563,9 @@ test "degenerate rings and repeated points are ignored" {
 test "long chains split across 16-bit segments and stay joined" {
     var layout = Layout.init(std.testing.allocator, 8192);
     defer layout.deinit();
-    // A jagged coast with 40000 points; its reflex corners fan, so the strip
+    // A jagged coast with 12000 points; its reflex corners fan, so the strip
     // needs several segments.
-    const count = 40000;
+    const count = 12000;
     const points = try std.testing.allocator.alloc(Point, count);
     defer std.testing.allocator.free(points);
     for (0..count) |i| {

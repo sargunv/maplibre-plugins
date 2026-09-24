@@ -35,7 +35,7 @@ export const plugins: PluginEntry[] = [
     title: "Location indicator",
     layerType: "location-puck",
     description:
-      "Procedural puck, bearing arrow, accuracy circle, shadow and pulse drawn analytically in the fragment shader. Every control below is a paint property the native plugin also accepts.",
+      "Procedural puck, bearing arrow, accuracy circle and shadow drawn analytically in the fragment shader. Every control below is a paint property the native plugin also accepts.",
     camera: { center: [37.7749, -122.4194], zoom: 13, bearing: 12, pitch: 30 },
     mount: mountLocationIndicator,
   },

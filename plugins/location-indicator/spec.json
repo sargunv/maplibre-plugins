@@ -88,18 +88,6 @@
       "minimum": 0,
       "doc": "Puck border width in logical pixels."
     },
-    "pulse-radius": {
-      "type": "float",
-      "default": 0,
-      "minimum": 0,
-      "doc": "Maximum pulse ring radius in logical pixels; zero disables the pulse."
-    },
-    "pulse-period": {
-      "type": "float",
-      "default": 1.5,
-      "minimum": 0.1,
-      "doc": "Pulse period in seconds."
-    },
     "puck-color": {
       "type": "color",
       "default": [0.17, 0.54, 0.94, 1],
@@ -134,11 +122,6 @@
       "type": "color",
       "default": [0, 0, 0, 0.25],
       "doc": "Shadow."
-    },
-    "pulse-color": {
-      "type": "color",
-      "default": [0.17, 0.54, 0.94, 0.5],
-      "doc": "Pulse ring; fades out as it expands."
     }
   }
 }

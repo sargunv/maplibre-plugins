@@ -32,8 +32,6 @@ export const paintSpec = {
   "shadow-radius": { type: "float", default: 0, minimum: 0 },
   "puck-radius": { type: "float", default: 8, minimum: 0 },
   "puck-border-width": { type: "float", default: 2, minimum: 0 },
-  "pulse-radius": { type: "float", default: 0, minimum: 0 },
-  "pulse-period": { type: "float", default: 1.5, minimum: 0.1 },
   "puck-color": { type: "color", default: [...blue, 1] },
   "puck-border-color": { type: "color", default: [1, 1, 1, 1] },
   "accuracy-color": { type: "color", default: [...blue, 0.15] },
@@ -41,7 +39,6 @@ export const paintSpec = {
   "bearing-accuracy-color": { type: "color", default: [...blue, 0.3] },
   "bearing-arrow-color": { type: "color", default: [1, 1, 1, 1] },
   "shadow-color": { type: "color", default: [0, 0, 0, 0.25] },
-  "pulse-color": { type: "color", default: [...blue, 0.5] },
 } as const satisfies Record<string, PaintPropertySpec>;
 
 export type PaintName = keyof typeof paintSpec;

@@ -10,7 +10,6 @@
     "bearing-accuracy": 25,
     "bearing-accuracy-radius": 90,
     "shadow-radius": 14,
-    "tilt-displacement": 12,
-    "pulse-radius": 60
+    "tilt-displacement": 12
   }
 }

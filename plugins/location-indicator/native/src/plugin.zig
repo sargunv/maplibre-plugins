@@ -199,8 +199,6 @@ const property_descriptors = [_]c.mln_plugin_property_descriptor_v1{
     floatProperty("shadow-radius", 0, 0, null),
     floatProperty("puck-radius", 8, 0, null),
     floatProperty("puck-border-width", 2, 0, null),
-    floatProperty("pulse-radius", 0, 0, null),
-    floatProperty("pulse-period", 1.5, 0.1, null),
     colorProperty("puck-color", 0.17, 0.54, 0.94, 1.0),
     colorProperty("puck-border-color", 1.0, 1.0, 1.0, 1.0),
     colorProperty("accuracy-color", 0.17, 0.54, 0.94, 0.15),
@@ -208,11 +206,10 @@ const property_descriptors = [_]c.mln_plugin_property_descriptor_v1{
     colorProperty("bearing-accuracy-color", 0.17, 0.54, 0.94, 0.3),
     colorProperty("bearing-arrow-color", 1.0, 1.0, 1.0, 1.0),
     colorProperty("shadow-color", 0.0, 0.0, 0.0, 0.25),
-    colorProperty("pulse-color", 0.17, 0.54, 0.94, 0.5),
 };
 
 const accuracy_segments = 72;
-const component_quads = 5;
+const component_quads = 4;
 
 const Frame = struct {
     vertices: [accuracy_segments * 3 + component_quads * 4]Vertex = undefined,
@@ -378,18 +375,11 @@ fn buildFrame(context: [*c]const c.mln_plugin_frame_context_v1, bucket: [*c]c.ml
     const radius = number(props, "puck-radius");
     const border = number(props, "puck-border-width");
     const outer = if (radius > 0) radius + border else 0;
-    const pulse = number(props, "pulse-radius");
-    if (pulse > 0) {
-        const period = @max(number(props, "pulse-period"), 0.1);
-        const phase = @mod(ctx.time_seconds, period) / period;
-        const pulse_radius = (outer + 2) * (1 - phase) + @max(pulse, outer + 2) * phase;
-        scratch.quad(center, mul(ground_direction[0], pulse_radius), mul(ground_direction[1], pulse_radius), .{ 3, 1.5 * ratio, 0, 0 }, color(props, "pulse-color", 1 - phase), clear);
-    }
     // The arrow rides with the puck: both lift under tilt displacement while
     // the shadow, accuracy circle, and sector stay on the ground.
     const arrow_radius = number(props, "bearing-radius");
     if (visible > 0 and arrow_radius > 0) {
-        scratch.quad(top, mul(ground_direction[0], arrow_radius), mul(ground_direction[1], arrow_radius), .{ 4, 0, 0, 0 }, color(props, "bearing-arrow-color", visible), clear);
+        scratch.quad(top, mul(ground_direction[0], arrow_radius), mul(ground_direction[1], arrow_radius), .{ 3, 0, 0, 0 }, color(props, "bearing-arrow-color", visible), clear);
         scratch.queryQuad(top_world, arrow_radius * scale, bearing);
     }
     if (outer > 0) {
@@ -400,11 +390,6 @@ fn buildFrame(context: [*c]const c.mln_plugin_frame_context_v1, bucket: [*c]c.ml
     scratch.feature_json_size = json.len;
     scratch.output(@ptrCast(bucket));
     return c.MLN_PLUGIN_STATUS_OK;
-}
-
-fn shouldAnimate(properties: [*c]const c.mln_plugin_property_value_v1, count: usize) callconv(.c) u8 {
-    if (properties == null or count != property_descriptors.len) return 0;
-    return @intFromBool(number(properties[0..count], "pulse-radius") > 0);
 }
 
 const layer_type = c.mln_plugin_layer_type_v1{
@@ -423,7 +408,8 @@ const layer_type = c.mln_plugin_layer_type_v1{
     .query_feature = null,
     .update_uniform_block = null,
     .get_query_radius = null,
-    .should_animate = shouldAnimate,
+    // No animation of its own: paint transitions repaint through the host.
+    .should_animate = null,
     .source_free = 1,
     .build_frame = buildFrame,
 };
@@ -579,20 +565,14 @@ test "accuracy follows host destinations without integer quantization" {
     }
 }
 
-test "pulse uses frame time and hidden components emit no geometry" {
+test "hidden components and unusable positions emit no geometry" {
     var props = testProperties();
     testSet(&props, "puck-radius", 0);
     var ctx = testContext(&props);
     var bucket = std.mem.zeroes(c.mln_plugin_bucket_v1);
     try std.testing.expectEqual(@as(c.mln_plugin_status, c.MLN_PLUGIN_STATUS_OK), buildFrame(&ctx, &bucket));
     try std.testing.expectEqual(@as(usize, 0), bucket.drawable_count);
-    testSet(&props, "pulse-radius", 40);
-    testSet(&props, "pulse-period", 2);
-    ctx.time_seconds = 1;
-    try std.testing.expectEqual(@as(c.mln_plugin_status, c.MLN_PLUGIN_STATUS_OK), buildFrame(&ctx, &bucket));
-    try std.testing.expectEqual(@as(u16, 1), scratch.vertex_count / 4);
-    try std.testing.expectApproxEqAbs(@as(f32, 21 * 1.15 * 0.01), scratch.vertices[1].position[0], 0.000001);
-    try std.testing.expectEqual(@as(u8, 1), shouldAnimate(&props, props.len));
+    testSet(&props, "puck-radius", 8);
     ctx.proj_matrix[15] = -1;
     try std.testing.expectEqual(@as(c.mln_plugin_status, c.MLN_PLUGIN_STATUS_OK), buildFrame(&ctx, &bucket));
     try std.testing.expectEqual(@as(usize, 0), bucket.drawable_count);

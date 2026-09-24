@@ -12,7 +12,6 @@ import {
   FLOATS_PER_VERTEX,
   type FrameContext,
   type FrameGeometry,
-  shouldAnimate,
 } from "./geometry.ts";
 import { compile, type EvaluatedPaint } from "./paint.ts";
 import { type PaintName, paintNames, paintSpec } from "./spec.ts";
@@ -35,7 +34,6 @@ function context(
 ): FrameContext {
   return {
     paint,
-    timeSeconds: 0,
     pitch: 0,
     bearing: 0,
     // Clip w is 1 everywhere, so one world pixel is one screen pixel.
@@ -101,22 +99,10 @@ describe("buildFrame", () => {
     }
   });
 
-  it("pulses on frame time and hides components with zero size", () => {
+  it("hides components with zero size and rejects unusable positions", () => {
     const hidden = buildFrame(context(defaults({ "puck-radius": 0 })));
     expect(hidden.vertexCount).toBe(0);
     expect(hidden.feature).not.toBeNull();
-
-    const pulsing = defaults({
-      "puck-radius": 0,
-      "pulse-radius": 40,
-      "pulse-period": 2,
-    });
-    const frame = buildFrame(context(pulsing, { timeSeconds: 1 }));
-    expect(frame.vertexCount).toBe(4);
-    // Halfway through the period the ring is halfway from 2 px to 40 px.
-    expect(position(frame, 1)[0]).toBeCloseTo(21 * 1.15, 6);
-    expect(shouldAnimate(pulsing)).toBe(true);
-    expect(shouldAnimate(defaults())).toBe(false);
 
     const invalid = buildFrame(context(defaults({ position: [91, 0] })));
     expect(invalid.vertexCount).toBe(0);

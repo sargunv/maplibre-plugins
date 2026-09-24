@@ -6,3 +6,4 @@ zig-pkg/
 mise.local.toml
 .DS_Store
 *.log
+.cache/

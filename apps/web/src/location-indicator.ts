@@ -26,8 +26,6 @@ const ranges: Partial<Record<PaintName, [number, number, number]>> = {
   "shadow-radius": [0, 60, 1],
   "puck-radius": [0, 40, 1],
   "puck-border-width": [0, 12, 0.5],
-  "pulse-radius": [0, 120, 1],
-  "pulse-period": [0.1, 5, 0.1],
 };
 
 export function mountLocationIndicator(

@@ -12,8 +12,6 @@ export type Point = readonly [number, number];
 /** Borrowed per-frame inputs, mirroring mln_plugin_frame_context_v1. */
 export interface FrameContext {
   paint: EvaluatedPaint;
-  /** Monotonic time in seconds; drives the pulse phase. */
-  timeSeconds: number;
   /** Camera pitch in radians. */
   pitch: number;
   /** Camera bearing in degrees clockwise from north, as the map reports it. */
@@ -39,7 +37,7 @@ export interface FrameContext {
 export const FLOATS_PER_VERTEX = 16;
 
 export const ACCURACY_SEGMENTS = 72;
-const COMPONENT_QUADS = 5;
+const COMPONENT_QUADS = 4;
 const MAX_VERTICES = ACCURACY_SEGMENTS * 3 + COMPONENT_QUADS * 4;
 const MAX_INDICES = ACCURACY_SEGMENTS * 3 + COMPONENT_QUADS * 6;
 
@@ -48,8 +46,7 @@ export const Style = {
   disc: 0,
   sector: 1,
   shadow: 2,
-  ring: 3,
-  arrow: 4,
+  arrow: 3,
 } as const;
 
 export interface FrameGeometry {
@@ -300,22 +297,6 @@ export function buildFrame(ctx: FrameContext): FrameGeometry {
   const border = number(paint, "puck-border-width");
   const outer = radius > 0 ? radius + border : 0;
 
-  const pulse = number(paint, "pulse-radius");
-  if (pulse > 0) {
-    const period = Math.max(number(paint, "pulse-period"), 0.1);
-    const phase = (((ctx.timeSeconds % period) + period) % period) / period;
-    const pulseRadius =
-      (outer + 2) * (1 - phase) + Math.max(pulse, outer + 2) * phase;
-    frame.quad(
-      center,
-      scale(groundX, pulseRadius),
-      scale(groundY, pulseRadius),
-      [Style.ring, 1.5 * ratio, 0, 0],
-      color(paint, "pulse-color", 1 - phase),
-      CLEAR,
-    );
-  }
-
   // The arrow rides with the puck: both lift under tilt displacement while
   // the shadow, accuracy circle, and sector stay on the ground.
   const arrowRadius = number(paint, "bearing-radius");
@@ -352,11 +333,6 @@ export function buildFrame(ctx: FrameContext): FrameGeometry {
     queryPolygons: frame.queryPolygons,
     feature,
   };
-}
-
-/** Whether the pulse animation is on for these paint values, like the native should_animate callback. */
-export function shouldAnimate(paint: EvaluatedPaint): boolean {
-  return number(paint, "pulse-radius") > 0;
 }
 
 /** Point-in-polygon by ray casting, for the world-pixel hit envelopes. */

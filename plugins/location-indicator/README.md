@@ -1,9 +1,9 @@
 # Location indicator
 
 A `location-puck` layer: a procedural device location indicator (puck, border,
-bearing arrow, bearing-accuracy sector, accuracy circle, shadow, and pulse ring)
-at one geographic position. Every shape is drawn analytically in the fragment
-shader, so the layer needs no sprite images and stays crisp at any pixel ratio.
+bearing arrow, bearing-accuracy sector, accuracy circle, and shadow) at one
+geographic position. Every shape is drawn analytically in the fragment shader,
+so the layer needs no sprite images and stays crisp at any pixel ratio.
 
 The layer takes its position from a paint property and needs no style source.
 The native plugin renders on OpenGL, Vulkan, and Metal; the JS layer renders on
@@ -41,7 +41,7 @@ continuous longitudes when animating across the antimeridian.
 The full property table, with types, defaults, and bounds, is
 [spec.json](spec.json). Sizes are logical pixels unless noted; a zero radius
 hides its component. Components composite bottom to top: accuracy circle,
-bearing-accuracy sector, shadow, pulse ring, bearing arrow, puck.
+bearing-accuracy sector, shadow, bearing arrow, puck.
 
 ## Native
 
@@ -61,15 +61,18 @@ on the host.
 
 ### Required native patches
 
-From `patches/maplibre-native-ffi/` this plugin needs every carried patch:
+From `patches/maplibre-native-ffi/` this plugin uses:
 
 | Patch                                      | Used for                                                     |
 | ------------------------------------------ | ------------------------------------------------------------ |
-| `0001` plugin animated layers              | `should_animate` drives the pulse ring                       |
 | `0002` source-free plugin layers           | `build_frame` supplies the geometry; the layer has no source |
 | `0003` premultiplied plugin default colors | color defaults and values arrive premultiplied               |
 | `0004` plugin rotation properties          | `bearing` transitions along the shortest arc                 |
 | `0005` plugin frame queries                | rendered-feature hit envelopes for the puck and arrow        |
+
+It does not use `0001` (animated layers): the puck has no animation of its own,
+and paint transitions repaint through the host. The source-free patch is stacked
+on it in the series, so a host still carries both.
 
 ## Web
 

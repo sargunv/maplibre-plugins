@@ -9,15 +9,14 @@
 //        fraction of the radius
 //   1  sector fading toward the edge (bearing accuracy); style.z = half-angle
 //   2  soft disc (shadow)
-//   3  ring (pulse); style.y = ring width in pixels
-//   4  arrow (bearing)
+//   3  arrow (bearing)
 // Derivatives measure coverage in framebuffer pixels, including perspective
 // and device pixel ratio, so every edge is anti-aliased at one pixel.
 float4 shade(float2 p, float4 style, float4 fill, float4 border) {
     float radius = length(p);
     float distance = radius - 1.0;
     float coverage = 1.0;
-    if (style.x > 3.5) {
+    if (style.x > 2.5) {
         float2 a = float2(0.0, -1.0);
         float2 b = float2(0.39, -0.28);
         float2 d = float2(-0.39, -0.28);
@@ -47,8 +46,6 @@ float4 shade(float2 p, float4 style, float4 fill, float4 border) {
         coverage *= 1.0-smoothstep(0.0,1.0,radius);
     } else if (style.x < 2.5) {
         coverage = exp(-3.0*radius*radius)*(1.0-smoothstep(0.7,1.0,radius));
-    } else if (style.x < 3.5) {
-        return fill*(1.0-smoothstep(style.y-0.5,style.y+0.5,abs(pixels)));
     }
     return fill*coverage*(1.0-smoothstep(-0.5,0.5,pixels));
 }
