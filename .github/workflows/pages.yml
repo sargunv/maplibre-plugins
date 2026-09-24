@@ -1,0 +1,44 @@
+name: Pages
+
+# Publishes the web gallery (the JS plugins on a live map) to GitHub Pages
+# on every push to main.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: jdx/mise-action@v3
+        with:
+          cache: true
+      - name: Build the gallery
+        run: pnpm --filter @maplibre-plugins/web build
+        env:
+          GALLERY_BASE: /${{ github.event.repository.name }}/
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: apps/web/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

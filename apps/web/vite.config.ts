@@ -1,6 +1,9 @@
 import { defineConfig } from "vite-plus";
 
 export default defineConfig({
+  // GitHub Pages serves the gallery under the repository name; the Pages
+  // workflow sets this, local builds stay at the root.
+  base: process.env.GALLERY_BASE ?? "/",
   server: {
     port: 5173,
     // The shared spec.json files live next to each plugin, outside this app.

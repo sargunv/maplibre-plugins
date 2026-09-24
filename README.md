@@ -14,6 +14,10 @@ Layer plugins for MapLibre, each implemented twice from one shared spec:
 
 ## Try it
 
+The web gallery is published to
+[code.sargunv.dev/maplibre-plugins](https://code.sargunv.dev/maplibre-plugins/)
+on every push to `main`.
+
 ```bash
 mise install
 mise run web        # JS gallery with live controls
