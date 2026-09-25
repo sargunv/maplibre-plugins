@@ -9,5 +9,8 @@ export default defineConfig({
     sourcemap: true,
   },
   lint: { options: { typeAware: true, typeCheck: true } },
-  test: { environment: "node", passWithNoTests: true },
+  // The model tests sweep thousands of particle lives through the shader's
+  // CPU build; `pnpm -r test` runs them beside the other packages' suites,
+  // which can push one past 5 s on CI.
+  test: { environment: "node", testTimeout: 30_000 },
 });
