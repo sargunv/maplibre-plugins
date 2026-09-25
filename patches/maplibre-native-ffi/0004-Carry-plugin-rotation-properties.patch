@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Sargun Vohra <sargunv@users.noreply.github.com>
 Date: Tue, 22 Sep 2026 23:26:39 -0700
-Subject: [PATCH 4/5] Carry plugin rotation properties
+Subject: [PATCH 4/8] Carry plugin rotation properties
 
 Adds MLN_PLUGIN_VALUE_ROTATION to the plugin layer ABI: degrees in
 float_value whose transitions follow the shortest arc, like the built-in

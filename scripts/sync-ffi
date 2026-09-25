@@ -5,6 +5,7 @@
 #
 #   scripts/sync-ffi          # sync: pinned commit + patches
 #   scripts/sync-ffi export   # rewrite patches/ from the commits above the pin
+#   scripts/sync-ffi force    # discard the commits above the pin and sync
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -22,44 +23,150 @@ if git -C "$sub" cat-file -e "$pin^{commit}" 2>/dev/null &&
   exit 1
 fi
 
+patch_files() {
+  shopt -s nullglob
+  files=("$patches"/*.patch)
+  shopt -u nullglob
+}
+
+# What the last sync or export left in the submodule: its HEAD and a hash of
+# patches/, kept in the submodule's git dir. HEAD still at the stamp means
+# nobody committed since; the hash no longer matching means patches/ changed
+# since (a pull), even when the pin did not move.
+stamp_file() {
+  printf '%s/maplibre-plugins-sync.stamp' "$(git -C "$sub" rev-parse --absolute-git-dir)"
+}
+
+patches_hash() {
+  patch_files
+  if [ "${#files[@]}" -gt 0 ]; then cat "${files[@]}"; fi | git hash-object --stdin
+}
+
+write_stamp() {
+  printf '%s %s\n' "$(git -C "$sub" rev-parse HEAD)" "$(patches_hash)" > "$(stamp_file)"
+}
+
+# Stable patch ids, one per line in order: of the commits above the pin, and of
+# patches/.
+head_patch_ids() {
+  git -C "$sub" format-patch --stdout "$pin..HEAD" | git -C "$sub" patch-id --stable | cut -d' ' -f1
+}
+
+file_patch_ids() {
+  local file
+  patch_files
+  for file in "${files[@]}"; do
+    git -C "$sub" patch-id --stable < "$file" | cut -d' ' -f1
+  done
+}
+
+# Whether every line of $1 is a line of $2.
+all_in() {
+  local line
+  while IFS= read -r line; do
+    grep -qxF -- "$line" <<<"$2" || return 1
+  done <<<"$1"
+}
+
+local_work() {
+  local count
+  count="$(git -C "$sub" rev-list --count "$pin..HEAD")"
+  echo "error: the $count commit(s) above the pin in third_party/maplibre-native-ffi do not match" >&2
+  echo "       patches/maplibre-native-ffi, and either could be the newer one." >&2
+  echo "       Keep the commits:    scripts/sync-ffi export  (rewrites patches/ from them)" >&2
+  echo "       Discard the commits: scripts/sync-ffi force   (re-applies patches/ on the pin)" >&2
+  exit 1
+}
+
+# Checks out the pin and applies every patch as a commit. The FFI's own
+# sync-submodules stamps the maplibre-native worktree with its HEAD and diff,
+# not with the FFI's patch list, so when the re-applied commits change that
+# list or its patches, drop that stamp to make the next FFI build re-patch
+# maplibre-native. Only then: its forced checkout rewrites every patched file,
+# which rebuilds much of maplibre-native.
+resync() {
+  local old
+  old="$(git -C "$sub" rev-parse HEAD)"
+  git -C "$sub" checkout --force --detach "$pin"
+  patch_files
+  if [ "${#files[@]}" -gt 0 ]; then
+    git -C "$sub" -c user.name=maplibre-plugins -c user.email=sync@localhost \
+      am --3way --quiet "${files[@]}"
+  fi
+  write_stamp
+  if ! git -C "$sub" diff --quiet "$old" HEAD -- patches/maplibre-native .mise/bin/sync-submodules &&
+     [ -e "$sub/third_party/maplibre-native/.git" ]; then
+    rm -f "$(git -C "$sub/third_party/maplibre-native" rev-parse --absolute-git-dir)/mln-ffi-sync.stamp"
+    echo "maplibre-native patches changed; the next FFI build re-patches maplibre-native"
+  fi
+}
+
+report() {
+  echo "maplibre-native-ffi at $(git -C "$sub" rev-parse --short HEAD) ($(git -C "$sub" rev-list --count "$pin..HEAD") patch(es) on $(git -C "$repo_root" rev-parse --short "$pin"))"
+}
+
 case "${1:-sync}" in
   check-pin)
     echo "pin $pin is an upstream commit"
     ;;
-  sync)
+  sync|force)
     if [ ! -f "$sub/mise.toml" ]; then
       git -C "$repo_root" submodule update --init --depth 1 third_party/maplibre-native-ffi
     fi
     if ! git -C "$sub" cat-file -e "$pin^{commit}" 2>/dev/null; then
       git -C "$sub" fetch --depth 1 origin "$pin"
     fi
-    # Already synced: HEAD descends from the pin (the applied patches) and
-    # the tree is clean. Leave local commits alone so they can be exported.
-    if git -C "$sub" merge-base --is-ancestor "$pin" HEAD 2>/dev/null &&
-       [ "$(git -C "$sub" rev-parse HEAD)" != "$pin" ] &&
-       git -C "$sub" diff --quiet HEAD -- . ':!third_party'; then
-      :
-    else
-      git -C "$sub" checkout --force --detach "$pin"
-    fi
-    if [ "$(git -C "$sub" rev-parse HEAD)" = "$pin" ]; then
-      shopt -s nullglob
-      files=("$patches"/*.patch)
-      shopt -u nullglob
-      if [ "${#files[@]}" -gt 0 ]; then
-        git -C "$sub" -c user.name=maplibre-plugins -c user.email=sync@localhost \
-          am --3way --quiet "${files[@]}"
+    head_sha="$(git -C "$sub" rev-parse HEAD)"
+    if [ "${1:-sync}" = force ]; then
+      resync
+    # Patch commits on the pin with a clean tree: keep them if they are still
+    # what patches/ holds, or local work not exported yet.
+    elif git -C "$sub" merge-base --is-ancestor "$pin" HEAD 2>/dev/null &&
+         [ "$head_sha" != "$pin" ] &&
+         git -C "$sub" diff --quiet HEAD -- . ':!third_party'; then
+      current_hash="$(patches_hash)"
+      if [ -f "$(stamp_file)" ]; then
+        read -r stamp_head stamp_hash < "$(stamp_file)" || true
+        if [ "$stamp_hash" = "$current_hash" ]; then
+          if [ "$stamp_head" != "$head_sha" ]; then
+            if [ "$(head_patch_ids)" = "$(file_patch_ids)" ]; then
+              write_stamp
+            else
+              echo "note: the commits in third_party/maplibre-native-ffi differ from patches/maplibre-native-ffi;" \
+                "run scripts/sync-ffi export to keep them"
+            fi
+          fi
+        elif [ "$stamp_head" = "$head_sha" ]; then
+          resync
+        else
+          local_work
+        fi
+      else
+        # A checkout synced before the stamp existed: compare patch ids.
+        head_ids="$(head_patch_ids)"
+        file_ids="$(file_patch_ids)"
+        if [ "$head_ids" = "$file_ids" ]; then
+          write_stamp
+        elif all_in "$head_ids" "$file_ids"; then
+          resync
+        else
+          local_work
+        fi
       fi
+    else
+      resync
     fi
-    echo "maplibre-native-ffi at $(git -C "$sub" rev-parse --short HEAD) ($(git -C "$sub" rev-list --count "$pin..HEAD") patch(es) on $(git -C "$repo_root" rev-parse --short "$pin"))"
+    report
     ;;
   export)
     rm -f "$patches"/*.patch
-    git -C "$sub" format-patch --zero-commit --no-signature -o "$patches" "$pin..HEAD" > /dev/null
+    git -C "$sub" format-patch --zero-commit --no-signature --filename-max-length=80 \
+      -o "$patches" "$pin..HEAD" > /dev/null
+    write_stamp
     ls "$patches"
     ;;
   *)
-    echo "usage: $0 [sync|export|check-pin]" >&2
+    echo "usage: $0 [sync|export|force|check-pin]" >&2
     exit 2
     ;;
 esac

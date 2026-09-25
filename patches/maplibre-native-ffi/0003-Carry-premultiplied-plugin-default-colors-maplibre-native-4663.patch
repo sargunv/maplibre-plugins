@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Sargun Vohra <sargunv@users.noreply.github.com>
 Date: Tue, 22 Sep 2026 23:26:38 -0700
-Subject: [PATCH 3/5] Carry premultiplied plugin default colors
+Subject: [PATCH 3/8] Carry premultiplied plugin default colors
  (maplibre-native#4663)
 
 Premultiplies registered plugin default colors when the style system

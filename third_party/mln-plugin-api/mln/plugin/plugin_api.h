@@ -167,7 +167,10 @@ typedef enum mln_plugin_vertex_attribute_type {
     MLN_PLUGIN_VERTEX_UINT8_X4_NORMALIZED = 9
 } mln_plugin_vertex_attribute_type;
 
-/* Stable IDs are local to one registered plugin layer type. */
+/* Stable IDs are local to one registered plugin layer type. On OpenGL the host
+ * matches active attributes to declared ones by name, so layout(location = N)
+ * is optional there. Vulkan (layout(location = N)) and Metal
+ * ([[attribute(N)]]) must declare every attribute at its location. */
 typedef struct mln_plugin_shader_attribute_v1 {
     uint32_t struct_size;
     uint32_t attribute_id;
@@ -256,6 +259,56 @@ typedef struct mln_plugin_shader_property_binding_v1 {
     uint32_t interpolation_uniform_byte_offset;
 } mln_plugin_shader_property_binding_v1;
 
+/* Static textures per plugin shader (the host's per-drawable texture slots) and
+ * the largest accepted width or height: the portable OpenGL ES 3.0 and WebGL2
+ * minimum of GL_MAX_TEXTURE_SIZE. */
+enum {
+    MLN_PLUGIN_MAX_TEXTURES = 3,
+    MLN_PLUGIN_MAX_TEXTURE_SIZE = 2048
+};
+
+typedef enum mln_plugin_texture_format_v1 {
+    /* Four 32-bit floats per texel (16 bytes). Nearest filtering only. */
+    MLN_PLUGIN_TEXTURE_RGBA32F = 1
+} mln_plugin_texture_format_v1;
+
+/*
+ * A static data texture that a shader's fragment stage reads. Registration
+ * copies data_size bytes: width * height texels, tightly packed, row-major, row
+ * 0 first, so texel (x, y) is texel y * width + x of data on every backend. The
+ * host uploads the copy once per renderer, on first use, and shares it among all
+ * style layers of the layer type; the copy lives as long as the registration
+ * (the process). Sampling is nearest with clamp-to-edge addressing: read exact
+ * texels with texelFetch (GLSL) or read (MSL), and keep reads in bounds, since
+ * out-of-range reads are undefined on some backends. Only the fragment stage
+ * can read it. If the host cannot create or upload the texture it logs once and
+ * draws nothing with the shader.
+ *
+ * The host prepends MLN_PLUGIN_TEXTURE_<texture_id>_BINDING (equal to
+ * texture_id) to every backend's sources. Declare the texture as:
+ *   OpenGL: uniform highp sampler2D <name>;  resolved by name. Declare it highp
+ *           (GLSL ES defaults samplers to lowp) and read it in every shader
+ *           variant, or the program cannot resolve it.
+ *   Vulkan: layout(set = DRAWABLE_IMAGE_SET_INDEX,
+ *                  binding = MLN_PLUGIN_TEXTURE_<id>_BINDING) uniform highp sampler2D <name>;
+ *   Metal:  a fragment function parameter
+ *           texture2d<float, access::read> <param> [[texture(MLN_PLUGIN_TEXTURE_<id>_BINDING)]]
+ */
+typedef struct mln_plugin_texture_descriptor_v1 {
+    uint32_t struct_size;
+    /* Below MLN_PLUGIN_MAX_TEXTURES and unique within the shader. */
+    uint32_t texture_id;
+    /* The OpenGL sampler uniform's name; unique within the shader. */
+    mln_plugin_string name;
+    mln_plugin_texture_format_v1 format;
+    /* Each 1 to MLN_PLUGIN_MAX_TEXTURE_SIZE. */
+    uint32_t width;
+    uint32_t height;
+    const void* data;
+    /* width * height * 16 for MLN_PLUGIN_TEXTURE_RGBA32F. */
+    size_t data_size;
+} mln_plugin_texture_descriptor_v1;
+
 typedef struct mln_plugin_shader_descriptor_v1 {
     uint32_t struct_size;
     mln_plugin_string shader_id;
@@ -267,6 +320,10 @@ typedef struct mln_plugin_shader_descriptor_v1 {
     size_t uniform_block_count;
     const mln_plugin_shader_property_binding_v1* property_bindings;
     size_t property_binding_count;
+    /* Optional; introduced after property_bindings. Static textures the
+     * fragment stage reads; see mln_plugin_texture_descriptor_v1. */
+    const mln_plugin_texture_descriptor_v1* textures;
+    size_t texture_count;
 } mln_plugin_shader_descriptor_v1;
 
 /* Borrowed render-thread inputs for a host-owned plugin uniform block. */

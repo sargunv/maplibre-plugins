@@ -1,0 +1,1131 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Sargun Vohra <sargunv@users.noreply.github.com>
+Date: Thu, 24 Sep 2026 04:16:14 -0700
+Subject: [PATCH 7/8] Carry plugin static textures
+
+Lets a plugin shader declare up to three static RGBA32F data textures that
+its fragment stage reads by exact texel. Registration validates and copies
+the bytes; each renderer uploads them once, on first use, and shares them
+among every style layer of the type, and a failed upload makes the shader
+draw nothing instead of sampling another texture. Includes registry and
+rendering tests on OpenGL, Metal and Vulkan, among them a layer uniform
+block read by both shader stages. Not yet proposed upstream.
+
+Carried by maplibre-plugins until it lands upstream.
+---
+ .mise/bin/sync-submodules                     |    1 +
+ .../0028-plugin-static-textures.patch         | 1066 +++++++++++++++++
+ patches/maplibre-native/README.md             |   15 +
+ 3 files changed, 1082 insertions(+)
+ create mode 100644 patches/maplibre-native/0028-plugin-static-textures.patch
+
+diff --git a/.mise/bin/sync-submodules b/.mise/bin/sync-submodules
+index 4aafaf1..920dd44 100755
+--- a/.mise/bin/sync-submodules
++++ b/.mise/bin/sync-submodules
+@@ -75,6 +75,7 @@ mln_patches=(
+   "$repo_root/patches/maplibre-native/0025-plugin-rotation-properties.patch"
+   "$repo_root/patches/maplibre-native/0026-plugin-frame-queries.patch"
+   "$repo_root/patches/maplibre-native/0027-opengl-large-uniform-blocks.patch"
++  "$repo_root/patches/maplibre-native/0028-plugin-static-textures.patch"
+ )
+ 
+ # The patches overlap, so no single patch reverses cleanly on its own once the
+diff --git a/patches/maplibre-native/0028-plugin-static-textures.patch b/patches/maplibre-native/0028-plugin-static-textures.patch
+new file mode 100644
+index 0000000..b206ea4
+--- /dev/null
++++ b/patches/maplibre-native/0028-plugin-static-textures.patch
+@@ -0,0 +1,1066 @@
++diff --git a/include/mln/plugin/plugin_api.h b/include/mln/plugin/plugin_api.h
++--- a/include/mln/plugin/plugin_api.h
+++++ b/include/mln/plugin/plugin_api.h
++@@ -256,6 +256,56 @@ typedef struct mln_plugin_shader_property_binding_v1 {
++     uint32_t interpolation_uniform_byte_offset;
++ } mln_plugin_shader_property_binding_v1;
++ 
+++/* Static textures per plugin shader (the host's per-drawable texture slots) and
+++ * the largest accepted width or height: the portable OpenGL ES 3.0 and WebGL2
+++ * minimum of GL_MAX_TEXTURE_SIZE. */
+++enum {
+++    MLN_PLUGIN_MAX_TEXTURES = 3,
+++    MLN_PLUGIN_MAX_TEXTURE_SIZE = 2048
+++};
+++
+++typedef enum mln_plugin_texture_format_v1 {
+++    /* Four 32-bit floats per texel (16 bytes). Nearest filtering only. */
+++    MLN_PLUGIN_TEXTURE_RGBA32F = 1
+++} mln_plugin_texture_format_v1;
+++
+++/*
+++ * A static data texture that a shader's fragment stage reads. Registration
+++ * copies data_size bytes: width * height texels, tightly packed, row-major, row
+++ * 0 first, so texel (x, y) is texel y * width + x of data on every backend. The
+++ * host uploads the copy once per renderer, on first use, and shares it among all
+++ * style layers of the layer type; the copy lives as long as the registration
+++ * (the process). Sampling is nearest with clamp-to-edge addressing: read exact
+++ * texels with texelFetch (GLSL) or read (MSL), and keep reads in bounds, since
+++ * out-of-range reads are undefined on some backends. Only the fragment stage
+++ * can read it. If the host cannot create or upload the texture it logs once and
+++ * draws nothing with the shader.
+++ *
+++ * The host prepends MLN_PLUGIN_TEXTURE_<texture_id>_BINDING (equal to
+++ * texture_id) to every backend's sources. Declare the texture as:
+++ *   OpenGL: uniform highp sampler2D <name>;  resolved by name. Declare it highp
+++ *           (GLSL ES defaults samplers to lowp) and read it in every shader
+++ *           variant, or the program cannot resolve it.
+++ *   Vulkan: layout(set = DRAWABLE_IMAGE_SET_INDEX,
+++ *                  binding = MLN_PLUGIN_TEXTURE_<id>_BINDING) uniform highp sampler2D <name>;
+++ *   Metal:  a fragment function parameter
+++ *           texture2d<float, access::read> <param> [[texture(MLN_PLUGIN_TEXTURE_<id>_BINDING)]]
+++ */
+++typedef struct mln_plugin_texture_descriptor_v1 {
+++    uint32_t struct_size;
+++    /* Below MLN_PLUGIN_MAX_TEXTURES and unique within the shader. */
+++    uint32_t texture_id;
+++    /* The OpenGL sampler uniform's name; unique within the shader. */
+++    mln_plugin_string name;
+++    mln_plugin_texture_format_v1 format;
+++    /* Each 1 to MLN_PLUGIN_MAX_TEXTURE_SIZE. */
+++    uint32_t width;
+++    uint32_t height;
+++    const void* data;
+++    /* width * height * 16 for MLN_PLUGIN_TEXTURE_RGBA32F. */
+++    size_t data_size;
+++} mln_plugin_texture_descriptor_v1;
+++
++ typedef struct mln_plugin_shader_descriptor_v1 {
++     uint32_t struct_size;
++     mln_plugin_string shader_id;
++@@ -267,6 +317,10 @@ typedef struct mln_plugin_shader_descriptor_v1 {
++     size_t uniform_block_count;
++     const mln_plugin_shader_property_binding_v1* property_bindings;
++     size_t property_binding_count;
+++    /* Optional; introduced after property_bindings. Static textures the
+++     * fragment stage reads; see mln_plugin_texture_descriptor_v1. */
+++    const mln_plugin_texture_descriptor_v1* textures;
+++    size_t texture_count;
++ } mln_plugin_shader_descriptor_v1;
++ 
++ /* Borrowed render-thread inputs for a host-owned plugin uniform block. */
++diff --git a/src/mln/plugin/plugin_registry.cpp b/src/mln/plugin/plugin_registry.cpp
++--- a/src/mln/plugin/plugin_registry.cpp
+++++ b/src/mln/plugin/plugin_registry.cpp
++@@ -47,6 +47,9 @@ bool validOptionalString(const mln_plugin_string& value) {
++     return value.size == 0 || value.data;
++ }
++ 
+++// Plugin textures occupy the drawable's own texture slots.
+++static_assert(MLN_PLUGIN_MAX_TEXTURES <= shaders::maxTextureCountPerShader);
+++
++ constexpr uint32_t supportedBackends = MLN_PLUGIN_BACKEND_OPENGL | MLN_PLUGIN_BACKEND_VULKAN | MLN_PLUGIN_BACKEND_METAL;
++ 
++ bool validBackendMask(uint32_t mask) {
++@@ -307,6 +310,58 @@ bool appendShaders(const std::string& pluginID,
++                                                binding.interpolation_uniform_id,
++                                                binding.interpolation_uniform_byte_offset});
++         }
+++
+++        if (input.texture_count && !input.textures) {
+++            error = "plugin shader texture array is missing";
+++            return false;
+++        }
+++        if (input.texture_count > MLN_PLUGIN_MAX_TEXTURES) {
+++            error = "plugin shader declares more than MLN_PLUGIN_MAX_TEXTURES textures";
+++            return false;
+++        }
+++        std::set<uint32_t> textureIDs;
+++        std::set<std::string> textureNames;
+++        for (size_t textureIndex = 0; textureIndex < input.texture_count; ++textureIndex) {
+++            const auto& texture = input.textures[textureIndex];
+++            if (texture.struct_size < sizeof(mln_plugin_texture_descriptor_v1)) {
+++                error = "plugin shader texture descriptor is malformed";
+++                return false;
+++            }
+++            if (texture.texture_id >= MLN_PLUGIN_MAX_TEXTURES || !textureIDs.emplace(texture.texture_id).second) {
+++                error = "plugin shader texture id is out of range or duplicated";
+++                return false;
+++            }
+++            if (!validString(texture.name) || !textureNames.emplace(copyString(texture.name)).second) {
+++                error = "plugin shader texture name is empty or duplicated";
+++                return false;
+++            }
+++            if (texture.format != MLN_PLUGIN_TEXTURE_RGBA32F) {
+++                error = "plugin shader texture format is not supported";
+++                return false;
+++            }
+++            if (texture.width == 0 || texture.height == 0 || texture.width > MLN_PLUGIN_MAX_TEXTURE_SIZE ||
+++                texture.height > MLN_PLUGIN_MAX_TEXTURE_SIZE) {
+++                error = "plugin shader texture width and height must be 1 to MLN_PLUGIN_MAX_TEXTURE_SIZE";
+++                return false;
+++            }
+++            if (!texture.data) {
+++                error = "plugin shader texture data is missing";
+++                return false;
+++            }
+++            // RGBA32F texels are 16 bytes. Registration compares the copied bytes
+++            // as bytes, so identical data is an identical registration.
+++            if (texture.data_size != uint64_t{texture.width} * texture.height * 16) {
+++                error = "plugin shader texture data_size is not width * height * 16";
+++                return false;
+++            }
+++            const auto* bytes = static_cast<const uint8_t*>(texture.data);
+++            shader.textures.push_back({texture.texture_id,
+++                                       copyString(texture.name),
+++                                       static_cast<uint32_t>(texture.format),
+++                                       texture.width,
+++                                       texture.height,
+++                                       std::vector<uint8_t>(bytes, bytes + texture.data_size)});
+++        }
++         output.push_back(std::move(shader));
++     }
++     return true;
++diff --git a/src/mln/plugin/plugin_registry.hpp b/src/mln/plugin/plugin_registry.hpp
++--- a/src/mln/plugin/plugin_registry.hpp
+++++ b/src/mln/plugin/plugin_registry.hpp
++@@ -65,6 +65,18 @@ struct ShaderPropertyBindingDefinition {
++     bool operator==(const ShaderPropertyBindingDefinition&) const = default;
++ };
++ 
+++// The registry's copy of a static texture. Renderers upload it on first use and
+++// read it again after context loss, so it lives as long as the registration.
+++struct TextureDefinition {
+++    uint32_t id = 0;
+++    std::string name;
+++    uint32_t format = 0;
+++    uint32_t width = 0;
+++    uint32_t height = 0;
+++    std::vector<uint8_t> data;
+++    bool operator==(const TextureDefinition&) const = default;
+++};
+++
++ struct ShaderDefinition {
++     std::string pluginID;
++     std::string id;
++@@ -72,6 +84,7 @@ struct ShaderDefinition {
++     std::vector<ShaderAttribute> attributes;
++     std::vector<UniformBlockDefinition> uniformBlocks;
++     std::vector<ShaderPropertyBindingDefinition> propertyBindings;
+++    std::vector<TextureDefinition> textures;
++     bool operator==(const ShaderDefinition&) const = default;
++ };
++ 
++diff --git a/src/mln/plugin/plugin_shader.cpp b/src/mln/plugin/plugin_shader.cpp
++--- a/src/mln/plugin/plugin_shader.cpp
+++++ b/src/mln/plugin/plugin_shader.cpp
++@@ -2,9 +2,12 @@
++ #include <mln/plugin/plugin_conversion.hpp>
++ 
++ #include <mln/gfx/backend.hpp>
+++#include <mln/gfx/context.hpp>
+++#include <mln/gfx/drawable_builder.hpp>
++ #include <mln/gfx/gfx_types.hpp>
++ #include <mln/gfx/shader_group.hpp>
++ #include <mln/gfx/shader_registry.hpp>
+++#include <mln/gfx/texture2d.hpp>
++ #include <mln/plugin/plugin_registry.hpp>
++ #include <mln/shaders/program_parameters.hpp>
++ #include <mln/shaders/shader_defines.hpp>
++@@ -60,6 +63,12 @@ std::string resourcePrelude(const ShaderDefinition& shader) {
++ #endif
++         output << "#define MLN_PLUGIN_UNIFORM_" << uniform.id << "_IS_ARRAY " << array << '\n';
++     }
+++    // A texture's slot is its id on every backend: the Vulkan image set binding,
+++    // the Metal fragment texture index, and the drawable slot OpenGL resolves by
+++    // sampler name.
+++    for (const auto& texture : shader.textures) {
+++        output << "#define MLN_PLUGIN_TEXTURE_" << texture.id << "_BINDING " << texture.id << '\n';
+++    }
++     return output.str();
++ }
++ 
++@@ -112,7 +121,12 @@ public:
++         for (const auto& uniform : definition->uniformBlocks) {
++             uniformBlocks.emplace_back(uniform.name, uniform.bindingID);
++         }
+++        // The names live in the registration, which outlives the program.
++         std::vector<shaders::TextureInfo> textures;
+++        textures.reserve(definition->textures.size());
+++        for (const auto& texture : definition->textures) {
+++            textures.emplace_back(texture.name, texture.id);
+++        }
++         shader = gl::ShaderProgramGL::create(static_cast<gl::Context&>(context),
++                                              parameters.withProgramType(shaders::BuiltIn::None),
++                                              definition->attributes.front().name,
++@@ -137,6 +151,10 @@ public:
++                 typed->initVertexAttribute({attr.location, attributeType(attr.type), attr.id});
++             }
++         }
+++        // The image set writes texture slot id to binding id, so both are the id.
+++        for (const auto& texture : definition->textures) {
+++            typed->initTexture({texture.id, texture.id});
+++        }
++         shader = std::move(typed);
++ #elif MLN_RENDER_BACKEND_METAL
++         const auto* source = findSource(*definition, MLN_PLUGIN_BACKEND_METAL);
++@@ -157,6 +175,9 @@ public:
++                     {attr.location, attributeType(attr.type), shaders::maxUBOCountPerShader + attr.location, attr.id});
++             }
++         }
+++        for (const auto& texture : definition->textures) {
+++            typed->initTexture({texture.id, texture.id});
+++        }
++         shader = std::move(typed);
++ #else
++         (void)context;
++@@ -168,10 +189,51 @@ public:
++         return shader;
++     }
++ 
+++    bool attachTextures(gfx::Context& context, gfx::DrawableBuilder& builder) {
+++        if (definition->textures.empty()) return true;
+++        if (textureState == TextureState::NotBuilt) {
+++            // Every backend can throw while allocating. A texture that failed
+++            // once stays failed: the shader never draws, rather than sampling
+++            // whatever else is bound to the slot.
+++            try {
+++                for (const auto& texture : definition->textures) {
+++                    auto created = context.createTexture2D();
+++                    if (!created) throw std::runtime_error("the context created no texture");
+++                    created->setFormat(gfx::TexturePixelType::RGBA, gfx::TextureChannelDataType::Float);
+++                    created->setSamplerConfiguration({.filter = gfx::TextureFilterType::Nearest,
+++                                                      .wrapU = gfx::TextureWrapType::Clamp,
+++                                                      .wrapV = gfx::TextureWrapType::Clamp});
+++                    // The argument-less upload() forces RGBA8; float data needs this overload.
+++                    created->upload(texture.data.data(), Size{texture.width, texture.height});
+++                    uploadedTextures.emplace_back(texture.id, std::move(created));
+++                }
+++                textureState = TextureState::Built;
+++            } catch (const std::exception& error) {
+++                Log::Error(
+++                    Event::Render,
+++                    "Plugin shader " + groupName + " failed to upload its textures and will not draw: " + error.what());
+++                uploadedTextures.clear();
+++                textureState = TextureState::Failed;
+++            }
+++        }
+++        if (textureState == TextureState::Failed) return false;
+++        for (const auto& [id, texture] : uploadedTextures) builder.setTexture(texture, id);
+++        return true;
+++    }
+++
++ private:
++     const std::string groupName;
++     const std::shared_ptr<const ShaderDefinition> definition;
++     ProgramParameters parameters;
+++    // Uploaded once per renderer (this group's registry) and shared by every
+++    // style layer of the type; retained drawables keep their references.
+++    enum class TextureState {
+++        NotBuilt,
+++        Built,
+++        Failed
+++    };
+++    TextureState textureState = TextureState::NotBuilt;
+++    std::vector<std::pair<uint32_t, gfx::Texture2DPtr>> uploadedTextures;
++ };
++ 
++ } // namespace
++@@ -184,6 +246,12 @@ std::string shaderGroupName(const std::string& pluginID, const std::string& laye
++     return "plugin/" + encode(pluginID) + encode(layerType) + encode(shaderID);
++ }
++ 
+++bool attachShaderTextures(const gfx::ShaderGroupPtr& group, gfx::Context& context, gfx::DrawableBuilder& builder) {
+++    // Plugin layers only look up groups registered under plugin names, and
+++    // every one of those is a PluginShaderGroup.
+++    return group && static_cast<PluginShaderGroup&>(*group).attachTextures(context, builder);
+++}
+++
++ void registerPluginShaderGroups(gfx::ShaderRegistry& registry,
++                                 const ProgramParameters& parameters,
++                                 const RegisteredLayerPtr& layerType) {
++diff --git a/src/mln/plugin/plugin_shader.hpp b/src/mln/plugin/plugin_shader.hpp
++--- a/src/mln/plugin/plugin_shader.hpp
+++++ b/src/mln/plugin/plugin_shader.hpp
++@@ -6,8 +6,12 @@
++ namespace mln {
++ class ProgramParameters;
++ namespace gfx {
+++class Context;
+++class DrawableBuilder;
+++class ShaderGroup;
++ class ShaderRegistry;
++-}
+++using ShaderGroupPtr = std::shared_ptr<ShaderGroup>;
+++} // namespace gfx
++ namespace plugin {
++ struct RegisteredLayer;
++ 
++@@ -16,5 +20,12 @@ void registerPluginShaderGroups(gfx::ShaderRegistry&,
++                                 const ProgramParameters&,
++                                 const std::shared_ptr<const RegisteredLayer>&);
++ 
+++/// Assigns a plugin shader's static textures to the builder's texture slots.
+++/// The group uploads them on its first call and shares them with every later
+++/// drawable of this renderer. Returns false when the upload failed, in which
+++/// case the caller must not draw with the shader. A shader without textures
+++/// always returns true.
+++bool attachShaderTextures(const gfx::ShaderGroupPtr&, gfx::Context&, gfx::DrawableBuilder&);
+++
++ } // namespace plugin
++ } // namespace mln
++diff --git a/src/mln/renderer/layers/render_plugin_style_layer.cpp b/src/mln/renderer/layers/render_plugin_style_layer.cpp
++--- a/src/mln/renderer/layers/render_plugin_style_layer.cpp
+++++ b/src/mln/renderer/layers/render_plugin_style_layer.cpp
++@@ -333,6 +333,10 @@ void RenderPluginStyleLayer::update(gfx::ShaderRegistry& shaders,
++             builder->setRawVertices({}, vertexCount, firstType);
++             builder->setSegments(
++                 gfx::Triangles(), bucket.indices, definition.segments.data(), definition.segments.size());
+++            // A shader whose static textures failed to upload draws nothing.
+++            if (!plugin::attachShaderTextures(shaderGroup, context, *builder)) {
+++                continue;
+++            }
++             builder->flush(context);
++             for (auto& drawable : builder->clearDrawables()) {
++                 drawable->setTileID(tileID);
++@@ -501,6 +505,9 @@ void RenderPluginStyleLayer::updateFrame(gfx::ShaderRegistry& shaders,
++         builder->setRawVertices({}, vertexCount, firstType);
++         builder->setSegments(
++             gfx::Triangles(), frameBucket->indices, definition.segments.data(), definition.segments.size());
+++        if (!plugin::attachShaderTextures(shaderGroup, context, *builder)) {
+++            continue;
+++        }
++         builder->flush(context);
++         for (auto& drawable : builder->clearDrawables()) {
++             drawable->setLayerTweaker(layerTweaker);
++diff --git a/test/plugin/api.test.cpp b/test/plugin/api.test.cpp
++--- a/test/plugin/api.test.cpp
+++++ b/test/plugin/api.test.cpp
++@@ -129,6 +129,11 @@ TEST(PluginApi, RejectsTruncatedDescriptorsBeforeReadingPayload) {
++     ShortStruct<mln_plugin_shader_property_binding_v1> binding;
++     input.shader.property_bindings = binding.get();
++     input.expectRejected();
+++    input.shader.property_bindings = &input.binding;
+++    ShortStruct<mln_plugin_texture_descriptor_v1> texture;
+++    input.shader.textures = texture.get();
+++    input.shader.texture_count = 1;
+++    input.expectRejected();
++ }
++ 
++ TEST(PluginApi, RejectsMissingArraysAndStringData) {
++diff --git a/test/plugin/registry.test.cpp b/test/plugin/registry.test.cpp
++--- a/test/plugin/registry.test.cpp
+++++ b/test/plugin/registry.test.cpp
++@@ -1,4 +1,5 @@
++ #include <mln/plugin/plugin_api.h>
+++#include <mln/plugin/plugin_registry.hpp>
++ #include <mln/layermanager/layer_manager.hpp>
++ #include <mln/style/conversion/json.hpp>
++ #include <mln/style/conversion/layer.hpp>
++@@ -6,6 +7,11 @@
++ #include <mln/style/layers/plugin_style_layer.hpp>
++ #include <gtest/gtest.h>
++ 
+++#include <cstring>
+++#include <limits>
+++#include <string_view>
+++#include <vector>
+++
++ using namespace mln;
++ 
++ namespace {
++@@ -95,6 +101,162 @@ TEST(PluginRegistry, ValidatesUniformScopes) {
++     EXPECT_EQ(MLN_PLUGIN_STATUS_CONFLICT, mln_plugin_register_v1(&descriptor, message, sizeof(message)));
++ }
++ 
+++TEST(PluginRegistry, ValidatesAndCopiesTextures) {
+++    auto descriptor = *testDescriptor();
+++    descriptor.plugin_id = {"test.textures", 13};
+++    auto layer = descriptor.layer_types[0];
+++    layer.layer_type = {"test-textures", 13};
+++    descriptor.layer_types = &layer;
+++    auto shader = layer.shaders[0];
+++    layer.shaders = &shader;
+++    std::vector<float> texels(2 * 3 * 4);
+++    for (std::size_t i = 0; i < texels.size(); ++i) texels[i] = static_cast<float>(i) + 0.5f;
+++    mln_plugin_texture_descriptor_v1 texture{};
+++    texture.struct_size = sizeof(texture);
+++    texture.texture_id = 2;
+++    texture.name = {"u_data", 6};
+++    texture.format = MLN_PLUGIN_TEXTURE_RGBA32F;
+++    texture.width = 2;
+++    texture.height = 3;
+++    texture.data = texels.data();
+++    texture.data_size = texels.size() * sizeof(float);
+++    shader.textures = &texture;
+++    shader.texture_count = 1;
+++    char message[256]{};
+++    // Each case breaks one part of a valid texture, expects the rejection that
+++    // names that part and publishes nothing, and then restores the texture. The
+++    // message shows which check fired, so an earlier check cannot hide a missing
+++    // later one.
+++    const auto rejects = [&](const char* what, std::string_view expected, auto&& mutate) {
+++        const auto validTexture = texture;
+++        const auto validShader = shader;
+++        mutate();
+++        message[0] = '\0';
+++        EXPECT_EQ(MLN_PLUGIN_STATUS_INVALID_ARGUMENT, mln_plugin_register_v1(&descriptor, message, sizeof(message)))
+++            << what;
+++        EXPECT_NE(std::string_view::npos, std::string_view(message).find(expected)) << what << ": " << message;
+++        EXPECT_FALSE(LayerManager::get()->hasLayerType("test-textures")) << what;
+++        texture = validTexture;
+++        shader = validShader;
+++    };
+++    rejects("missing array", "array is missing", [&] { shader.textures = nullptr; });
+++    rejects("too many textures", "more than", [&] { shader.texture_count = MLN_PLUGIN_MAX_TEXTURES + 1; });
+++    rejects("short struct", "malformed", [&] { texture.struct_size = sizeof(uint32_t); });
+++    rejects("id out of range", "id is out of range", [&] { texture.texture_id = MLN_PLUGIN_MAX_TEXTURES; });
+++    rejects("empty name", "name is empty", [&] { texture.name = {"", 0}; });
+++    rejects("missing name", "name is empty", [&] { texture.name = {nullptr, 6}; });
+++    rejects("no format", "format", [&] { texture.format = static_cast<mln_plugin_texture_format_v1>(0); });
+++    rejects("unknown format", "format", [&] { texture.format = static_cast<mln_plugin_texture_format_v1>(2); });
+++    // The size cases keep data and data_size consistent, so only the width and
+++    // height check can reject them.
+++    std::vector<float> longTexels((MLN_PLUGIN_MAX_TEXTURE_SIZE + 1) * 4);
+++    const auto useLongTexels = [&] {
+++        texture.data = longTexels.data();
+++        texture.data_size = longTexels.size() * sizeof(float);
+++    };
+++    rejects("zero width", "width and height", [&] {
+++        texture.width = 0;
+++        texture.data_size = 0;
+++    });
+++    rejects("zero height", "width and height", [&] {
+++        texture.height = 0;
+++        texture.data_size = 0;
+++    });
+++    rejects("wide", "width and height", [&] {
+++        texture.width = MLN_PLUGIN_MAX_TEXTURE_SIZE + 1;
+++        texture.height = 1;
+++        useLongTexels();
+++    });
+++    rejects("tall", "width and height", [&] {
+++        texture.width = 1;
+++        texture.height = MLN_PLUGIN_MAX_TEXTURE_SIZE + 1;
+++        useLongTexels();
+++    });
+++    rejects("missing data", "data is missing", [&] { texture.data = nullptr; });
+++    rejects("short data", "data_size", [&] { texture.data_size -= 16; });
+++    rejects("long data", "data_size", [&] { texture.data_size += 1; });
+++    rejects("data sized for another width", "data_size", [&] { texture.width = 3; });
+++    mln_plugin_texture_descriptor_v1 pair[] = {texture, texture};
+++    pair[1].texture_id = 0;
+++    rejects("duplicate name", "name is empty or duplicated", [&] {
+++        shader.textures = pair;
+++        shader.texture_count = 2;
+++    });
+++    pair[1].name = {"u_other", 7};
+++    pair[1].texture_id = texture.texture_id;
+++    rejects("duplicate id", "id is out of range or duplicated", [&] {
+++        shader.textures = pair;
+++        shader.texture_count = 2;
+++    });
+++
+++    ASSERT_EQ(MLN_PLUGIN_STATUS_OK, mln_plugin_register_v1(&descriptor, message, sizeof(message))) << message;
+++    const auto registered = plugin::PluginRegistry::get().findLayerType("test-textures");
+++    ASSERT_TRUE(registered);
+++    ASSERT_EQ(1u, registered->shaders.front().textures.size());
+++    const auto& copy = registered->shaders.front().textures.front();
+++    EXPECT_EQ(2u, copy.id);
+++    EXPECT_EQ("u_data", copy.name);
+++    EXPECT_EQ(static_cast<uint32_t>(MLN_PLUGIN_TEXTURE_RGBA32F), copy.format);
+++    EXPECT_EQ(2u, copy.width);
+++    EXPECT_EQ(3u, copy.height);
+++    ASSERT_EQ(texels.size() * sizeof(float), copy.data.size());
+++    EXPECT_EQ(0, std::memcmp(texels.data(), copy.data.data(), copy.data.size()));
+++
+++    // Registration copied the bytes: the same bytes elsewhere are the same
+++    // registration, and changing the caller's buffer does not reach the copy.
+++    auto moved = texels;
+++    texture.data = moved.data();
+++    EXPECT_EQ(MLN_PLUGIN_STATUS_ALREADY_REGISTERED, mln_plugin_register_v1(&descriptor, message, sizeof(message)));
+++    moved[5] = 100;
+++    EXPECT_EQ(MLN_PLUGIN_STATUS_CONFLICT, mln_plugin_register_v1(&descriptor, message, sizeof(message)));
+++    EXPECT_EQ(0, std::memcmp(texels.data(), copy.data.data(), copy.data.size()));
+++    moved[5] = texels[5];
+++    EXPECT_EQ(MLN_PLUGIN_STATUS_ALREADY_REGISTERED, mln_plugin_register_v1(&descriptor, message, sizeof(message)));
+++    texture.name = {"u_renamed", 9};
+++    EXPECT_EQ(MLN_PLUGIN_STATUS_CONFLICT, mln_plugin_register_v1(&descriptor, message, sizeof(message)));
+++    texture.name = {"u_data", 6};
+++    texture.texture_id = 1;
+++    EXPECT_EQ(MLN_PLUGIN_STATUS_CONFLICT, mln_plugin_register_v1(&descriptor, message, sizeof(message)));
+++    texture.texture_id = 2;
+++    shader.texture_count = 0;
+++    EXPECT_EQ(MLN_PLUGIN_STATUS_CONFLICT, mln_plugin_register_v1(&descriptor, message, sizeof(message)));
+++    shader.texture_count = 1;
+++    EXPECT_EQ(MLN_PLUGIN_STATUS_ALREADY_REGISTERED, mln_plugin_register_v1(&descriptor, message, sizeof(message)));
+++}
+++
+++TEST(PluginRegistry, ComparesTextureDataAsBytes) {
+++    auto descriptor = *testDescriptor();
+++    descriptor.plugin_id = {"test.texture-bytes", 18};
+++    auto layer = descriptor.layer_types[0];
+++    layer.layer_type = {"test-texture-bytes", 18};
+++    descriptor.layer_types = &layer;
+++    auto shader = layer.shaders[0];
+++    layer.shaders = &shader;
+++    // No scan for finite values: any bytes are data. The widest texture is
+++    // accepted, and NaN and signed zeros compare by their bits.
+++    std::vector<float> texels(MLN_PLUGIN_MAX_TEXTURE_SIZE * 4, 1.0f);
+++    texels[0] = std::numeric_limits<float>::quiet_NaN();
+++    texels[1] = std::numeric_limits<float>::infinity();
+++    texels[2] = 0.0f;
+++    mln_plugin_texture_descriptor_v1 texture{};
+++    texture.struct_size = sizeof(texture);
+++    texture.name = {"u_data", 6};
+++    texture.format = MLN_PLUGIN_TEXTURE_RGBA32F;
+++    texture.width = MLN_PLUGIN_MAX_TEXTURE_SIZE;
+++    texture.height = 1;
+++    texture.data = texels.data();
+++    texture.data_size = texels.size() * sizeof(float);
+++    shader.textures = &texture;
+++    shader.texture_count = 1;
+++    char message[256]{};
+++    ASSERT_EQ(MLN_PLUGIN_STATUS_OK, mln_plugin_register_v1(&descriptor, message, sizeof(message))) << message;
+++    EXPECT_EQ(MLN_PLUGIN_STATUS_ALREADY_REGISTERED, mln_plugin_register_v1(&descriptor, message, sizeof(message)));
+++    texels[2] = -0.0f; // Equal as a float, different as bytes.
+++    EXPECT_EQ(MLN_PLUGIN_STATUS_CONFLICT, mln_plugin_register_v1(&descriptor, message, sizeof(message)));
+++    texels[2] = 0.0f;
+++    EXPECT_EQ(MLN_PLUGIN_STATUS_ALREADY_REGISTERED, mln_plugin_register_v1(&descriptor, message, sizeof(message)));
+++}
+++
++ TEST(PluginRegistry, ValidatesAndCopiesDescriptors) {
++     style::conversion::Error parsingError;
++     EXPECT_FALSE(style::conversion::convertJSON<std::unique_ptr<style::Layer>>(
++diff --git a/test/plugin/rendering.test.cpp b/test/plugin/rendering.test.cpp
++--- a/test/plugin/rendering.test.cpp
+++++ b/test/plugin/rendering.test.cpp
++@@ -13,6 +13,9 @@
++ #include <algorithm>
++ #include <array>
++ #include <cstring>
+++#include <iomanip>
+++#include <sstream>
+++#include <vector>
++ 
++ using namespace mln;
++ 
++@@ -478,4 +481,498 @@ TEST(PluginRendering, LayerUniformBlocksAroundTheOpenGLPageSize) {
++     }
++ }
++ 
+++// Layout state of the test plugins: the features laid out so far and the
+++// bucket storage, which stays valid until destroy_layout.
+++struct TestLayout {
+++    std::vector<std::pair<uint64_t, mln_plugin_tile_point_v1>> features;
+++    std::vector<float> vertices;
+++    std::vector<uint16_t> indices;
+++    std::vector<mln_plugin_segment_v1> segments;
+++    std::vector<mln_plugin_feature_vertex_range_v1> ranges;
+++    mln_plugin_vertex_stream_v1 stream{};
+++    mln_plugin_drawable_descriptor_v1 drawable{};
+++};
+++
+++const mln_plugin_attribute_binding_v1 testPositionBinding = {sizeof(mln_plugin_attribute_binding_v1), 0, 0, 0};
+++
+++// Appends a segment with a clip-space quad from x0 to x1 at full height, owned
+++// by one feature. Segment indices are relative to the segment's first vertex.
+++void addQuad(TestLayout& layout, uint64_t feature, float x0, float x1) {
+++    const auto first = static_cast<uint32_t>(layout.vertices.size() / 2);
+++    const auto firstIndex = static_cast<uint32_t>(layout.indices.size());
+++    layout.vertices.insert(layout.vertices.end(), {x0, -1, x1, -1, x0, 1, x1, 1});
+++    layout.indices.insert(layout.indices.end(), {0, 1, 2, 1, 3, 2});
+++    layout.segments.push_back({sizeof(mln_plugin_segment_v1), first, firstIndex, 4, 6});
+++    layout.ranges.push_back({sizeof(mln_plugin_feature_vertex_range_v1), feature, 1, first, 4});
+++}
+++
+++void writeBucket(TestLayout& layout, mln_plugin_bucket_v1* output, bool withRanges = true) {
+++    *output = {};
+++    output->struct_size = sizeof(*output);
+++    if (layout.segments.empty()) return;
+++    layout.stream = {sizeof(layout.stream),
+++                     0,
+++                     reinterpret_cast<const uint8_t*>(layout.vertices.data()),
+++                     layout.vertices.size() * sizeof(float),
+++                     static_cast<uint32_t>(layout.vertices.size() / 2),
+++                     2 * sizeof(float)};
+++    layout.drawable = {sizeof(layout.drawable),
+++                       1,
+++                       {"main", 4},
+++                       &testPositionBinding,
+++                       1,
+++                       layout.segments.data(),
+++                       layout.segments.size()};
+++    output->vertex_streams = &layout.stream;
+++    output->vertex_stream_count = 1;
+++    output->indices = layout.indices.data();
+++    output->index_count = layout.indices.size();
+++    output->drawables = &layout.drawable;
+++    output->drawable_count = 1;
+++    if (withRanges) {
+++        output->feature_vertex_ranges = layout.ranges.data();
+++        output->feature_vertex_range_count = layout.ranges.size();
+++    }
+++}
+++
+++mln_plugin_status coverViewport(void* instance, mln_plugin_bucket_v1* output) {
+++    auto& layout = *static_cast<TestLayout*>(instance);
+++    if (!layout.features.empty()) addQuad(layout, layout.features.front().first, -1, 1);
+++    writeBucket(layout, output);
+++    return MLN_PLUGIN_STATUS_OK;
+++}
+++
+++// A source-free frame: the same viewport quad, which owns no features.
+++mln_plugin_status coverViewportFrame(const mln_plugin_frame_context_v1*, mln_plugin_bucket_v1* output) {
+++    static TestLayout frame;
+++    frame = {};
+++    addQuad(frame, 0, -1, 1);
+++    writeBucket(frame, output, false);
+++    return MLN_PLUGIN_STATUS_OK;
+++}
+++
+++// A plugin with one layer type, named like the plugin, and one shader, "main".
+++// code holds the OpenGL vertex and fragment, Vulkan vertex and fragment, and
+++// Metal sources; the Metal entry points are testVertex and testFragment. Unless
+++// a test replaces them, the uniform callback leaves every block zeroed and the
+++// layout draws one quad over the viewport for the first feature of a tile.
+++struct TestPlugin {
+++    std::array<std::string, 5> code;
+++    std::vector<mln_plugin_shader_attribute_v1> attributes = {
+++        {sizeof(mln_plugin_shader_attribute_v1), 0, 0, {"a_pos", 5}, MLN_PLUGIN_VERTEX_FLOAT_X2}};
+++    std::vector<mln_plugin_uniform_block_descriptor_v1> uniforms;
+++    std::vector<mln_plugin_shader_property_binding_v1> bindings;
+++    std::vector<mln_plugin_texture_descriptor_v1> textures;
+++    std::vector<mln_plugin_property_descriptor_v1> properties;
+++    mln_plugin_update_uniform_block_fn updateUniformBlock =
+++        [](const mln_plugin_uniform_context_v1*, uint32_t, uint8_t*, size_t) {
+++            return MLN_PLUGIN_STATUS_OK;
+++        };
+++    mln_plugin_finish_layout_fn finishLayout = coverViewport;
+++    // Set for a source-free layer, which replaces the layout callbacks.
+++    mln_plugin_build_frame_fn buildFrame = nullptr;
+++};
+++
+++template <class T>
+++const T* dataOrNull(const std::vector<T>& values) {
+++    return values.empty() ? nullptr : values.data();
+++}
+++
+++void registerTestPlugin(const std::string& pluginID, const TestPlugin& plugin) {
+++    const std::array<mln_plugin_shader_source_v1, 3> sources = {{{sizeof(mln_plugin_shader_source_v1),
+++                                                                  MLN_PLUGIN_BACKEND_OPENGL,
+++                                                                  view(plugin.code[0]),
+++                                                                  view(plugin.code[1]),
+++                                                                  {},
+++                                                                  {}},
+++                                                                 {sizeof(mln_plugin_shader_source_v1),
+++                                                                  MLN_PLUGIN_BACKEND_VULKAN,
+++                                                                  view(plugin.code[2]),
+++                                                                  view(plugin.code[3]),
+++                                                                  {},
+++                                                                  {}},
+++                                                                 {sizeof(mln_plugin_shader_source_v1),
+++                                                                  MLN_PLUGIN_BACKEND_METAL,
+++                                                                  view(plugin.code[4]),
+++                                                                  {},
+++                                                                  {"testVertex", 10},
+++                                                                  {"testFragment", 12}}}};
+++    mln_plugin_shader_descriptor_v1 shader{};
+++    shader.struct_size = sizeof(shader);
+++    shader.shader_id = {"main", 4};
+++    shader.sources = sources.data();
+++    shader.source_count = sources.size();
+++    shader.attributes = dataOrNull(plugin.attributes);
+++    shader.attribute_count = plugin.attributes.size();
+++    shader.uniform_blocks = dataOrNull(plugin.uniforms);
+++    shader.uniform_block_count = plugin.uniforms.size();
+++    shader.property_bindings = dataOrNull(plugin.bindings);
+++    shader.property_binding_count = plugin.bindings.size();
+++    shader.textures = dataOrNull(plugin.textures);
+++    shader.texture_count = plugin.textures.size();
+++    mln_plugin_layer_type_v1 layer{};
+++    layer.struct_size = sizeof(layer);
+++    layer.layer_type = view(pluginID);
+++    layer.backend_mask = MLN_PLUGIN_BACKEND_OPENGL | MLN_PLUGIN_BACKEND_VULKAN | MLN_PLUGIN_BACKEND_METAL;
+++    layer.properties = dataOrNull(plugin.properties);
+++    layer.property_count = plugin.properties.size();
+++    layer.shaders = &shader;
+++    layer.shader_count = 1;
+++    layer.update_uniform_block = plugin.updateUniformBlock;
+++    if (plugin.buildFrame) {
+++        layer.source_free = 1;
+++        layer.build_frame = plugin.buildFrame;
+++    } else {
+++        layer.geometry_type_mask = MLN_PLUGIN_GEOMETRY_POINT;
+++        layer.create_layout = [](const mln_plugin_layout_context_v1*, void** instance) {
+++            *instance = new (std::nothrow) TestLayout();
+++            return *instance ? MLN_PLUGIN_STATUS_OK : MLN_PLUGIN_STATUS_CALLBACK_ERROR;
+++        };
+++        layer.layout_feature = [](void* instance, const mln_plugin_feature_v1* feature) {
+++            if (feature->point_count == 0) return MLN_PLUGIN_STATUS_CALLBACK_ERROR;
+++            static_cast<TestLayout*>(instance)->features.emplace_back(feature->feature_index, feature->points[0]);
+++            return MLN_PLUGIN_STATUS_OK;
+++        };
+++        layer.finish_layout = plugin.finishLayout;
+++        layer.destroy_layout = [](void* instance) {
+++            delete static_cast<TestLayout*>(instance);
+++        };
+++    }
+++    const mln_plugin_descriptor_v1 descriptor = {
+++        sizeof(descriptor), MLN_PLUGIN_ABI_VERSION_1, view(pluginID), {"1", 1}, 1, 1, &layer, 1};
+++    char error[256]{};
+++    ASSERT_EQ(MLN_PLUGIN_STATUS_OK, mln_plugin_register_v1(&descriptor, error, sizeof(error))) << error;
+++}
+++
+++std::string pointStyle(const std::string& layers,
+++                       const std::string& features = R"({"type":"Point","coordinates":[0,0]})") {
+++    return R"({"version":8,"sources":{"points":{"type":"geojson","data":)" + features + R"(}},"layers":[)" + layers +
+++           "]}";
+++}
+++
+++using Rgba = std::array<uint8_t, 4>;
+++const Rgba red = {255, 0, 0, 255};
+++const Rgba green = {0, 255, 0, 255};
+++const Rgba clear = {0, 0, 0, 0};
+++
+++Rgba pixelAt(const PremultipliedImage& image, uint32_t x, uint32_t y) {
+++    const auto* pixel = image.data.get() + (y * image.size.width + x) * 4;
+++    return {pixel[0], pixel[1], pixel[2], pixel[3]};
+++}
+++
+++// Shared shader pieces. The quad vertices are already in clip space.
+++const std::string glPosition = "in vec2 a_pos;";
+++const std::string vulkanPosition = "layout(location=0) in vec2 a_pos;";
+++const std::string vulkanFragColor = "layout(location=0) out vec4 fragColor;";
+++const std::string metalPosition = "struct Input{float2 a_pos [[attribute(0)]];};";
+++
+++std::string glTexture(const std::string& name) {
+++    return "uniform highp sampler2D " + name + ";";
+++}
+++
+++std::string vulkanTexture(const std::string& name, uint32_t id) {
+++    return "layout(set=DRAWABLE_IMAGE_SET_INDEX,binding=MLN_PLUGIN_TEXTURE_" + std::to_string(id) +
+++           "_BINDING) uniform highp sampler2D " + name + ";";
+++}
+++
+++std::string metalTexture(const std::string& name, uint32_t id) {
+++    return "texture2d<float, access::read> " + name + " [[texture(MLN_PLUGIN_TEXTURE_" + std::to_string(id) +
+++           "_BINDING)]]";
+++}
+++
+++mln_plugin_texture_descriptor_v1 textureDescriptor(
+++    uint32_t id, const char* name, uint32_t width, uint32_t height, const std::vector<float>& texels) {
+++    mln_plugin_texture_descriptor_v1 texture{};
+++    texture.struct_size = sizeof(texture);
+++    texture.texture_id = id;
+++    texture.name = {name, std::strlen(name)};
+++    texture.format = MLN_PLUGIN_TEXTURE_RGBA32F;
+++    texture.width = width;
+++    texture.height = height;
+++    texture.data = texels.data();
+++    texture.data_size = texels.size() * sizeof(float);
+++    return texture;
+++}
+++
+++// A float literal that every shader language reads back as the same f32.
+++std::string floatLiteral(float value) {
+++    std::ostringstream output;
+++    output << std::setprecision(9) << value;
+++    auto text = output.str();
+++    if (text.find_first_of(".e") == std::string::npos) text += ".0";
+++    return text + "f";
+++}
+++
+++// A 3x5 texture whose corner texels hold extreme f32 values in different
+++// channels; every other component is distinct. The shader compares all four
+++// corner texels exactly, so a transposed, flipped, filtered or converted upload
+++// turns the pixel red. Its id is the last slot, so no binding defaults to it.
+++constexpr uint32_t exactTextureID = MLN_PLUGIN_MAX_TEXTURES - 1;
+++constexpr uint32_t exactWidth = 3;
+++constexpr uint32_t exactHeight = 5;
+++
+++const std::vector<float>& exactTexels() {
+++    static const auto texels = [] {
+++        std::vector<float> values(exactWidth * exactHeight * 4);
+++        for (std::size_t i = 0; i < values.size(); ++i) values[i] = 1.0f + static_cast<float>(i) * 0.25f;
+++        values[0] = 16777215.0f;                                  // (0, 0).x
+++        values[(exactWidth - 1) * 4 + 1] = -0.1234567f;           // (2, 0).y
+++        values[exactWidth * (exactHeight - 1) * 4 + 2] = 1e-7f;   // (0, 4).z
+++        values[(exactWidth * exactHeight - 1) * 4 + 3] = 3.4e38f; // (2, 4).w
+++        return values;
+++    }();
+++    return texels;
+++}
+++
+++TestPlugin exactTexturePlugin() {
+++    const auto& texels = exactTexels();
+++    const std::array<std::array<uint32_t, 2>, 4> corners = {
+++        {{0, 0}, {exactWidth - 1, 0}, {0, exactHeight - 1}, {exactWidth - 1, exactHeight - 1}}};
+++    std::string glChecks, metalChecks;
+++    for (std::size_t corner = 0; corner < corners.size(); ++corner) {
+++        const auto [x, y] = corners[corner];
+++        const auto* texel = texels.data() + (y * exactWidth + x) * 4;
+++        std::string expected;
+++        for (int component = 0; component < 4; ++component) {
+++            expected += (component ? "," : "") + floatLiteral(texel[component]);
+++        }
+++        const auto coordinates = std::to_string(x) + "," + std::to_string(y);
+++        const auto bit = std::to_string(1 << corner);
+++        glChecks += "if(texelFetch(u_exact,ivec2(" + coordinates + "),0)!=vec4(" + expected + "))bad+=" + bit + ";";
+++        metalChecks += "if(any(exact.read(uint2(" + coordinates + "))!=float4(" + expected + ")))bad+=" + bit + ";";
+++    }
+++    const std::string glResult = "fragColor=bad==0?vec4(0.0,1.0,0.0,1.0):vec4(1.0,float(bad)/16.0,0.0,1.0);}";
+++    const auto binding = exactTextureID;
+++    TestPlugin plugin;
+++    plugin.code = {glPosition + "void main(){gl_Position=vec4(a_pos,0.0,1.0);}",
+++                   "precision highp float;" + glTexture("u_exact") + "void main(){int bad=0;" + glChecks + glResult,
+++                   vulkanPosition + "void main(){gl_Position=vec4(a_pos,0.0,1.0);applySurfaceTransform();}",
+++                   vulkanFragColor + vulkanTexture("u_exact", binding) + "void main(){int bad=0;" + glChecks + glResult,
+++                   metalPosition +
+++                       "vertex float4 testVertex(Input in [[stage_in]]){return float4(in.a_pos,0.0,1.0);}"
+++                       "fragment float4 testFragment(" +
+++                       metalTexture("exact", binding) + "){int bad=0;" + metalChecks +
+++                       "return bad==0?float4(0.0,1.0,0.0,1.0):float4(1.0,float(bad)/16.0,0.0,1.0);}"};
+++    plugin.textures = {textureDescriptor(binding, "u_exact", exactWidth, exactHeight, texels)};
+++    return plugin;
+++}
+++
+++void expectEveryPixel(const PremultipliedImage& image, const Rgba& expected) {
+++    for (const auto [x, y] : std::array<std::array<uint32_t, 2>, 5>{{{0, 0}, {63, 0}, {32, 32}, {0, 63}, {63, 63}}}) {
+++        EXPECT_EQ(expected, pixelAt(image, x, y)) << "pixel " << x << "," << y;
+++    }
+++}
+++
+++TEST(PluginRendering, StaticTexturesReadExactTexelsInRowOrder) {
+++    ASSERT_NO_FATAL_FAILURE(registerTestPlugin("test.exact-texture", exactTexturePlugin()));
+++    RenderTest test;
+++    test.map.getStyle().loadJSON(pointStyle(R"({"id":"exact","type":"test.exact-texture","source":"points"})"));
+++    expectEveryPixel(test.frontend.render(test.map).image, green);
+++}
+++
+++TEST(PluginRendering, SourceFreeLayersReadStaticTextures) {
+++    auto plugin = exactTexturePlugin();
+++    plugin.buildFrame = coverViewportFrame;
+++    ASSERT_NO_FATAL_FAILURE(registerTestPlugin("test.frame-texture", plugin));
+++    RenderTest test;
+++    test.map.getStyle().loadJSON(R"({"version":8,"sources":{},"layers":[{"id":"frame","type":"test.frame-texture"}]})");
+++    expectEveryPixel(test.frontend.render(test.map).image, green);
+++}
+++
+++// Texel i of a 2x1 texture is red, then green. "test-level" picks the texel,
+++// from the uniform block or, when data-driven, from the attribute. Both shader
+++// variants read the texture, as OpenGL requires to resolve the sampler.
+++const std::vector<float> levelTexels = {1, 0, 0, 1, 0, 1, 0, 1};
+++
+++TestPlugin levelTexturePlugin() {
+++    const std::string glLevel =
+++        "\n#if !MLN_PLUGIN_PROPERTY_TEST_LEVEL_IS_UNIFORM\nin vec2 a_level;\n#endif\n"
+++        "layout(std140) uniform LevelUBO{float value;float t;float pad0;float pad1;}level;flat out float v_level;";
+++    const std::string vulkanLevel =
+++        "\n#if !MLN_PLUGIN_PROPERTY_TEST_LEVEL_IS_UNIFORM\nlayout(location=1) in vec2 a_level;\n#endif\n"
+++        "layout(std140,set=DRAWABLE_UBO_SET_INDEX,binding=MLN_PLUGIN_UNIFORM_0_BINDING) uniform LevelUBO"
+++        "{float value;float t;float pad0;float pad1;}level;layout(location=0) flat out float v_level;";
+++    const std::string resolveLevel =
+++        "\n#if MLN_PLUGIN_PROPERTY_TEST_LEVEL_IS_UNIFORM\nv_level=level.value;\n#else\n"
+++        "v_level=mix(a_level.x,a_level.y,level.t);\n#endif\n";
+++    const std::string fetch = "fragColor=texelFetch(u_level,ivec2(int(v_level+0.5),0),0);}";
+++    TestPlugin plugin;
+++    plugin.code = {
+++        glPosition + glLevel + "void main(){gl_Position=vec4(a_pos,0.0,1.0);" + resolveLevel + "}",
+++        glTexture("u_level") + "flat in float v_level;void main(){" + fetch,
+++        vulkanPosition + vulkanLevel + "void main(){gl_Position=vec4(a_pos,0.0,1.0);applySurfaceTransform();" +
+++            resolveLevel + "}",
+++        vulkanFragColor + vulkanTexture("u_level", 0) + "layout(location=0) flat in float v_level;void main(){" + fetch,
+++        "struct Input{float2 a_pos [[attribute(0)]];"
+++        "\n#if !MLN_PLUGIN_PROPERTY_TEST_LEVEL_IS_UNIFORM\nfloat2 a_level [[attribute(1)]];\n#endif\n};"
+++        "struct LevelUBO{float value;float t;float pad0;float pad1;};"
+++        "struct Output{float4 position [[position]];float level [[flat]];};"
+++        "vertex Output testVertex(Input in [[stage_in]],constant LevelUBO& level "
+++        "[[buffer(MLN_PLUGIN_UNIFORM_0_BINDING)]]){Output out;out.position=float4(in.a_pos,0.0,1.0);"
+++        "\n#if MLN_PLUGIN_PROPERTY_TEST_LEVEL_IS_UNIFORM\nout.level=level.value;\n#else\n"
+++        "out.level=mix(in.a_level.x,in.a_level.y,level.t);\n#endif\nreturn out;}"
+++        "fragment float4 testFragment(Output in [[stage_in]]," +
+++            metalTexture("levels", 0) + "){return levels.read(uint2(uint(in.level+0.5),0));}"};
+++    plugin.attributes.push_back(
+++        {sizeof(mln_plugin_shader_attribute_v1), 1, 1, {"a_level", 7}, MLN_PLUGIN_VERTEX_FLOAT_X2});
+++    plugin.uniforms = {{sizeof(mln_plugin_uniform_block_descriptor_v1),
+++                        0,
+++                        {"LevelUBO", 8},
+++                        16,
+++                        MLN_PLUGIN_SHADER_STAGE_VERTEX,
+++                        MLN_PLUGIN_UNIFORM_DRAWABLE}};
+++    plugin.bindings = {{sizeof(mln_plugin_shader_property_binding_v1),
+++                        {"test-level", 10},
+++                        MLN_PLUGIN_PROPERTY_ENCODING_FLOAT,
+++                        0,
+++                        0,
+++                        1,
+++                        1,
+++                        0,
+++                        4}};
+++    mln_plugin_property_descriptor_v1 level{};
+++    level.struct_size = sizeof(level);
+++    level.name = {"test-level", 10};
+++    level.type = MLN_PLUGIN_VALUE_FLOAT;
+++    level.default_value = {sizeof(mln_plugin_value), MLN_PLUGIN_VALUE_FLOAT, {.float_value = 0}};
+++    level.expression_capabilities = MLN_PLUGIN_EXPRESSION_CAMERA | MLN_PLUGIN_EXPRESSION_FEATURE;
+++    plugin.properties = {level};
+++    plugin.textures = {textureDescriptor(0, "u_level", 2, 1, levelTexels)};
+++    return plugin;
+++}
+++
+++void setPaint(RenderTest& test, const std::string& layer, const std::string& property, const std::string& json) {
+++    JSDocument value;
+++    value.Parse<0>(json.c_str());
+++    ASSERT_FALSE(value.HasParseError()) << json;
+++    ASSERT_FALSE(test.map.getStyle().getLayer(layer)->setProperty(
+++        property, style::conversion::Convertible(static_cast<const JSValue*>(&value))));
+++}
+++
+++TEST(PluginRendering, StaticTexturesUploadOncePerRenderer) {
+++    ASSERT_NO_FATAL_FAILURE(registerTestPlugin("test.shared-texture", levelTexturePlugin()));
+++    RenderTest test;
+++    const auto features = R"({"type":"Feature","properties":{"v":1},"geometry":{"type":"Point","coordinates":[0,0]}})";
+++    test.map.getStyle().loadJSON(pointStyle("", features));
+++    const auto empty = test.frontend.render(test.map).stats;
+++    // Two style layers of the type share one upload of the 2x1 texture.
+++    test.map.getStyle().loadJSON(pointStyle(R"({"id":"under","type":"test.shared-texture","source":"points"},
+++        {"id":"over","type":"test.shared-texture","source":"points"})",
+++                                            features));
+++    const auto first = test.frontend.render(test.map);
+++    EXPECT_EQ(2u * 1u * 16u, first.stats.textureUpdateBytes - empty.textureUpdateBytes);
+++    EXPECT_EQ(red, pixelAt(first.image, 32, 32));
+++    const auto warm = test.frontend.render(test.map);
+++    EXPECT_EQ(0u, warm.stats.textureUpdateBytes - first.stats.textureUpdateBytes);
+++    // A data-driven value rebuilds the drawables with the attribute variant,
+++    // which reuses the texture.
+++    ASSERT_NO_FATAL_FAILURE(setPaint(test, "over", "test-level", R"(["get","v"])"));
+++    const auto rebuilt = test.frontend.render(test.map);
+++    EXPECT_EQ(green, pixelAt(rebuilt.image, 32, 32));
+++    EXPECT_EQ(0u, rebuilt.stats.textureUpdateBytes - warm.stats.textureUpdateBytes);
+++    // New tiles build new drawables with the same texture.
+++    test.map.jumpTo(CameraOptions().withZoom(3));
+++    const auto moved = test.frontend.render(test.map);
+++    EXPECT_EQ(green, pixelAt(moved.image, 32, 32));
+++    EXPECT_EQ(0u, moved.stats.textureUpdateBytes - rebuilt.stats.textureUpdateBytes);
+++}
+++
+++// The upload belongs to the renderer, not the process: each renderer uploads
+++// its own copy from the registry, so a later map, a snapshotter or a renderer
+++// rebuilt after a lost context never binds a texture from a destroyed one.
+++TEST(PluginRendering, StaticTexturesUploadAgainForALaterRenderer) {
+++    ASSERT_NO_FATAL_FAILURE(registerTestPlugin("test.renderer-texture", levelTexturePlugin()));
+++    const auto features = R"({"type":"Feature","properties":{"v":1},"geometry":{"type":"Point","coordinates":[0,0]}})";
+++    // One after the other: two live RenderTests would put two run loops on one
+++    // thread.
+++    for (int renderer = 0; renderer < 2; ++renderer) {
+++        SCOPED_TRACE(renderer);
+++        RenderTest test;
+++        test.map.getStyle().loadJSON(pointStyle("", features));
+++        const auto empty = test.frontend.render(test.map).stats;
+++        test.map.getStyle().loadJSON(pointStyle(
+++            R"({"id":"level","type":"test.renderer-texture","source":"points","paint":{"test-level":1}})", features));
+++        const auto first = test.frontend.render(test.map);
+++        // Metal textures belong to the device, so a reused one still draws
+++        // there; the upload count catches it on every backend.
+++        EXPECT_EQ(2u * 1u * 16u, first.stats.textureUpdateBytes - empty.textureUpdateBytes);
+++        EXPECT_EQ(green, pixelAt(first.image, 32, 32));
+++    }
+++}
+++
+++TEST(PluginRendering, StaticTexturesResolveInEveryShaderVariant) {
+++    ASSERT_NO_FATAL_FAILURE(registerTestPlugin("test.variant-texture", levelTexturePlugin()));
+++    RenderTest test;
+++    const auto features = R"({"type":"Feature","properties":{"v":0},"geometry":{"type":"Point","coordinates":[0,0]}})";
+++    test.map.getStyle().loadJSON(pointStyle(
+++        R"({"id":"level","type":"test.variant-texture","source":"points","paint":{"test-level":1}})", features));
+++    EXPECT_EQ(green, pixelAt(test.frontend.render(test.map).image, 32, 32)); // Uniform variant.
+++    ASSERT_NO_FATAL_FAILURE(setPaint(test, "level", "test-level", R"(["get","v"])"));
+++    EXPECT_EQ(red, pixelAt(test.frontend.render(test.map).image, 32, 32)); // Attribute variant.
+++    ASSERT_NO_FATAL_FAILURE(setPaint(test, "level", "test-level", "1"));
+++    EXPECT_EQ(green, pixelAt(test.frontend.render(test.map).image, 32, 32));
+++}
+++
+++// A vertex-only DRAWABLE block beside a LAYER block that both stages read: the
+++// vertex stage takes the quad's horizontal offset from the layer block, and
+++// the fragment stage its color.
+++std::array<float, 4> layerBlockValue{};
+++
+++TEST(PluginRendering, LayerBlocksReachBothStages) {
+++    // OpenGL ES links a block used by both stages only when its members' precisions match.
+++    const std::string tileBlock = "uniform TileUBO{highp vec4 value;}tile;";
+++    const std::string layerBlock = "uniform SharedUBO{highp vec4 value;}layerBlock;";
+++    const auto vulkanBlock = [](unsigned id, const std::string& block) {
+++        return "layout(std140,set=DRAWABLE_UBO_SET_INDEX,binding=MLN_PLUGIN_UNIFORM_" + std::to_string(id) +
+++               "_BINDING) " + block;
+++    };
+++    const std::string position = "gl_Position=vec4((a_pos.x+1.0)*0.5+layerBlock.value.x-1.0,a_pos.y,tile.value.x,1.0);";
+++    const std::string color = "fragColor=vec4(layerBlock.value.yzw,1.0);}";
+++    TestPlugin plugin;
+++    plugin.code = {
+++        glPosition + "layout(std140) " + tileBlock + "layout(std140) " + layerBlock + "void main(){" + position + "}",
+++        "layout(std140) " + layerBlock + "void main(){" + color,
+++        vulkanPosition + vulkanBlock(0, tileBlock) + vulkanBlock(1, layerBlock) + "void main(){" + position +
+++            "applySurfaceTransform();}",
+++        vulkanFragColor + vulkanBlock(1, layerBlock) + "void main(){" + color,
+++        metalPosition +
+++            "struct Block{float4 value;};"
+++            "vertex float4 testVertex(Input in [[stage_in]],"
+++            "constant Block& tile [[buffer(MLN_PLUGIN_UNIFORM_0_BINDING)]],"
+++            "constant Block& layerBlock [[buffer(MLN_PLUGIN_UNIFORM_1_BINDING)]]){"
+++            "return float4((in.a_pos.x+1.0)*0.5+layerBlock.value.x-1.0,in.a_pos.y,tile.value.x,1.0);}"
+++            "fragment float4 testFragment(constant Block& layerBlock [[buffer(MLN_PLUGIN_UNIFORM_1_BINDING)]]){"
+++            "return float4(layerBlock.value.yzw,1.0);}"};
+++    plugin.uniforms = {{sizeof(mln_plugin_uniform_block_descriptor_v1),
+++                        0,
+++                        {"TileUBO", 7},
+++                        16,
+++                        MLN_PLUGIN_SHADER_STAGE_VERTEX,
+++                        MLN_PLUGIN_UNIFORM_DRAWABLE},
+++                       {sizeof(mln_plugin_uniform_block_descriptor_v1),
+++                        1,
+++                        {"SharedUBO", 9},
+++                        16,
+++                        MLN_PLUGIN_SHADER_STAGE_VERTEX | MLN_PLUGIN_SHADER_STAGE_FRAGMENT,
+++                        MLN_PLUGIN_UNIFORM_LAYER}};
+++    plugin.updateUniformBlock = [](const mln_plugin_uniform_context_v1*, uint32_t id, uint8_t* bytes, size_t size) {
+++        if (size != sizeof(layerBlockValue)) return MLN_PLUGIN_STATUS_CALLBACK_ERROR;
+++        if (id == 1) std::memcpy(bytes, layerBlockValue.data(), size);
+++        return MLN_PLUGIN_STATUS_OK;
+++    };
+++    ASSERT_NO_FATAL_FAILURE(registerTestPlugin("test.both-stage-block", plugin));
+++    RenderTest test;
+++    test.map.getStyle().loadJSON(pointStyle(R"({"id":"block","type":"test.both-stage-block","source":"points"})"));
+++    // The quad is half the viewport wide; the block moves it from the left half
+++    // to the right half and changes its color.
+++    layerBlockValue = {0.0f, 1.0f, 0.0f, 0.0f};
+++    const auto left = test.frontend.render(test.map).image;
+++    EXPECT_EQ(red, pixelAt(left, 16, 32));
+++    EXPECT_EQ(clear, pixelAt(left, 48, 32));
+++    layerBlockValue = {1.0f, 0.0f, 1.0f, 0.0f};
+++    const auto right = test.frontend.render(test.map).image;
+++    EXPECT_EQ(clear, pixelAt(right, 16, 32));
+++    EXPECT_EQ(green, pixelAt(right, 48, 32));
+++}
+++
++ } // namespace
+diff --git a/patches/maplibre-native/README.md b/patches/maplibre-native/README.md
+index d632bc7..0b3c586 100644
+--- a/patches/maplibre-native/README.md
++++ b/patches/maplibre-native/README.md
+@@ -161,6 +161,21 @@ includes a plugin rendering regression that reads back fragment-indexed layer
+ blocks of 8176, 8192, 8208, and 16384 bytes across content changes. This patch
+ is not yet proposed upstream.
+ 
++`0028-plugin-static-textures.patch` adds static data textures to plugin
++shaders. A shader descriptor lists up to three RGBA32F textures of at most
++2048 texels a side; registration validates and copies their bytes, and
++re-registering different bytes conflicts. Each renderer uploads a texture once,
++on first use, with nearest filtering and clamp-to-edge addressing, and every
++style layer of the type shares it; a failed upload is logged once and the
++shader draws nothing. Shaders read the texture from the fragment stage through
++`MLN_PLUGIN_TEXTURE_<id>_BINDING`, and OpenGL resolves the sampler by name. The
++patch includes registry validation tests, which check that each rejection comes
++from the check it targets, and rendering tests on every backend: exact texel
++reads in row order, one upload shared across layers, drawable rebuilds and new
++tiles, a later renderer uploading again, sampler resolution in both shader
++variants, a source-free layer, and a layer uniform block read by both shader
++stages. This patch is not yet proposed upstream.
++
+ Each patch is the squashed diff of its upstream branch, applied on top of the
+ patches before it, so a patch that adds a test next to an earlier patch's test
+ carries that placement rather than the branch's own context.

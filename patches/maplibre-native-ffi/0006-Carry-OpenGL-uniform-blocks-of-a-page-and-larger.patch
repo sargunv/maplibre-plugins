@@ -1,0 +1,219 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Sargun Vohra <sargunv@users.noreply.github.com>
+Date: Wed, 23 Sep 2026 22:41:47 -0700
+Subject: [PATCH 6/8] Carry OpenGL uniform blocks of a page and larger
+
+Fixes two OpenGL crashes at the 8 KiB page of the uniform buffer
+allocator. A block larger than a page owns its GL buffer and keeps no
+CPU copy, but its update compared the new bytes against the empty
+managed copy and crashed on the first change; it now uploads without
+comparing. A block of exactly one page was rounded up past the page
+size, so its first allocation failed and crashed; exact multiples of the
+alignment now keep their size. Includes a plugin rendering regression.
+Not yet proposed upstream.
+
+Carried by maplibre-plugins until it lands upstream.
+---
+ .mise/bin/sync-submodules                     |   1 +
+ .../0027-opengl-large-uniform-blocks.patch    | 157 ++++++++++++++++++
+ patches/maplibre-native/README.md             |  11 ++
+ 3 files changed, 169 insertions(+)
+ create mode 100644 patches/maplibre-native/0027-opengl-large-uniform-blocks.patch
+
+diff --git a/.mise/bin/sync-submodules b/.mise/bin/sync-submodules
+index 6085fa6..4aafaf1 100755
+--- a/.mise/bin/sync-submodules
++++ b/.mise/bin/sync-submodules
+@@ -74,6 +74,7 @@ mln_patches=(
+   "$repo_root/patches/maplibre-native/0024-premultiply-plugin-default-colors.patch"
+   "$repo_root/patches/maplibre-native/0025-plugin-rotation-properties.patch"
+   "$repo_root/patches/maplibre-native/0026-plugin-frame-queries.patch"
++  "$repo_root/patches/maplibre-native/0027-opengl-large-uniform-blocks.patch"
+ )
+ 
+ # The patches overlap, so no single patch reverses cleanly on its own once the
+diff --git a/patches/maplibre-native/0027-opengl-large-uniform-blocks.patch b/patches/maplibre-native/0027-opengl-large-uniform-blocks.patch
+new file mode 100644
+index 0000000..f435226
+--- /dev/null
++++ b/patches/maplibre-native/0027-opengl-large-uniform-blocks.patch
+@@ -0,0 +1,157 @@
++diff --git a/src/mln/gl/buffer_allocator.cpp b/src/mln/gl/buffer_allocator.cpp
++--- a/src/mln/gl/buffer_allocator.cpp
+++++ b/src/mln/gl/buffer_allocator.cpp
++@@ -212,13 +212,9 @@ public:
++             occupancyBytes -= bufObj->getSize();
++         }
++ 
++-        // Align a pointer on a set block size
++-        static size_t align(size_t ptr, size_t alignment) {
++-            if (ptr == alignment) {
++-                return ptr;
++-            }
++-            return ((ptr + alignment) / alignment) * alignment;
++-        }
+++        // Round a size up to a multiple of the alignment. An exact multiple stays as
+++        // is, so an allocation of a whole page still fits in one.
+++        static size_t align(size_t ptr, size_t alignment) { return ((ptr + alignment - 1) / alignment) * alignment; }
++     };
++ 
++ public:
++diff --git a/src/mln/gl/uniform_buffer_gl.cpp b/src/mln/gl/uniform_buffer_gl.cpp
++--- a/src/mln/gl/uniform_buffer_gl.cpp
+++++ b/src/mln/gl/uniform_buffer_gl.cpp
++@@ -141,7 +141,9 @@ void UniformBufferGL::update(const void* data, std::size_t dataSize) {
++         return;
++     }
++ 
++-    if (std::memcmp(data, managedBuffer.getContents().data(), dataSize) == 0) {
+++    // Only allocator-managed buffers keep a CPU copy to compare against. A buffer
+++    // too large for the allocator owns its GL buffer and has no copy, so always upload.
+++    if (isManagedAllocation && std::memcmp(data, managedBuffer.getContents().data(), dataSize) == 0) {
++         return;
++     }
++ 
++diff --git a/test/plugin/rendering.test.cpp b/test/plugin/rendering.test.cpp
++--- a/test/plugin/rendering.test.cpp
+++++ b/test/plugin/rendering.test.cpp
++@@ -10,6 +10,7 @@
++ #include <mln/util/run_loop.hpp>
++ #include <gtest/gtest.h>
++ 
+++#include <algorithm>
++ #include <array>
++ #include <cstring>
++ 
++@@ -370,4 +371,111 @@ TEST(PluginRendering, NormalizedByteColorAttributes) {
++     }
++ }
++ 
+++// Texel i of the block is (red, i % 256, i / 256, 1) in 1/255 steps, and pixel
+++// column x shows texel min(x * stride, last), from the first to the last texel.
+++float largeBlockRed = 0;
+++
+++void registerLargeBlock(const std::string& pluginID, uint32_t byteSize) {
+++    static const float vertices[] = {-1, -1, 3, -1, -1, 3}; // Covers the viewport.
+++    static const uint16_t indices[] = {0, 1, 2};
+++    static const mln_plugin_vertex_stream_v1 stream = {
+++        sizeof(stream), 0, reinterpret_cast<const uint8_t*>(vertices), sizeof(vertices), 3, 2 * sizeof(float)};
+++    static const mln_plugin_attribute_binding_v1 binding = {sizeof(binding), 0, 0, 0};
+++    static const mln_plugin_segment_v1 segment = {sizeof(segment), 0, 0, 3, 3};
+++    static const mln_plugin_drawable_descriptor_v1 drawable = {
+++        sizeof(drawable), 1, {"main", 4}, &binding, 1, &segment, 1};
+++    const mln_plugin_shader_attribute_v1 attribute = {
+++        sizeof(attribute), 0, 0, {"a_pos", 5}, MLN_PLUGIN_VERTEX_FLOAT_X2};
+++    const mln_plugin_uniform_block_descriptor_v1 block = {
+++        sizeof(block), 0, {"LargeUBO", 8}, byteSize, MLN_PLUGIN_SHADER_STAGE_FRAGMENT, MLN_PLUGIN_UNIFORM_LAYER};
+++    const auto texels = std::to_string(byteSize / 16);
+++    const auto texel = [&](const std::string& x) {
+++        return "data[min(int(" + x + ")*" + std::to_string(byteSize / 16 / 32) + "," + texels + "-1)]";
+++    };
+++    const std::array<std::string, 5> code = {
+++        "in vec2 a_pos;void main(){gl_Position=vec4(a_pos,0,1);}",
+++        "layout(std140) uniform LargeUBO{highp vec4 data[" + texels +
+++            "];};void main(){fragColor=" + texel("gl_FragCoord.x") + ";}",
+++        "layout(location=0) in vec2 a_pos;void main(){gl_Position=vec4(a_pos,0,1);applySurfaceTransform();}",
+++        "layout(location=0) out vec4 fragColor;"
+++        "layout(std140,set=DRAWABLE_UBO_SET_INDEX,binding=MLN_PLUGIN_UNIFORM_0_BINDING) uniform LargeUBO{vec4 data[" +
+++            texels + "];};void main(){fragColor=" + texel("gl_FragCoord.x") + ";}",
+++        "struct Input{float2 a_pos [[attribute(0)]];};struct LargeUBO{float4 data[" + texels +
+++            "];};vertex float4 largeVertex(Input in [[stage_in]]){return float4(in.a_pos,0,1);}"
+++            "fragment half4 largeFragment(float4 position [[position]],"
+++            "constant LargeUBO& block [[buffer(MLN_PLUGIN_UNIFORM_0_BINDING)]]){return half4(block." +
+++            texel("position.x") + ");}"};
+++    const std::array<mln_plugin_shader_source_v1, 3> sources = {
+++        {{sizeof(mln_plugin_shader_source_v1), MLN_PLUGIN_BACKEND_OPENGL, view(code[0]), view(code[1]), {}, {}},
+++         {sizeof(mln_plugin_shader_source_v1), MLN_PLUGIN_BACKEND_VULKAN, view(code[2]), view(code[3]), {}, {}},
+++         {sizeof(mln_plugin_shader_source_v1),
+++          MLN_PLUGIN_BACKEND_METAL,
+++          view(code[4]),
+++          {},
+++          {"largeVertex", 11},
+++          {"largeFragment", 13}}}};
+++    const mln_plugin_shader_descriptor_v1 shader = {
+++        sizeof(shader), {"main", 4}, sources.data(), sources.size(), &attribute, 1, &block, 1, nullptr, 0};
+++    mln_plugin_layer_type_v1 layer{};
+++    layer.struct_size = sizeof(layer);
+++    layer.layer_type = view(pluginID);
+++    layer.backend_mask = MLN_PLUGIN_BACKEND_OPENGL | MLN_PLUGIN_BACKEND_VULKAN | MLN_PLUGIN_BACKEND_METAL;
+++    layer.geometry_type_mask = MLN_PLUGIN_GEOMETRY_POINT;
+++    layer.shaders = &shader;
+++    layer.shader_count = 1;
+++    layer.update_uniform_block = [](const mln_plugin_uniform_context_v1*, uint32_t, uint8_t* bytes, size_t size) {
+++        for (std::size_t i = 0; i < size / 16; ++i) {
+++            const float value[] = {largeBlockRed, (i % 256) / 255.0f, (i / 256) / 255.0f, 1};
+++            std::memcpy(bytes + i * 16, value, sizeof(value));
+++        }
+++        return MLN_PLUGIN_STATUS_OK;
+++    };
+++    layer.create_layout = [](const mln_plugin_layout_context_v1*, void** instance) {
+++        *instance = new (std::nothrow) int(0);
+++        return *instance ? MLN_PLUGIN_STATUS_OK : MLN_PLUGIN_STATUS_CALLBACK_ERROR;
+++    };
+++    layer.layout_feature = [](void*, const mln_plugin_feature_v1*) {
+++        return MLN_PLUGIN_STATUS_OK;
+++    };
+++    layer.finish_layout = [](void*, mln_plugin_bucket_v1* output) {
+++        *output = {sizeof(*output), &stream, 1, indices, 3, &drawable, 1, 0, nullptr, 0};
+++        return MLN_PLUGIN_STATUS_OK;
+++    };
+++    layer.destroy_layout = [](void* instance) {
+++        delete static_cast<int*>(instance);
+++    };
+++    const mln_plugin_descriptor_v1 descriptor = {
+++        sizeof(descriptor), MLN_PLUGIN_ABI_VERSION_1, view(pluginID), {"1", 1}, 1, 1, &layer, 1};
+++    char error[256]{};
+++    ASSERT_EQ(MLN_PLUGIN_STATUS_OK, mln_plugin_register_v1(&descriptor, error, sizeof(error))) << error;
+++}
+++
+++TEST(PluginRendering, LayerUniformBlocksAroundTheOpenGLPageSize) {
+++    // OpenGL sub-allocates uniform blocks from 8 KiB pages: 8176 bytes fit in a
+++    // page, 8192 fill one, and larger blocks get their own buffer. Each block
+++    // must draw its first and last texels and upload again when it changes.
+++    for (const uint32_t size : {8176, 8192, 8208, 16384}) {
+++        SCOPED_TRACE(size);
+++        const auto pluginID = "test.large-block-" + std::to_string(size);
+++        ASSERT_NO_FATAL_FAILURE(registerLargeBlock(pluginID, size));
+++        RenderTest test;
+++        test.map.getStyle().loadJSON(
+++            R"({"version":8,"sources":{"points":{"type":"geojson","data":{"type":"Point","coordinates":[0,0]}}},
+++            "layers":[{"id":"large","type":")" +
+++            pluginID + R"(","source":"points"}]})");
+++        for (const float red : {0.0f, 1.0f, 1.0f, 0.0f}) {
+++            largeBlockRed = red;
+++            const auto result = test.frontend.render(test.map);
+++            for (const uint32_t x : {0, 16, 63}) {
+++                const auto texel = std::min(x * (size / 16 / 32), size / 16 - 1);
+++                const auto* pixel = result.image.data.get() + (32 * 64 + x) * 4;
+++                EXPECT_EQ(red * 255, pixel[0]) << "column " << x;
+++                EXPECT_NEAR(texel % 256, pixel[1], 1) << "column " << x;
+++                EXPECT_NEAR(texel / 256, pixel[2], 1) << "column " << x;
+++                EXPECT_EQ(255, pixel[3]) << "column " << x;
+++            }
+++        }
+++    }
+++}
+++
++ } // namespace
+diff --git a/patches/maplibre-native/README.md b/patches/maplibre-native/README.md
+index 14175b7..d632bc7 100644
+--- a/patches/maplibre-native/README.md
++++ b/patches/maplibre-native/README.md
+@@ -150,6 +150,17 @@ plugin ABI. Frame queries use the native dynamic feature index and copy the
+ plugin's GeoJSON and world-pixel envelopes. This patch is local-only: it is
+ not upstreamed, and no upstream PR exists.
+ 
++`0027-opengl-large-uniform-blocks.patch` fixes two OpenGL crashes for uniform
++blocks at and above the 8 KiB page of the uniform buffer allocator. A block
++larger than a page gets a GL buffer of its own and keeps no CPU copy, but its
++update compared the new bytes against the empty managed copy and crashed on the
++first change; it now uploads without comparing. A block of exactly one page
++rounded up past the page size, so its first allocation failed and crashed; the
++allocator now rounds exact multiples of the alignment to themselves. The patch
++includes a plugin rendering regression that reads back fragment-indexed layer
++blocks of 8176, 8192, 8208, and 16384 bytes across content changes. This patch
++is not yet proposed upstream.
++
+ Each patch is the squashed diff of its upstream branch, applied on top of the
+ patches before it, so a patch that adds a test next to an earlier patch's test
+ carries that placement rather than the branch's own context.

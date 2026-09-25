@@ -1,0 +1,439 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Sargun Vohra <sargunv@users.noreply.github.com>
+Date: Thu, 24 Sep 2026 04:16:25 -0700
+Subject: [PATCH 8/8] Carry plugin OpenGL attributes by name
+
+A plugin program's OpenGL attribute list leaves out the attributes of
+properties bound as uniforms, but the program indexed that list by each
+active attribute's location, so a data-driven attribute after a
+uniform-bound one received the wrong id. Active attributes now match
+declared ones by name, so explicit locations are optional on OpenGL.
+Includes the first rendering tests of data-driven plugin paint attributes
+on OpenGL, Metal and Vulkan. Not yet proposed upstream.
+
+Carried by maplibre-plugins until it lands upstream.
+---
+ .mise/bin/sync-submodules                     |   1 +
+ .../0029-plugin-gl-attributes-by-name.patch   | 374 ++++++++++++++++++
+ patches/maplibre-native/README.md             |  15 +
+ 3 files changed, 390 insertions(+)
+ create mode 100644 patches/maplibre-native/0029-plugin-gl-attributes-by-name.patch
+
+diff --git a/.mise/bin/sync-submodules b/.mise/bin/sync-submodules
+index 920dd44..fa61f0d 100755
+--- a/.mise/bin/sync-submodules
++++ b/.mise/bin/sync-submodules
+@@ -76,6 +76,7 @@ mln_patches=(
+   "$repo_root/patches/maplibre-native/0026-plugin-frame-queries.patch"
+   "$repo_root/patches/maplibre-native/0027-opengl-large-uniform-blocks.patch"
+   "$repo_root/patches/maplibre-native/0028-plugin-static-textures.patch"
++  "$repo_root/patches/maplibre-native/0029-plugin-gl-attributes-by-name.patch"
+ )
+ 
+ # The patches overlap, so no single patch reverses cleanly on its own once the
+diff --git a/patches/maplibre-native/0029-plugin-gl-attributes-by-name.patch b/patches/maplibre-native/0029-plugin-gl-attributes-by-name.patch
+new file mode 100644
+index 0000000..2848134
+--- /dev/null
++++ b/patches/maplibre-native/0029-plugin-gl-attributes-by-name.patch
+@@ -0,0 +1,374 @@
++diff --git a/include/mln/plugin/plugin_api.h b/include/mln/plugin/plugin_api.h
++--- a/include/mln/plugin/plugin_api.h
+++++ b/include/mln/plugin/plugin_api.h
++@@ -167,7 +167,10 @@ typedef enum mln_plugin_vertex_attribute_type {
++     MLN_PLUGIN_VERTEX_UINT8_X4_NORMALIZED = 9
++ } mln_plugin_vertex_attribute_type;
++ 
++-/* Stable IDs are local to one registered plugin layer type. */
+++/* Stable IDs are local to one registered plugin layer type. On OpenGL the host
+++ * matches active attributes to declared ones by name, so layout(location = N)
+++ * is optional there. Vulkan (layout(location = N)) and Metal
+++ * ([[attribute(N)]]) must declare every attribute at its location. */
++ typedef struct mln_plugin_shader_attribute_v1 {
++     uint32_t struct_size;
++     uint32_t attribute_id;
++diff --git a/src/mln/shaders/gl/shader_program_gl.cpp b/src/mln/shaders/gl/shader_program_gl.cpp
++--- a/src/mln/shaders/gl/shader_program_gl.cpp
+++++ b/src/mln/shaders/gl/shader_program_gl.cpp
++@@ -7,7 +7,9 @@
++ #include <mln/shaders/program_parameters.hpp>
++ #include <mln/shaders/shader_manifest.hpp>
++ 
+++#include <algorithm>
++ #include <cstring>
+++#include <string_view>
++ #include <utility>
++ 
++ namespace mln {
++@@ -173,8 +175,17 @@ std::shared_ptr<ShaderProgramGL> ShaderProgramGL::create(
++                 continue;
++             }
++             const GLint location = MBGL_CHECK_ERROR(glGetAttribLocation(program, name.data()));
++-            assert(attributesInfo[location].name == std::string_view(name.data()));
++-            addAttr(attrs, attributesInfo[location].id, location, length, size, glType);
+++            // Match by name: a location is not an index into the list. Plugin
+++            // shaders pass only the attributes of their current variant, and
+++            // the linker places attributes without an explicit location.
+++            const std::string_view attributeName(name.data(), static_cast<size_t>(length));
+++            const auto info = std::ranges::find_if(
+++                attributesInfo, [&](const auto& attribute) { return attribute.name == attributeName; });
+++            if (info == attributesInfo.end()) {
+++                assert(false && "active attribute was not declared");
+++                continue;
+++            }
+++            addAttr(attrs, info->id, location, length, size, glType);
++         }
++ 
++         return std::make_shared<ShaderProgramGL>(std::move(program), std::move(attrs), std::move(samplerLocations));
++diff --git a/test/plugin/rendering.test.cpp b/test/plugin/rendering.test.cpp
++--- a/test/plugin/rendering.test.cpp
+++++ b/test/plugin/rendering.test.cpp
++@@ -2,6 +2,7 @@
++ #include <mln/map/map_options.hpp>
++ #include <mln/plugin/plugin_api.h>
++ #include <mln/plugin/plugin_shader.hpp>
+++#include <mln/renderer/renderer.hpp>
++ #include <mln/style/style.hpp>
++ #include <mln/style/layer.hpp>
++ #include <mln/style/rapidjson_conversion.hpp>
++@@ -104,9 +105,9 @@ void registerTriangles(const std::string& pluginID,
++         if (withUniforms) {
++             // Keep the declared GL block active in both uniform and attribute variants.
++             const std::string attributes =
++-                "\n#ifndef MLN_PLUGIN_PROPERTY_TEST_RADIUS_IS_UNIFORM\nin vec2 a_radius;\n#endif\n";
+++                "\n#if !MLN_PLUGIN_PROPERTY_TEST_RADIUS_IS_UNIFORM\nin vec2 a_radius;\n#endif\n";
++             const std::string evaluateRadius =
++-                "float radius=u_radius;\n#ifndef MLN_PLUGIN_PROPERTY_TEST_RADIUS_IS_UNIFORM\n"
+++                "float radius=u_radius;\n#if !MLN_PLUGIN_PROPERTY_TEST_RADIUS_IS_UNIFORM\n"
++                 "radius=mix(a_radius.x,a_radius.y,u_t);\n#endif\ngl_Position.z=radius*0.00001;}";
++             code[i][0] = "in vec2 a_pos;layout(std140) uniform QueryUBO{float u_radius;float u_t;};" + attributes +
++                          body + evaluateRadius;
++@@ -114,7 +115,7 @@ void registerTriangles(const std::string& pluginID,
++                 "layout(location=0) in vec2 a_pos;"
++                 "layout(set=DRAWABLE_UBO_SET_INDEX,binding=MLN_PLUGIN_UNIFORM_0_BINDING,std140) uniform QueryUBO"
++                 "{float u_radius;float u_t;};\n"
++-                "#ifndef MLN_PLUGIN_PROPERTY_TEST_RADIUS_IS_UNIFORM\n"
+++                "#if !MLN_PLUGIN_PROPERTY_TEST_RADIUS_IS_UNIFORM\n"
++                 "layout(location=1) in vec2 a_radius;\n#endif\n" +
++                 body + "applySurfaceTransform();" + evaluateRadius;
++             code[i][4] =
++@@ -975,4 +976,293 @@ TEST(PluginRendering, LayerBlocksReachBothStages) {
++     EXPECT_EQ(green, pixelAt(right, 48, 32));
++ }
++ 
+++// Paint properties in the attribute tests: data-driven ones accept every
+++// dependency, and camera-only ones are always uniforms.
+++constexpr uint32_t dataDriven = MLN_PLUGIN_EXPRESSION_CAMERA | MLN_PLUGIN_EXPRESSION_FEATURE |
+++                                MLN_PLUGIN_EXPRESSION_COMPOSITE | MLN_PLUGIN_EXPRESSION_FEATURE_STATE;
+++
+++mln_plugin_property_descriptor_v1 paintProperty(const char* name,
+++                                                mln_plugin_value_type type,
+++                                                uint32_t capabilities = dataDriven) {
+++    mln_plugin_property_descriptor_v1 property{};
+++    property.struct_size = sizeof(property);
+++    property.name = {name, std::strlen(name)};
+++    property.type = type;
+++    property.default_value = {sizeof(mln_plugin_value), type, {}};
+++    property.expression_capabilities = capabilities;
+++    return property;
+++}
+++
+++mln_plugin_shader_attribute_v1 paintAttribute(uint32_t id, const char* name, mln_plugin_vertex_attribute_type type) {
+++    return {sizeof(mln_plugin_shader_attribute_v1), id, id, {name, std::strlen(name)}, type};
+++}
+++
+++mln_plugin_shader_property_binding_v1 paintBinding(const char* property,
+++                                                   mln_plugin_property_encoding_v1 encoding,
+++                                                   uint32_t offset,
+++                                                   uint32_t minimumAttribute,
+++                                                   uint32_t maximumAttribute,
+++                                                   uint32_t interpolationOffset) {
+++    return {sizeof(mln_plugin_shader_property_binding_v1),
+++            {property, std::strlen(property)},
+++            encoding,
+++            0,
+++            offset,
+++            minimumAttribute,
+++            maximumAttribute,
+++            0,
+++            interpolationOffset};
+++}
+++
+++// "test-one" and "test-two" both accept feature data, and the color shows
+++// both. With "test-one" constant, its attribute leaves the program between
+++// a_pos and a_two, so the OpenGL list the host passes is shorter than the
+++// locations: a_two sits at location 2 but at index 1.
+++TestPlugin mixedBindingPlugin(bool glLocations) {
+++    const auto location = [&](unsigned index, bool vulkan) {
+++        return glLocations || vulkan ? "layout(location=" + std::to_string(index) + ") " : std::string{};
+++    };
+++    const auto attributes = [&](bool vulkan) {
+++        return location(0, vulkan) + "in vec2 a_pos;\n#if !MLN_PLUGIN_PROPERTY_TEST_ONE_IS_UNIFORM\n" +
+++               location(1, vulkan) + "in vec2 a_one;\n#endif\n#if !MLN_PLUGIN_PROPERTY_TEST_TWO_IS_UNIFORM\n" +
+++               location(2, vulkan) + "in vec2 a_two;\n#endif\n";
+++    };
+++    const std::string block = "uniform MixUBO{float one;float two;float tOne;float tTwo;}paint;";
+++    const std::string resolve =
+++        "\n#if MLN_PLUGIN_PROPERTY_TEST_ONE_IS_UNIFORM\nfloat one=paint.one;\n#else\n"
+++        "float one=mix(a_one.x,a_one.y,paint.tOne);\n#endif\n"
+++        "#if MLN_PLUGIN_PROPERTY_TEST_TWO_IS_UNIFORM\nfloat two=paint.two;\n#else\n"
+++        "float two=mix(a_two.x,a_two.y,paint.tTwo);\n#endif\nv_values=vec2(one,two);";
+++    TestPlugin plugin;
+++    plugin.code = {
+++        attributes(false) + "layout(std140) " + block + "flat out vec2 v_values;void main(){" + resolve +
+++            "gl_Position=vec4(a_pos,0.0,1.0);}",
+++        "flat in vec2 v_values;void main(){fragColor=vec4(v_values,0.0,1.0);}",
+++        attributes(true) + "layout(std140,set=DRAWABLE_UBO_SET_INDEX,binding=MLN_PLUGIN_UNIFORM_0_BINDING) " + block +
+++            "layout(location=0) flat out vec2 v_values;void main(){" + resolve +
+++            "gl_Position=vec4(a_pos,0.0,1.0);applySurfaceTransform();}",
+++        vulkanFragColor + "layout(location=0) flat in vec2 v_values;void main(){fragColor=vec4(v_values,0.0,1.0);}",
+++        "struct Input{float2 a_pos [[attribute(0)]];"
+++        "\n#if !MLN_PLUGIN_PROPERTY_TEST_ONE_IS_UNIFORM\nfloat2 a_one [[attribute(1)]];\n#endif\n"
+++        "#if !MLN_PLUGIN_PROPERTY_TEST_TWO_IS_UNIFORM\nfloat2 a_two [[attribute(2)]];\n#endif\n};"
+++        "struct MixUBO{float one;float two;float tOne;float tTwo;};"
+++        "struct Output{float4 position [[position]];float2 values [[flat]];};"
+++        "vertex Output testVertex(Input in [[stage_in]],constant MixUBO& paint "
+++        "[[buffer(MLN_PLUGIN_UNIFORM_0_BINDING)]]){Output out;out.position=float4(in.a_pos,0.0,1.0);"
+++        "\n#if MLN_PLUGIN_PROPERTY_TEST_ONE_IS_UNIFORM\nfloat one=paint.one;\n#else\n"
+++        "float one=mix(in.a_one.x,in.a_one.y,paint.tOne);\n#endif\n"
+++        "#if MLN_PLUGIN_PROPERTY_TEST_TWO_IS_UNIFORM\nfloat two=paint.two;\n#else\n"
+++        "float two=mix(in.a_two.x,in.a_two.y,paint.tTwo);\n#endif\n"
+++        "out.values=float2(one,two);return out;}"
+++        "fragment float4 testFragment(Output in [[stage_in]]){return float4(in.values,0.0,1.0);}"};
+++    plugin.attributes.push_back(paintAttribute(1, "a_one", MLN_PLUGIN_VERTEX_FLOAT_X2));
+++    plugin.attributes.push_back(paintAttribute(2, "a_two", MLN_PLUGIN_VERTEX_FLOAT_X2));
+++    plugin.uniforms = {{sizeof(mln_plugin_uniform_block_descriptor_v1),
+++                        0,
+++                        {"MixUBO", 6},
+++                        16,
+++                        MLN_PLUGIN_SHADER_STAGE_VERTEX,
+++                        MLN_PLUGIN_UNIFORM_DRAWABLE}};
+++    plugin.bindings = {paintBinding("test-one", MLN_PLUGIN_PROPERTY_ENCODING_FLOAT, 0, 1, 1, 8),
+++                       paintBinding("test-two", MLN_PLUGIN_PROPERTY_ENCODING_FLOAT, 4, 2, 2, 12)};
+++    plugin.properties = {paintProperty("test-one", MLN_PLUGIN_VALUE_FLOAT),
+++                         paintProperty("test-two", MLN_PLUGIN_VALUE_FLOAT)};
+++    return plugin;
+++}
+++
+++void expectMixedBindings(const std::string& pluginID, bool glLocations) {
+++    ASSERT_NO_FATAL_FAILURE(registerTestPlugin(pluginID, mixedBindingPlugin(glLocations)));
+++    RenderTest test;
+++    test.map.getStyle().loadJSON(
+++        pointStyle(R"({"id":"mixed","type":")" + pluginID +
+++                       R"(","source":"points","paint":{"test-one":0.2,"test-two":["get","v"]}})",
+++                   R"({"type":"Feature","properties":{"v":0.6},"geometry":{"type":"Point","coordinates":[0,0]}})"));
+++    const auto pixel = pixelAt(test.frontend.render(test.map).image, 32, 32);
+++    EXPECT_NEAR(51, pixel[0], 1);  // The uniform.
+++    EXPECT_NEAR(153, pixel[1], 1); // The attribute.
+++    EXPECT_EQ(0, pixel[2]);
+++    EXPECT_EQ(255, pixel[3]);
+++}
+++
+++TEST(PluginRendering, MixedUniformAndAttributeBindings) {
+++    expectMixedBindings("test.mixed-bindings", true);
+++}
+++
+++// OpenGL matches attributes by name, so its sources need no locations; the
+++// linker then places them.
+++TEST(PluginRendering, MixedUniformAndAttributeBindingsWithoutOpenGLLocations) {
+++    expectMixedBindings("test.mixed-bindings-unplaced", false);
+++}
+++
+++// Every kind of data-driven paint attribute, drawn from two features in two
+++// segments of one drawable. The left half of the viewport draws the first
+++// feature and the right half the second; each half shows the resolved values
+++// in columns of 8 pixels:
+++//   0: (p-scalar, p-pair.x, p-pair.y)   1: p-color.rgb
+++//   2: (p-state, p-cam, p-color.a)      3: (p-scalar minimum, maximum, factor)
+++// p-cam is camera-only and sits between data-driven attributes, so its
+++// attribute is always left out of the program.
+++mln_plugin_status twoFeatureQuads(void* instance, mln_plugin_bucket_v1* output) {
+++    auto& layout = *static_cast<TestLayout*>(instance);
+++    auto features = layout.features;
+++    std::sort(features.begin(), features.end(), [](const auto& a, const auto& b) { return a.second.x < b.second.x; });
+++    for (std::size_t i = 0; i < features.size() && i < 2; ++i) {
+++        addQuad(layout, features[i].first, i == 0 ? -1.0f : 0.0f, i == 0 ? 0.0f : 1.0f);
+++    }
+++    writeBucket(layout, output);
+++    return MLN_PLUGIN_STATUS_OK;
+++}
+++
+++TestPlugin dataDrivenPlugin() {
+++    // Explicit locations on every backend, so OpenGL relies on matching by name.
+++    const auto attribute = [](unsigned location, const std::string& macro, const std::string& declaration) {
+++        return "\n#if !MLN_PLUGIN_PROPERTY_" + macro + "_IS_UNIFORM\nlayout(location=" + std::to_string(location) +
+++               ") " + declaration + "\n#endif\n";
+++    };
+++    const auto attributes = [&](bool) {
+++        return "layout(location=0) in vec2 a_pos;" + attribute(1, "P_SCALAR", "in vec2 a_scalar;") +
+++               attribute(2, "P_CAM", "in vec2 a_cam;") + attribute(3, "P_PAIR", "in vec4 a_pair;") +
+++               attribute(4, "P_COLOR", "in vec4 a_color_min;") + attribute(5, "P_COLOR", "in vec4 a_color_max;") +
+++               attribute(6, "P_STATE", "in vec2 a_state;");
+++    };
+++    const std::string block =
+++        "uniform PaintUBO{vec4 color;vec2 pair;float scalar;float cam;float state;float pad0;float pad1;float pad2;"
+++        "vec4 t;vec4 t2;}paint;";
+++    // resolve(name, type, attribute expression, uniform expression)
+++    const auto resolve = [](const std::string& macro,
+++                            const std::string& declaration,
+++                            const std::string& fromAttribute,
+++                            const std::string& fromUniform) {
+++        return "\n#if MLN_PLUGIN_PROPERTY_" + macro + "_IS_UNIFORM\n" + declaration + "=" + fromUniform + ";\n#else\n" +
+++               declaration + "=" + fromAttribute + ";\n#endif\n";
+++    };
+++    const auto body = [&](const std::string& in) {
+++        return resolve("P_SCALAR",
+++                       "float scalar",
+++                       "mix(" + in + "a_scalar.x," + in + "a_scalar.y,paint.t.x)",
+++                       "paint.scalar") +
+++               resolve("P_SCALAR", "float scalarMin", in + "a_scalar.x", "paint.scalar") +
+++               resolve("P_SCALAR", "float scalarMax", in + "a_scalar.y", "paint.scalar") +
+++               resolve("P_CAM", "float cam", "mix(" + in + "a_cam.x," + in + "a_cam.y,paint.t.y)", "paint.cam") +
+++               resolve("P_PAIR", "vec2 pair", "mix(" + in + "a_pair.xy," + in + "a_pair.zw,paint.t.z)", "paint.pair") +
+++               resolve("P_COLOR",
+++                       "vec4 color",
+++                       "mix(" + in + "a_color_min," + in + "a_color_max,paint.t.w)",
+++                       "paint.color") +
+++               resolve(
+++                   "P_STATE", "float state", "mix(" + in + "a_state.x," + in + "a_state.y,paint.t2.x)", "paint.state");
+++    };
+++    const std::string outputs =
+++        "v0=vec4(scalar,pair,1.0);v1=vec4(color.rgb,1.0);v2=vec4(state,cam,color.a,1.0);"
+++        "v3=vec4(scalarMin,scalarMax,paint.t.x,1.0);";
+++    const std::string glVaryings = "flat out vec4 v0;flat out vec4 v1;flat out vec4 v2;flat out vec4 v3;";
+++    const std::string vulkanVaryings =
+++        "layout(location=0) flat out vec4 v0;layout(location=1) flat out vec4 v1;"
+++        "layout(location=2) flat out vec4 v2;layout(location=3) flat out vec4 v3;";
+++    const std::string pick =
+++        "int column=(int(gl_FragCoord.x)%32)/8;"
+++        "fragColor=column==0?v0:column==1?v1:column==2?v2:v3;}";
+++    TestPlugin plugin;
+++    plugin.code = {
+++        attributes(false) + "layout(std140) " + block + glVaryings + "void main(){" + body("") + outputs +
+++            "gl_Position=vec4(a_pos,0.0,1.0);}",
+++        "precision highp float;flat in vec4 v0;flat in vec4 v1;flat in vec4 v2;flat in vec4 v3;void main(){" + pick,
+++        attributes(true) + "layout(std140,set=DRAWABLE_UBO_SET_INDEX,binding=MLN_PLUGIN_UNIFORM_0_BINDING) " + block +
+++            vulkanVaryings + "void main(){" + body("") + outputs +
+++            "gl_Position=vec4(a_pos,0.0,1.0);applySurfaceTransform();}",
+++        vulkanFragColor +
+++            "layout(location=0) flat in vec4 v0;layout(location=1) flat in vec4 v1;"
+++            "layout(location=2) flat in vec4 v2;layout(location=3) flat in vec4 v3;void main(){" +
+++            pick,
+++        "struct Input{float2 a_pos [[attribute(0)]];"
+++        "\n#if !MLN_PLUGIN_PROPERTY_P_SCALAR_IS_UNIFORM\nfloat2 a_scalar [[attribute(1)]];\n#endif\n"
+++        "#if !MLN_PLUGIN_PROPERTY_P_CAM_IS_UNIFORM\nfloat2 a_cam [[attribute(2)]];\n#endif\n"
+++        "#if !MLN_PLUGIN_PROPERTY_P_PAIR_IS_UNIFORM\nfloat4 a_pair [[attribute(3)]];\n#endif\n"
+++        "#if !MLN_PLUGIN_PROPERTY_P_COLOR_IS_UNIFORM\nfloat4 a_color_min [[attribute(4)]];"
+++        "float4 a_color_max [[attribute(5)]];\n#endif\n"
+++        "#if !MLN_PLUGIN_PROPERTY_P_STATE_IS_UNIFORM\nfloat2 a_state [[attribute(6)]];\n#endif\n};"
+++        "struct PaintUBO{float4 color;float2 pair;float scalar;float cam;float state;float pad0;float pad1;"
+++        "float pad2;float4 t;float4 t2;};"
+++        "struct Output{float4 position [[position]];float4 v0 [[flat]];float4 v1 [[flat]];float4 v2 [[flat]];"
+++        "float4 v3 [[flat]];};"
+++        "\n#define vec2 float2\n#define vec4 float4\n"
+++        "vertex Output testVertex(Input in [[stage_in]],constant PaintUBO& paint "
+++        "[[buffer(MLN_PLUGIN_UNIFORM_0_BINDING)]]){Output out;" +
+++            body("in.") +
+++            "out.v0=vec4(scalar,pair,1.0);out.v1=vec4(color.rgb,1.0);out.v2=vec4(state,cam,color.a,1.0);"
+++            "out.v3=vec4(scalarMin,scalarMax,paint.t.x,1.0);out.position=float4(in.a_pos,0.0,1.0);return out;}"
+++            "fragment float4 testFragment(Output in [[stage_in]]){int column=(int(in.position.x)%32)/8;"
+++            "return column==0?in.v0:column==1?in.v1:column==2?in.v2:in.v3;}"};
+++    plugin.attributes = {paintAttribute(0, "a_pos", MLN_PLUGIN_VERTEX_FLOAT_X2),
+++                         paintAttribute(1, "a_scalar", MLN_PLUGIN_VERTEX_FLOAT_X2),
+++                         paintAttribute(2, "a_cam", MLN_PLUGIN_VERTEX_FLOAT_X2),
+++                         paintAttribute(3, "a_pair", MLN_PLUGIN_VERTEX_FLOAT_X4),
+++                         paintAttribute(4, "a_color_min", MLN_PLUGIN_VERTEX_FLOAT_X4),
+++                         paintAttribute(5, "a_color_max", MLN_PLUGIN_VERTEX_FLOAT_X4),
+++                         paintAttribute(6, "a_state", MLN_PLUGIN_VERTEX_FLOAT_X2)};
+++    plugin.uniforms = {{sizeof(mln_plugin_uniform_block_descriptor_v1),
+++                        0,
+++                        {"PaintUBO", 8},
+++                        80,
+++                        MLN_PLUGIN_SHADER_STAGE_VERTEX,
+++                        MLN_PLUGIN_UNIFORM_DRAWABLE}};
+++    plugin.bindings = {paintBinding("p-scalar", MLN_PLUGIN_PROPERTY_ENCODING_FLOAT, 24, 1, 1, 48),
+++                       paintBinding("p-cam", MLN_PLUGIN_PROPERTY_ENCODING_FLOAT, 28, 2, 2, 52),
+++                       paintBinding("p-pair", MLN_PLUGIN_PROPERTY_ENCODING_FLOAT2, 16, 3, 3, 56),
+++                       paintBinding("p-color", MLN_PLUGIN_PROPERTY_ENCODING_COLOR, 0, 4, 5, 60),
+++                       paintBinding("p-state", MLN_PLUGIN_PROPERTY_ENCODING_FLOAT, 32, 6, 6, 64)};
+++    plugin.properties = {paintProperty("p-scalar", MLN_PLUGIN_VALUE_FLOAT),
+++                         paintProperty("p-cam", MLN_PLUGIN_VALUE_FLOAT, MLN_PLUGIN_EXPRESSION_CAMERA),
+++                         paintProperty("p-pair", MLN_PLUGIN_VALUE_FLOAT2),
+++                         paintProperty("p-color", MLN_PLUGIN_VALUE_COLOR),
+++                         paintProperty("p-state", MLN_PLUGIN_VALUE_FLOAT)};
+++    plugin.finishLayout = twoFeatureQuads;
+++    return plugin;
+++}
+++
+++TEST(PluginRendering, DataDrivenPaintAttributes) {
+++    ASSERT_NO_FATAL_FAILURE(registerTestPlugin("test.data-driven", dataDrivenPlugin()));
+++    RenderTest test;
+++    // Both features lie in one z1 tile; at zoom 1.5 the composite factor is 0.5.
+++    test.map.getStyle().loadJSON(pointStyle(
+++        R"({"id":"paint","type":"test.data-driven","source":"points","paint":{
+++            "p-scalar":["interpolate",["linear"],["zoom"],1,["get","a"],2,["get","b"]],
+++            "p-cam":0.5,
+++            "p-pair":["get","xy"],
+++            "p-color":["get","c"],
+++            "p-state":["number",["feature-state","s"],0.25]}})",
+++        R"({"type":"FeatureCollection","features":[
+++            {"type":"Feature","id":1,"properties":{"a":0.2,"b":0.6,"xy":[0.1,0.9],"c":"#336699"},
+++             "geometry":{"type":"Point","coordinates":[10,10]}},
+++            {"type":"Feature","id":2,"properties":{"a":0.8,"b":0.4,"xy":[0.7,0.3],"c":"#cc9933"},
+++             "geometry":{"type":"Point","coordinates":[20,10]}}]})"));
+++    test.map.jumpTo(CameraOptions().withCenter(LatLng{10, 15}).withZoom(1.5));
+++    // Expected channels per column of each feature, in 1/255 steps.
+++    using Columns = std::array<std::array<float, 3>, 4>;
+++    const auto expectFeature = [](const PremultipliedImage& image, uint32_t left, const Columns& columns) {
+++        for (uint32_t column = 0; column < columns.size(); ++column) {
+++            const auto x = left + column * 8 + 4;
+++            const auto pixel = pixelAt(image, x, 32);
+++            for (int channel = 0; channel < 3; ++channel) {
+++                EXPECT_NEAR(columns[column][channel] * 255, pixel[channel], 1.01)
+++                    << "column " << column << " channel " << channel << " at x " << x;
+++            }
+++            EXPECT_EQ(255, pixel[3]) << "column " << column << " at x " << x;
+++        }
+++    };
+++    const Columns first = {{{0.4f, 0.1f, 0.9f}, {0.2f, 0.4f, 0.6f}, {0.25f, 0.5f, 1.0f}, {0.2f, 0.6f, 0.5f}}};
+++    Columns second = {{{0.6f, 0.7f, 0.3f}, {0.8f, 0.6f, 0.2f}, {0.25f, 0.5f, 1.0f}, {0.8f, 0.4f, 0.5f}}};
+++    const auto initial = test.frontend.render(test.map).image;
+++    expectFeature(initial, 0, first);
+++    expectFeature(initial, 32, second);
+++    // Feature state refills only the second feature's attribute range.
+++    FeatureState state;
+++    state["s"] = 0.75;
+++    test.frontend.getRenderer()->setFeatureState("points", {}, "2", state);
+++    const auto stated = test.frontend.render(test.map).image;
+++    second[2][0] = 0.75f;
+++    expectFeature(stated, 0, first);
+++    expectFeature(stated, 32, second);
+++}
+++
++ } // namespace
+diff --git a/patches/maplibre-native/README.md b/patches/maplibre-native/README.md
+index 0b3c586..4ad95ea 100644
+--- a/patches/maplibre-native/README.md
++++ b/patches/maplibre-native/README.md
+@@ -176,6 +176,21 @@ tiles, a later renderer uploading again, sampler resolution in both shader
+ variants, a source-free layer, and a layer uniform block read by both shader
+ stages. This patch is not yet proposed upstream.
+ 
++`0029-plugin-gl-attributes-by-name.patch` fixes plugin vertex attributes on
++OpenGL. A plugin program's attribute list leaves out the attributes of
++properties bound as uniforms, but the program indexed that list by each active
++attribute's linked location, so a data-driven attribute declared after a
++uniform-bound one received the wrong id or none. The program now matches active
++attributes to declared ones by name, which also makes explicit
++`layout(location = N)` optional on OpenGL; built-in shaders, whose lists are in
++location order, behave as before. The patch adds the first rendering tests that
++draw data-driven plugin paint attributes, on every backend: a packed composite
++scalar at a fractional zoom, a packed float2, a color pair, a feature-state
++refill of one feature, and two segments in one drawable, beside a camera-only
++property whose attribute leaves the program. It also corrects a test guard that
++tested whether the always-defined uniform macro was defined. This patch is not
++yet proposed upstream.
++
+ Each patch is the squashed diff of its upstream branch, applied on top of the
+ patches before it, so a patch that adds a test next to an earlier patch's test
+ carries that placement rather than the branch's own context.

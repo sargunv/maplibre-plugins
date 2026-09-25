@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Sargun Vohra <sargunv@users.noreply.github.com>
 Date: Tue, 22 Sep 2026 23:26:38 -0700
-Subject: [PATCH 2/5] Carry source-free plugin layers
+Subject: [PATCH 2/8] Carry source-free plugin layers
 
 Adds the source_free flag and build_frame callback to the plugin layer
 ABI: a layer with no style source receives its geometry from a per-frame
