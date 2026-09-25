@@ -111,6 +111,17 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+.row select {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 2px 4px;
+  border: 1px solid var(--panel-border);
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+}
+
 .row input[type="color"] {
   width: 100%;
   height: 22px;
@@ -171,4 +182,83 @@ pre#json {
   background: rgb(127 127 127 / 0.12);
   font-size: 11px;
   line-height: 1.4;
+}
+
+.row input[type="checkbox"] {
+  justify-self: start;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.chips button {
+  padding: 3px 9px;
+  border-radius: 999px;
+}
+
+.chips button[aria-pressed="false"] {
+  color: var(--panel-muted);
+}
+
+.chips .count {
+  margin-left: 5px;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.75;
+}
+
+/* Station popups on the weather page's dark basemap. */
+.weather-popup {
+  --popup-bg: #1d2129;
+}
+
+.weather-popup .maplibregl-popup-content {
+  padding: 10px 26px 10px 12px;
+  border-radius: 8px;
+  background: var(--popup-bg);
+  color: #e6e8eb;
+  box-shadow: 0 4px 16px rgb(0 0 0 / 0.4);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.45;
+}
+
+.weather-popup .maplibregl-popup-close-button {
+  color: #9aa3ad;
+}
+
+.weather-popup.maplibregl-popup-anchor-top .maplibregl-popup-tip,
+.weather-popup.maplibregl-popup-anchor-top-left .maplibregl-popup-tip,
+.weather-popup.maplibregl-popup-anchor-top-right .maplibregl-popup-tip {
+  border-bottom-color: var(--popup-bg);
+}
+
+.weather-popup.maplibregl-popup-anchor-bottom .maplibregl-popup-tip,
+.weather-popup.maplibregl-popup-anchor-bottom-left .maplibregl-popup-tip,
+.weather-popup.maplibregl-popup-anchor-bottom-right .maplibregl-popup-tip {
+  border-top-color: var(--popup-bg);
+}
+
+.weather-popup.maplibregl-popup-anchor-left .maplibregl-popup-tip {
+  border-right-color: var(--popup-bg);
+}
+
+.weather-popup.maplibregl-popup-anchor-right .maplibregl-popup-tip {
+  border-left-color: var(--popup-bg);
+}
+
+.weather-popup .title {
+  font-weight: 600;
+}
+
+.weather-popup .title small,
+.weather-popup .detail {
+  color: #9aa3ad;
+}
+
+.weather-popup .temperature {
+  font-size: 15px;
 }

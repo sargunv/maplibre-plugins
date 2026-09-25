@@ -113,6 +113,14 @@ echo "copied $src; update the commit noted in third_party/mln-plugin-api/README.
 description = "Mirror plugins/*/shaders/*.glsl into the JS packages."
 run = "node scripts/sync-shaders.mjs"
 
+[tasks.bake]
+description = "Bake the animated-icon catalogs (demo, weather), the JS copy and the fixtures"
+run = "node plugins/animated-icon/baker/src/cli.ts"
+
+[tasks."bake:check"]
+description = "Rebake every animated-icon catalog in memory and fail on any byte difference (slow; CI)."
+run = "node plugins/animated-icon/baker/src/cli.ts --check --full"
+
 [tasks.native-info]
 description = "Show which maplibre-native-c install the native apps will use."
 run = '''

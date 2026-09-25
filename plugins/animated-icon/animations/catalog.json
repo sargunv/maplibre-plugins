@@ -1,0 +1,22 @@
+{
+  "$comment": "The demo catalog: `mise run bake` compiles these animations into ../catalog/demo.mlvc (output) and its base64 copy for the JS package (js) in this order, which is the order of icon-animation's enum values after \"none\". Fields: see CatalogManifest and CatalogEntry in ../baker/src/bake.ts. maxDisplayPx 192 keeps curves within 0.2 device pixels up to icon-size 1.33 on a 3x screen; fps defaults to 60.",
+  "output": "../catalog/demo.mlvc",
+  "js": "../js/src/generated/catalog.ts",
+  "animations": [
+    {
+      "name": "pulse",
+      "file": "pulse.json",
+      "displayPx": 48,
+      "maxDisplayPx": 192
+    },
+    { "name": "pin", "file": "pin.json", "displayPx": 48, "maxDisplayPx": 192 },
+    {
+      "name": "clear-day",
+      "file": "meteocons/clear-day.json",
+      "displayPx": 48,
+      "maxDisplayPx": 192,
+      "credit": "Meteocons by Bas Milius (https://github.com/basmilius/meteocons), line/clear-day from @meteocons/lottie 3.0.0-next.10",
+      "license": "meteocons/LICENSE"
+    }
+  ]
+}

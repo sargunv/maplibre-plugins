@@ -1,0 +1,28 @@
+{
+  "description": "Every owned point of a MultiPoint is an anchor with its own range; the vertices encode anchor * 2 + corner.",
+  "extent": 8192,
+  "features": [
+    { "index": 4, "points": [[10, 20], [5, 5], [9000, 5]] },
+    { "index": 7, "points": [[6, 10]] }
+  ],
+  "expected": {
+    "anchor_count": 3,
+    "anchors": [[5, 5, 4], [6, 10, 7], [10, 20, 4]],
+    "segments": [[0, 0, 12, 18]],
+    "vertices": [
+      [10, 10],
+      [11, 10],
+      [10, 11],
+      [11, 11],
+      [12, 20],
+      [13, 20],
+      [12, 21],
+      [13, 21],
+      [20, 40],
+      [21, 40],
+      [20, 41],
+      [21, 41]
+    ],
+    "indices": [0, 1, 2, 1, 3, 2, 4, 5, 6, 5, 7, 6, 8, 9, 10, 9, 11, 10]
+  }
+}

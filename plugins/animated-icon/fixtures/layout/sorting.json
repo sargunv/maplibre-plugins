@@ -1,0 +1,22 @@
+{
+  "description": "Anchors sort by y, then x; equal anchors keep feature order, and a feature's points keep theirs.",
+  "extent": 8192,
+  "features": [
+    { "index": 10, "points": [[300, 200], [100, 200], [100, 50]] },
+    { "index": 11, "points": [[100, 200], [50, 900], [200, 100]] },
+    { "index": 12, "points": [[100, 200]] }
+  ],
+  "expected": {
+    "anchor_count": 7,
+    "anchors": [
+      [100, 50, 10],
+      [200, 100, 11],
+      [100, 200, 10],
+      [100, 200, 11],
+      [100, 200, 12],
+      [300, 200, 10],
+      [50, 900, 11]
+    ],
+    "segments": [[0, 0, 28, 42]]
+  }
+}

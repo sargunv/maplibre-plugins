@@ -1,0 +1,110 @@
+{
+  "$comment": "Shared contract for animated vector icons. Both the native Zig plugin and the maplibre-gl-js layer are tested against this file. `\"values\": \"catalog\"` means the enum values are \"none\" followed by the registered catalog's animation names, in catalog order. `\"expressions\"` is \"camera\" (constants and zoom expressions) or \"data-driven\" (also feature, composite and feature-state expressions); absent means \"camera\". `\"transition\"` says whether a `<name>-transition` key is accepted; absent means true for numeric types and false for enums.",
+  "id": "animated-icon",
+  "layerType": "animated-icon",
+  "native": {
+    "pluginId": "org.maplibre.plugins.animated-icon",
+    "pluginVersion": "0.2.0",
+    "library": "maplibre-animated-icon",
+    "entryPoint": "mln_animated_icon_register",
+    "catalogEntryPoint": "mln_animated_icon_register_catalog",
+    "clockSymbol": "mln_animated_icon_clock_seconds"
+  },
+  "geometry": "point",
+  "catalog": "catalog/demo.mlvc",
+  "paint": {
+    "icon-animation": {
+      "type": "enum",
+      "values": "catalog",
+      "default": "none",
+      "expressions": "data-driven",
+      "doc": "The catalog animation to draw, chosen per feature when data-driven; none draws nothing."
+    },
+    "icon-size": {
+      "type": "float",
+      "default": 1,
+      "minimum": 0,
+      "expressions": "data-driven",
+      "doc": "Scale factor on the animation's display size (the longer side of its anchor box, in logical pixels)."
+    },
+    "icon-rotate": {
+      "type": "rotation",
+      "default": 0,
+      "expressions": "data-driven",
+      "doc": "Rotation in degrees clockwise; transitions take the shortest arc."
+    },
+    "icon-opacity": {
+      "type": "float",
+      "default": 1,
+      "minimum": 0,
+      "maximum": 1,
+      "expressions": "data-driven",
+      "doc": "Opacity of the whole icon, applied after its shapes are composited, so overlaps inside the icon never show through."
+    },
+    "icon-color": {
+      "type": "color",
+      "default": [0, 0, 0, 0],
+      "expressions": "data-driven",
+      "doc": "Recolors the animation's primary color slot. The alpha is the strength: 0 keeps the authored colors, 1 replaces them."
+    },
+    "icon-offset": {
+      "type": "float2",
+      "default": [0, 0],
+      "expressions": "data-driven",
+      "doc": "Offset [right, down] from the anchor, in logical pixels scaled by icon-size."
+    },
+    "icon-anchor": {
+      "type": "enum",
+      "values": [
+        "center",
+        "left",
+        "right",
+        "top",
+        "bottom",
+        "top-left",
+        "top-right",
+        "bottom-left",
+        "bottom-right"
+      ],
+      "default": "center",
+      "expressions": "data-driven",
+      "doc": "Which point of the animation's anchor box sits on the feature."
+    },
+    "icon-rotation-alignment": {
+      "type": "enum",
+      "values": ["auto", "map", "viewport"],
+      "default": "auto",
+      "expressions": "camera",
+      "doc": "map keeps the icon's up pointing north as the map rotates; viewport keeps it upright on screen; auto is viewport, as for point symbols."
+    },
+    "icon-pitch-alignment": {
+      "type": "enum",
+      "values": ["auto", "map", "viewport"],
+      "default": "auto",
+      "expressions": "camera",
+      "doc": "map lays the icon on the ground plane; viewport keeps it facing the camera; auto follows icon-rotation-alignment."
+    },
+    "icon-animation-speed": {
+      "type": "float",
+      "default": 1,
+      "minimum": -4,
+      "maximum": 4,
+      "expressions": "data-driven",
+      "transition": true,
+      "doc": "Playback rate multiplier, clamped to −4..4: 0 holds the frame at icon-animation-offset and negative plays backwards; a constant change sweeps the playhead during the transition unless icon-animation-speed-transition has duration 0."
+    },
+    "icon-animation-offset": {
+      "type": "float",
+      "default": 0,
+      "expressions": "data-driven",
+      "doc": "Seconds added to the playhead, to desynchronize icons (for example from [\"id\"]) or to restart one by subtracting a start time read from the plugin clock (clockSeconds() or mln_animated_icon_clock_seconds), never a wall-clock time."
+    },
+    "icon-animation-mode": {
+      "type": "enum",
+      "values": ["loop", "alternate", "once"],
+      "default": "loop",
+      "expressions": "data-driven",
+      "doc": "loop repeats, alternate plays forward then backward, and once plays a single time and holds the last frame (the first frame before it starts)."
+    }
+  }
+}

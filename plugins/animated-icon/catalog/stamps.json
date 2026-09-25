@@ -1,0 +1,22 @@
+{
+  "catalog/demo.mlvc": {
+    "inputs": "d007e1a7f4cf3949dd073016a59c11da44284db64ef7e9f5b1948ec4c6dc1395",
+    "output": "599a321004afad3dd9ec49cc92d9fa38a5b8523e554a94229f9de32b85ae4253"
+  },
+  "catalog/weather.mlvc": {
+    "inputs": "bfa1d08e8924628d85a987a849be658fe76f262ee0c425a706400e7360623d07",
+    "output": "e69400ecc54d1b8c83544f2a396b820157ac1d0337db564513da48ad5db2878a"
+  },
+  "catalog/weather.mlvc.LICENSE.txt": {
+    "inputs": "bfa1d08e8924628d85a987a849be658fe76f262ee0c425a706400e7360623d07",
+    "output": "e16714057910706380a646929ae5a111f15f45fb038ca0f51e46a7c00e53027e"
+  },
+  "fixtures/catalog": {
+    "inputs": "8a6ba636e4d00a50a4a72330d01e02b19374bef1841bd3b43f9764048a7b298c",
+    "output": "d64cc01426bac5c7b4554ef70576ebb4a9c8e044b35a56ac942363e291589a6c"
+  },
+  "js/src/generated/catalog.ts": {
+    "inputs": "d007e1a7f4cf3949dd073016a59c11da44284db64ef7e9f5b1948ec4c6dc1395",
+    "output": "ef2fdabbfc0175363ece6b43e693c1d7ec249e4f377c2ab93920bfd9dfcf726d"
+  }
+}

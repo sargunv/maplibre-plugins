@@ -11,6 +11,7 @@
     "check": "vp check"
   },
   "dependencies": {
+    "@maplibre-plugins/animated-icon": "workspace:*",
     "@maplibre-plugins/location-indicator": "workspace:*",
     "@maplibre-plugins/paint": "workspace:*",
     "@maplibre-plugins/water": "workspace:*",

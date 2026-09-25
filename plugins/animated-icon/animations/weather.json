@@ -1,0 +1,105 @@
+{
+  "$comment": "The weather-stations app catalog: the default baker run (`mise run bake`) compiles these animations into ../catalog/weather.mlvc in this order, which is the order of icon-animation's enum values after \"none\", and writes their credits and license texts to ../catalog/weather.mlvc.LICENSE.txt. Apps load it at run time: the gallery with loadCatalog, the native viewer with --catalog. Meteocons flat style from @meteocons/lottie 3.0.0-next.10 (see LICENSES.md). Every entry shares one anchor box, the union of the 12 content boxes rounded out, so all icons draw at the same scale and anchor; displayPx 48 applies to its longer side (103 canvas px), and maxDisplayPx keeps its default, 4 x displayPx. Baked at 30 fps to keep the committed file small, except wind at 60, whose dash marches 2.6 px per 30 fps step. Fields: see CatalogEntry in ../baker/src/bake.ts.",
+  "output": "../catalog/weather.mlvc",
+  "notice": "../catalog/weather.mlvc.LICENSE.txt",
+  "fps": 30,
+  "animations": [
+    {
+      "name": "clear-day",
+      "file": "meteocons/flat/clear-day.json",
+      "displayPx": 48,
+      "box": [15, 15, 113, 118],
+      "credit": "Meteocons by Bas Milius (https://github.com/basmilius/meteocons), flat/clear-day from @meteocons/lottie 3.0.0-next.10",
+      "license": "meteocons/LICENSE"
+    },
+    {
+      "name": "clear-night",
+      "file": "meteocons/flat/clear-night.json",
+      "displayPx": 48,
+      "box": [15, 15, 113, 118],
+      "credit": "Meteocons by Bas Milius, flat/clear-night",
+      "license": "meteocons/LICENSE"
+    },
+    {
+      "name": "partly-cloudy-day",
+      "file": "meteocons/flat/partly-cloudy-day.json",
+      "displayPx": 48,
+      "box": [15, 15, 113, 118],
+      "credit": "Meteocons by Bas Milius, flat/partly-cloudy-day",
+      "license": "meteocons/LICENSE"
+    },
+    {
+      "name": "partly-cloudy-night",
+      "file": "meteocons/flat/partly-cloudy-night.json",
+      "displayPx": 48,
+      "box": [15, 15, 113, 118],
+      "credit": "Meteocons by Bas Milius, flat/partly-cloudy-night",
+      "license": "meteocons/LICENSE"
+    },
+    {
+      "name": "overcast",
+      "file": "meteocons/flat/overcast.json",
+      "displayPx": 48,
+      "box": [15, 15, 113, 118],
+      "credit": "Meteocons by Bas Milius, flat/overcast",
+      "license": "meteocons/LICENSE"
+    },
+    {
+      "name": "fog",
+      "file": "meteocons/flat/fog.json",
+      "displayPx": 48,
+      "box": [15, 15, 113, 118],
+      "credit": "Meteocons by Bas Milius, flat/fog",
+      "license": "meteocons/LICENSE"
+    },
+    {
+      "name": "drizzle",
+      "file": "meteocons/flat/drizzle.json",
+      "displayPx": 48,
+      "box": [15, 15, 113, 118],
+      "credit": "Meteocons by Bas Milius, flat/drizzle",
+      "license": "meteocons/LICENSE"
+    },
+    {
+      "name": "rain",
+      "file": "meteocons/flat/rain.json",
+      "displayPx": 48,
+      "box": [15, 15, 113, 118],
+      "credit": "Meteocons by Bas Milius, flat/rain",
+      "license": "meteocons/LICENSE"
+    },
+    {
+      "name": "sleet",
+      "file": "meteocons/flat/sleet.json",
+      "displayPx": 48,
+      "box": [15, 15, 113, 118],
+      "credit": "Meteocons by Bas Milius, flat/sleet",
+      "license": "meteocons/LICENSE"
+    },
+    {
+      "name": "snow",
+      "file": "meteocons/flat/snow.json",
+      "displayPx": 48,
+      "box": [15, 15, 113, 118],
+      "credit": "Meteocons by Bas Milius, flat/snow",
+      "license": "meteocons/LICENSE"
+    },
+    {
+      "name": "thunderstorms-rain",
+      "file": "meteocons/flat/thunderstorms-rain.json",
+      "displayPx": 48,
+      "box": [15, 15, 113, 118],
+      "credit": "Meteocons by Bas Milius, flat/thunderstorms-rain",
+      "license": "meteocons/LICENSE"
+    },
+    {
+      "name": "wind",
+      "file": "meteocons/flat/wind.json",
+      "displayPx": 48,
+      "box": [15, 15, 113, 118],
+      "fps": 60,
+      "credit": "Meteocons by Bas Milius, flat/wind",
+      "license": "meteocons/LICENSE"
+    }
+  ]
+}

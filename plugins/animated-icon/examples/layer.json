@@ -1,0 +1,25 @@
+{
+  "id": "animated-icon",
+  "type": "animated-icon",
+  "source": "openmaptiles",
+  "source-layer": "poi",
+  "filter": ["<=", ["get", "rank"], 14],
+  "paint": {
+    "icon-animation": [
+      "match",
+      ["get", "class"],
+      ["bus", "railway"],
+      "pulse",
+      "pin"
+    ],
+    "icon-anchor": [
+      "match",
+      ["get", "class"],
+      ["bus", "railway"],
+      "center",
+      "bottom"
+    ],
+    "icon-size": ["interpolate", ["linear"], ["zoom"], 14, 0.8, 18, 1.2],
+    "icon-animation-offset": ["*", ["%", ["to-number", ["id"], 0], 97], 0.137]
+  }
+}

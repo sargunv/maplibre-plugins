@@ -2,6 +2,7 @@ minimumReleaseAge: 4320 # 3-day release cooldown, mirrors mise minimum_release_a
 packages:
   - "packages/*"
   - "plugins/*/js"
+  - "plugins/*/baker"
   - "apps/web"
 catalog:
   "@maplibre/maplibre-gl-style-spec": "^26.4.4"

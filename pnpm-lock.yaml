@@ -190,6 +190,9 @@ importers:
 
   apps/web:
     dependencies:
+      '@maplibre-plugins/animated-icon':
+        specifier: workspace:*
+        version: link:../../plugins/animated-icon/js
       '@maplibre-plugins/location-indicator':
         specifier: workspace:*
         version: link:../../plugins/location-indicator/js
@@ -222,6 +225,52 @@ importers:
       '@types/node':
         specifier: ^24.0.0
         version: 24.13.6
+      typescript:
+        specifier: 'catalog:'
+        version: 5.9.3
+      vite-plus:
+        specifier: 'catalog:'
+        version: 0.3.3(@types/node@24.13.6)(typescript@5.9.3)
+
+  plugins/animated-icon/baker:
+    devDependencies:
+      '@types/node':
+        specifier: ^24.0.0
+        version: 24.13.6
+      canvaskit-wasm:
+        specifier: 0.42.0
+        version: 0.42.0
+      typescript:
+        specifier: 'catalog:'
+        version: 5.9.3
+      vite-plus:
+        specifier: 'catalog:'
+        version: 0.3.3(@types/node@24.13.6)(typescript@5.9.3)
+
+  plugins/animated-icon/js:
+    dependencies:
+      '@maplibre-plugins/paint':
+        specifier: workspace:*
+        version: link:../../../packages/paint
+      '@maplibre/maplibre-gl-style-spec':
+        specifier: 'catalog:'
+        version: 26.4.4
+    devDependencies:
+      '@mapbox/vector-tile':
+        specifier: ^3.0.0
+        version: 3.0.0
+      '@types/geojson':
+        specifier: ^7946.0.16
+        version: 7946.0.16
+      '@types/node':
+        specifier: ^24.0.0
+        version: 24.13.6
+      maplibre-gl:
+        specifier: 'catalog:'
+        version: 6.10.0
+      pbf:
+        specifier: ^5.1.2
+        version: 5.1.2
       typescript:
         specifier: 'catalog:'
         version: 5.9.3
@@ -801,6 +850,9 @@ packages:
     cpu: [x64]
     os: [win32]
 
+  '@webgpu/types@0.1.21':
+    resolution: {integrity: sha512-pUrWq3V5PiSGFLeLxoGqReTZmiiXwY3jRkIG5sLLKjyqNxrwm/04b4nw7LSmGWJcKk59XOM/YRTUwOzo4MMlow==}
+
   '@yuku-codegen/binding-android-arm64@0.9.5':
     resolution: {integrity: sha512-jrOY5WM+AaAqkv51fHP1x28ifto4WgcZVzodLUyMU1jMWn5Sq+VciRdk/n8E0Ey5w4p4cWWE+m5GfXWOYh7Kzw==}
     cpu: [arm64]
@@ -953,6 +1005,9 @@ packages:
 
   bidi-js@1.1.0:
     resolution: {integrity: sha512-fX1Onk0tdVPC7obPWB5EbJ1z7NVhLq4m2xZLq2YXBkxzMXIGRpNMU88n0EPgWseKl12J7zXs7qrDxPK4sRs2fg==}
+
+  canvaskit-wasm@0.42.0:
+    resolution: {integrity: sha512-N3ikotmzYwDVAcpQKDMptBT2P5pIEWS9ywdmrQA2awwaMF9cxKEFuxZZHv9ay1Em9kDjxDsPtwUzDm1uNj136g==}
 
   chai@6.2.2:
     resolution: {integrity: sha512-NUPRluOfOiTKBKvWPtSD4PhFvWCqOi0BGStNWs57X9js7XGTprSmFoz5F0tWhR4WPjNeR9jXqdC7/UpSJTnlRg==}
@@ -1663,6 +1718,8 @@ snapshots:
   '@voidzero-dev/vite-plus-win32-x64-msvc@0.3.3':
     optional: true
 
+  '@webgpu/types@0.1.21': {}
+
   '@yuku-codegen/binding-android-arm64@0.9.5':
     optional: true
 
@@ -1750,6 +1807,10 @@ snapshots:
   bidi-js@1.1.0:
     dependencies:
       require-from-string: 2.0.2
+
+  canvaskit-wasm@0.42.0:
+    dependencies:
+      '@webgpu/types': 0.1.21
 
   chai@6.2.2: {}
 

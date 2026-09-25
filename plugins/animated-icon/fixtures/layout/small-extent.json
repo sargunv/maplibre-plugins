@@ -1,0 +1,15 @@
+{
+  "description": "Ownership follows the extent the host passes.",
+  "extent": 512,
+  "features": [
+    {
+      "index": 2,
+      "points": [[511, 511], [512, 511], [511, 512], [0, 511], [256, 0]]
+    }
+  ],
+  "expected": {
+    "anchor_count": 3,
+    "anchors": [[256, 0, 2], [0, 511, 2], [511, 511, 2]],
+    "segments": [[0, 0, 12, 18]]
+  }
+}

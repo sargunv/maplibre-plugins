@@ -1,0 +1,6 @@
+{
+  "description": "A tile whose points all lie in the buffer builds nothing.",
+  "extent": 8192,
+  "features": [{ "index": 0, "points": [[-1, -1], [8192, 8192], [-64, 4000]] }],
+  "expected": { "anchor_count": 0, "anchors": [], "segments": [] }
+}

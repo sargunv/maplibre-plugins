@@ -1,0 +1,22 @@
+{
+  "description": "A grid reaching past every tile edge: only the owned points remain, sorted into rows, split across two segments.",
+  "extent": 8192,
+  "grid": {
+    "index": 9,
+    "origin": [-600, 100],
+    "step": [60, 60],
+    "columns": 150,
+    "rows": 140
+  },
+  "expected": {
+    "anchor_count": 18495,
+    "samples": [
+      [0, 0, 100, 9],
+      [136, 8160, 100, 9],
+      [137, 0, 160, 9],
+      [16383, 4800, 7240, 9],
+      [18494, 8160, 8140, 9]
+    ],
+    "segments": [[0, 0, 65532, 98298], [65532, 98298, 8448, 12672]]
+  }
+}

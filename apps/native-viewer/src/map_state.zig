@@ -117,7 +117,16 @@ pub const MapState = struct {
             },
             .reset_orientation => |r| try expect(map.easeTo(.{ .bearing = 0, .pitch = 0 }, .{ .duration_ms = r.duration_ms }), "camera reset failed", store),
             .apply_layer_json => |layer| try self.applyLayerJson(layer.json),
+            .set_feature_state => |state| self.setFeatureState(state.source_id, state.feature_id, state.state_json, state.start),
         }
+    }
+
+    fn setFeatureState(self: *MapState, source_id: []const u8, feature_id: []const u8, state_json: []const u8, start: f64) void {
+        self.map.setFeatureState(self.allocator, .{ .source_id = source_id, .feature_id = feature_id }, state_json) catch |err| {
+            diagnostics.logError("set feature state failed", err, self.diagnostic_store);
+            return;
+        };
+        std.debug.print("play-once {s}/{s} start={d}\n", .{ source_id, feature_id, start });
     }
 
     /// Stores the layer JSON and, once a style is live, adds the layer or
@@ -180,6 +189,18 @@ pub const MapState = struct {
         std.debug.print("layer \"{s}\": updated {d} properties\n", .{ id, updated });
     }
 
+    /// A new style has none of the `--geojson` sources yet; they go in before
+    /// the layer that reads them.
+    fn addSources(self: *MapState) void {
+        for (self.options.geojson_sources) |source| {
+            self.map.addStyleSourceJson(self.allocator, source.id, source.json) catch |err| {
+                diagnostics.logError("add source failed", err, self.diagnostic_store);
+                continue;
+            };
+            std.debug.print("source \"{s}\": added from {s}\n", .{ source.id, source.path });
+        }
+    }
+
     fn addLayer(self: *MapState) void {
         const json = self.layer_json orelse return;
         self.map.addStyleLayerJson(self.allocator, json, self.options.before_layer) catch |err| {
@@ -203,6 +224,7 @@ pub const MapState = struct {
                 .map_style_loaded => {
                     // A new style has no layer yet; the stored JSON goes back in.
                     self.style_loaded = true;
+                    self.addSources();
                     self.addLayer();
                     render_update_available = true;
                 },

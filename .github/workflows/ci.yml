@@ -17,9 +17,15 @@ jobs:
         with:
           cache: true
       - name: Formatters and linters
+        # Includes hk's fast bake check, which compares the hashes in
+        # plugins/animated-icon/catalog/stamps.json without baking.
         run: mise run check
       - name: Shared shaders are in sync
         run: node scripts/sync-shaders.mjs --check
+      - name: Baked catalogs are in sync
+        # The one full bake: every animated-icon catalog and the fixtures are
+        # rebaked in memory and compared byte for byte.
+        run: mise run bake:check
       - name: JS unit tests
         run: mise run test:js
       - name: Native plugin unit tests

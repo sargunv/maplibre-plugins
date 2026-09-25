@@ -22,6 +22,10 @@ pub const Command = union(enum) {
     /// The layer JSON file changed (or a reload was requested). The text is
     /// owned by the queue's allocator; the runtime loop frees it.
     apply_layer_json: struct { json: []const u8 },
+    /// Play-once: sets `state_json` ({"start":<clock>}) on one feature. The
+    /// strings are owned by the queue's allocator; `start` is the clock
+    /// reading in `state_json`, kept for the log line.
+    set_feature_state: struct { source_id: []const u8, feature_id: []const u8, state_json: []const u8, start: f64 },
 };
 
 /// Pending commands, filled by the render loop and drained by the runtime
@@ -60,6 +64,11 @@ pub const CommandQueue = struct {
 pub fn freeCommand(allocator: std.mem.Allocator, command: Command) void {
     switch (command) {
         .apply_layer_json => |layer| allocator.free(layer.json),
+        .set_feature_state => |state| {
+            allocator.free(state.source_id);
+            allocator.free(state.feature_id);
+            allocator.free(state.state_json);
+        },
         else => {},
     }
 }

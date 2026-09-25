@@ -17,6 +17,9 @@ pub const Result = struct {
     /// A left click that did not turn into a drag; the render loop queries
     /// rendered features there.
     click: ?maplibre.ScreenPoint = null,
+    /// The pointer moved with no drag in progress; the render loop picks the
+    /// feature under the latest point for hover play-once.
+    hover: ?maplibre.ScreenPoint = null,
     reload_layer: bool = false,
 };
 
@@ -89,7 +92,7 @@ pub const Controller = struct {
         const dx = x - self.last_x;
         const dy = y - self.last_y;
         switch (self.drag_mode) {
-            .none => return .{},
+            .none => return .{ .hover = cursor },
             .pan => {
                 if (dx == 0 and dy == 0) return .{ .handled = true };
                 if (@abs(x - self.press_x) >= click_slop or @abs(y - self.press_y) >= click_slop) self.moved = true;
@@ -106,7 +109,7 @@ pub const Controller = struct {
     }
 };
 
-pub fn logControls() void {
+pub fn logControls(play_once_source: ?[]const u8) void {
     std.debug.print(
         \\Controls:
         \\  left drag: pan          right drag or Ctrl+left drag: rotate / pitch
@@ -116,6 +119,11 @@ pub fn logControls() void {
         \\  R: reload the layer JSON now (it also reloads whenever the file changes)
         \\
     , .{});
+    if (play_once_source) |source| std.debug.print(
+        \\  hover: set {{"start": clock}} on the {s} feature under the cursor   click: set it again
+        \\  (the icon plays once only if the layer reads ["feature-state", "start"], e.g. play-once.layer.json)
+        \\
+    , .{source});
 }
 
 fn handleMouseWheel(wheel: c.SDL_MouseWheelEvent, commands: *channel.CommandQueue, viewport: types.Viewport) Result {

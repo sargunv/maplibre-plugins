@@ -27,13 +27,18 @@ const plugin = plugins.find((p) => p.id === pluginId) ?? plugins[0]!;
 
 const map = new MaplibreMap({
   container: "map",
-  style: STYLE_URL,
+  style: plugin.style ?? STYLE_URL,
   center: [plugin.camera.center[1], plugin.camera.center[0]],
   zoom: plugin.camera.zoom,
   bearing: plugin.camera.bearing,
   pitch: plugin.camera.pitch,
   hash: true,
-  attributionControl: { compact: true },
+  attributionControl: {
+    compact: true,
+    ...(plugin.attribution !== undefined && {
+      customAttribution: plugin.attribution,
+    }),
+  },
 });
 map.addControl(new NavigationControl({ visualizePitch: true }));
 map.on("error", (e) => console.error("map error:", e.error));

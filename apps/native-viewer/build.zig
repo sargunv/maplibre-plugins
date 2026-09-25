@@ -1,12 +1,33 @@
 const std = @import("std");
 const maplibre_build = @import("maplibre_native_ffi");
 
+/// A native plugin the viewer can load, with the symbols of its spec.json
+/// `native` section.
+const Plugin = struct {
+    name: []const u8,
+    dependency: []const u8,
+    artifact: []const u8,
+    entry_point: []const u8,
+    /// Registers an app catalog (`--catalog`) instead of the embedded one.
+    catalog_entry_point: ?[]const u8 = null,
+    /// The exported animation clock, for `--play-once`.
+    clock_symbol: ?[]const u8 = null,
+};
+
 /// Every native plugin the viewer can load. Each entry becomes a
 /// `zig build run-<name>` step that builds the plugin and passes its library
-/// and entry point to the viewer.
-const plugins = [_]struct { name: []const u8, dependency: []const u8, artifact: []const u8, entry_point: []const u8 }{
+/// and symbols to the viewer.
+const plugins = [_]Plugin{
     .{ .name = "location-indicator", .dependency = "location_indicator", .artifact = "maplibre-location-puck", .entry_point = "mln_location_puck_register" },
     .{ .name = "water", .dependency = "water", .artifact = "maplibre-water", .entry_point = "mln_water_register" },
+    .{
+        .name = "animated-icon",
+        .dependency = "animated_icon",
+        .artifact = "maplibre-animated-icon",
+        .entry_point = "mln_animated_icon_register",
+        .catalog_entry_point = "mln_animated_icon_register_catalog",
+        .clock_symbol = "mln_animated_icon_clock_seconds",
+    },
 };
 
 const BuildOptions = struct {
@@ -107,6 +128,14 @@ pub fn build(b: *std.Build) void {
     }
     b.installArtifact(exe);
 
+    // The viewer's logic that needs no window or map: the play-once pick.
+    const tests = b.addTest(.{ .root_module = b.createModule(.{
+        .root_source_file = b.path("src/play_once.zig"),
+        .target = options.target,
+        .optimize = options.optimize,
+    }) });
+    b.step("test", "Run the viewer's unit tests").dependOn(&b.addRunArtifact(tests).step);
+
     // Plugins build against the headers of the install the viewer loads them
     // into, rather than the vendored copy.
     const install_include_dir = std.Build.LazyPath{ .cwd_relative = b.pathJoin(&.{ native_install_dir.getPath(b), "include" }) };
@@ -123,6 +152,8 @@ pub fn build(b: *std.Build) void {
         run.addArg("--plugin");
         run.addArtifactArg(library);
         run.addArgs(&.{ "--entry", plugin.entry_point });
+        if (plugin.catalog_entry_point) |symbol| run.addArgs(&.{ "--catalog-entry", symbol });
+        if (plugin.clock_symbol) |symbol| run.addArgs(&.{ "--clock-symbol", symbol });
         if (b.args) |args| run.addArgs(args);
         b.step("run-" ++ plugin.name, "Open the viewer with the " ++ plugin.name ++ " plugin").dependOn(&run.step);
     }

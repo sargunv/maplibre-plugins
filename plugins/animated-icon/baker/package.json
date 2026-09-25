@@ -1,0 +1,19 @@
+{
+  "name": "@maplibre-plugins/animated-icon-baker",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Bakes the animated-icon plugin's .mlvc catalogs (the embedded demo and app catalogs such as weather) and the shared catalog fixtures, and runs the Lottie profile census. Runs on Node directly; the runtimes never load it.",
+  "license": "BSD-2-Clause",
+  "type": "module",
+  "scripts": {
+    "bake": "node src/cli.ts",
+    "test": "vp test run",
+    "check": "vp check"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "canvaskit-wasm": "0.42.0",
+    "typescript": "catalog:",
+    "vite-plus": "catalog:"
+  }
+}

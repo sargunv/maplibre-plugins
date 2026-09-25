@@ -7,6 +7,7 @@
         .maplibre_native_ffi = .{ .path = "../../third_party/maplibre-native-ffi" },
         .location_indicator = .{ .path = "../../plugins/location-indicator/native" },
         .water = .{ .path = "../../plugins/water/native" },
+        .animated_icon = .{ .path = "../../plugins/animated-icon/native" },
         .sdl = .{
             .url = "git+https://github.com/castholm/SDL.git#1b67d371a531ecb0499d4b80a865631c299f472a",
             .hash = "sdl-0.5.2+3.4.12-SDL--qPKpwHc40bqAlYs7W9pXJVyLwsGDNa4shNXbOZr",

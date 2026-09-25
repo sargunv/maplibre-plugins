@@ -1,0 +1,1929 @@
+{
+  "$comment": "Binder cases shared by the TS binder test and the native probe (probe.cpp), which writes expected.json from them. Each case compiles `value` for `property` (a spec.json-style property), evaluates it at each `evaluations` entry (with the feature and state when given, and always without a feature), reads the interpolation factor at each `factors` entry, and runs each `transitions` script: `initial`, then `steps` that either set a value at `now` ms with `duration` and `delay`, or sample at `now` and `zoom`.",
+  "cases": [
+    {
+      "name": "enum-literal",
+      "property": {
+        "name": "icon-animation",
+        "type": "enum",
+        "default": "none",
+        "values": ["none", "pulse", "61", "1.5", "-7", "true", "false", "0"],
+        "expressions": "data-driven"
+      },
+      "value": "pulse",
+      "evaluations": [{ "zoom": 10 }],
+      "factors": []
+    },
+    {
+      "name": "enum-literal-unlisted",
+      "property": {
+        "name": "icon-animation",
+        "type": "enum",
+        "default": "none",
+        "values": ["none", "pulse", "61", "1.5", "-7", "true", "false", "0"],
+        "expressions": "data-driven"
+      },
+      "value": "rain",
+      "evaluations": [{ "zoom": 10 }],
+      "factors": []
+    },
+    {
+      "name": "enum-literal-number",
+      "property": {
+        "name": "icon-animation",
+        "type": "enum",
+        "default": "none",
+        "values": ["none", "pulse", "61", "1.5", "-7", "true", "false", "0"],
+        "expressions": "data-driven"
+      },
+      "value": 61,
+      "evaluations": [{ "zoom": 10 }],
+      "factors": []
+    },
+    {
+      "name": "enum-literal-boolean",
+      "property": {
+        "name": "icon-animation",
+        "type": "enum",
+        "default": "none",
+        "values": ["none", "pulse", "61", "1.5", "-7", "true", "false", "0"],
+        "expressions": "data-driven"
+      },
+      "value": true,
+      "evaluations": [{ "zoom": 10 }],
+      "factors": []
+    },
+    {
+      "name": "enum-folded-concat",
+      "property": {
+        "name": "icon-animation",
+        "type": "enum",
+        "default": "none",
+        "values": ["none", "pulse", "61", "1.5", "-7", "true", "false", "0"],
+        "expressions": "data-driven"
+      },
+      "value": ["concat", "6", "1"],
+      "evaluations": [{ "zoom": 10 }],
+      "factors": []
+    },
+    {
+      "name": "enum-folded-unlisted",
+      "property": {
+        "name": "icon-animation",
+        "type": "enum",
+        "default": "none",
+        "values": ["none", "pulse", "61", "1.5", "-7", "true", "false", "0"],
+        "expressions": "data-driven"
+      },
+      "value": ["concat", "ra", "in"],
+      "evaluations": [{ "zoom": 10 }],
+      "factors": []
+    },
+    {
+      "name": "enum-folded-to-string",
+      "property": {
+        "name": "icon-animation",
+        "type": "enum",
+        "default": "none",
+        "values": ["none", "pulse", "61", "1.5", "-7", "true", "false", "0"],
+        "expressions": "data-driven"
+      },
+      "value": ["to-string", 61],
+      "evaluations": [{ "zoom": 10 }],
+      "factors": []
+    },
+    {
+      "name": "enum-literal-expression-number",
+      "property": {
+        "name": "icon-animation",
+        "type": "enum",
+        "default": "none",
+        "values": ["none", "pulse", "61", "1.5", "-7", "true", "false", "0"],
+        "expressions": "data-driven"
+      },
+      "value": ["literal", 61],
+      "evaluations": [{ "zoom": 10 }],
+      "factors": []
+    },
+    {
+      "name": "enum-null",
+      "property": {
+        "name": "icon-animation",
+        "type": "enum",
+        "default": "none",
+        "values": ["none", "pulse", "61", "1.5", "-7", "true", "false", "0"],
+        "expressions": "data-driven"
+      },
+      "value": null,
+      "evaluations": [{ "zoom": 10 }],
+      "factors": []
+    },
+    {
+      "name": "enum-get-coerces",
+      "property": {
+        "name": "icon-animation",
+        "type": "enum",
+        "default": "none",
+        "values": ["none", "pulse", "61", "1.5", "-7", "true", "false", "0"],
+        "expressions": "data-driven"
+      },
+      "value": ["get", "wmo"],
+      "evaluations": [
+        {
+          "zoom": 10,
+          "feature": { "id": 1, "type": 1, "properties": { "wmo": 61 } }
+        },
+        {
+          "zoom": 10,
+          "feature": { "id": 1, "type": 1, "properties": { "wmo": 1.5 } }
+        },
+        {
+          "zoom": 10,
+          "feature": { "id": 1, "type": 1, "properties": { "wmo": -7 } }
+        },
+        {
+          "zoom": 10,
+          "feature": { "id": 1, "type": 1, "properties": { "wmo": true } }
+        },
+        {
+          "zoom": 10,
+          "feature": { "id": 1, "type": 1, "properties": { "wmo": false } }
+        },
+        {
+          "zoom": 10,
+          "feature": { "id": 1, "type": 1, "properties": { "wmo": 0 } }
+        },
+        {
+          "zoom": 10,
+          "feature": { "id": 1, "type": 1, "properties": { "wmo": "pulse" } }
+        },
+        {
+          "zoom": 10,
+          "feature": { "id": 1, "type": 1, "properties": { "wmo": "rain" } }
+        },
+        {
+          "zoom": 10,
+          "feature": { "id": 1, "type": 1, "properties": { "wmo": null } }
+        },
+        { "zoom": 10, "feature": { "id": 1, "type": 1, "properties": {} } },
+        {
+          "zoom": 10,
+          "feature": { "id": 1, "type": 1, "properties": { "wmo": [1, 2] } }
+        },
+        { "zoom": 10 }
+      ],
+      "factors": []
+    },
+    {
+      "name": "enum-match",
+      "property": {
+        "name": "icon-animation",
+        "type": "enum",
+        "default": "none",
+        "values": ["none", "pulse", "61", "1.5", "-7", "true", "false", "0"],
+        "expressions": "data-driven"
+      },
+      "value": ["match", ["get", "k"], "a", "pulse", "b", "61", "none"],
+      "evaluations": [
+        {
+          "zoom": 10,
+          "feature": { "id": 1, "type": 1, "properties": { "k": "a" } }
+        },
+        {
+          "zoom": 10,
+          "feature": { "id": 1, "type": 1, "properties": { "k": "b" } }
+        },
+        {
+          "zoom": 10,
+          "feature": { "id": 1, "type": 1, "properties": { "k": "c" } }
+        },
+        { "zoom": 10 }
+      ],
+      "factors": []
+    },
+    {
+      "name": "enum-camera-step-unlisted",
+      "property": {
+        "name": "icon-animation",
+        "type": "enum",
+        "default": "none",
+        "values": ["none", "pulse", "61", "1.5", "-7", "true", "false", "0"],
+        "expressions": "data-driven"
+      },
+      "value": ["step", ["zoom"], "none", 5, "rain", 10, "pulse"],
+      "evaluations": [{ "zoom": 3 }, { "zoom": 7 }, { "zoom": 12 }],
+      "factors": []
+    },
+    {
+      "name": "enum-composite-step",
+      "property": {
+        "name": "icon-animation",
+        "type": "enum",
+        "default": "none",
+        "values": ["none", "pulse", "61", "1.5", "-7", "true", "false", "0"],
+        "expressions": "data-driven"
+      },
+      "value": ["step", ["zoom"], ["get", "a"], 10, ["get", "b"]],
+      "evaluations": [
+        {
+          "zoom": 9,
+          "feature": {
+            "id": 1,
+            "type": 1,
+            "properties": { "a": "pulse", "b": "61" }
+          }
+        },
+        {
+          "zoom": 10,
+          "feature": {
+            "id": 1,
+            "type": 1,
+            "properties": { "a": "pulse", "b": "61" }
+          }
+        }
+      ],
+      "factors": [
+        { "bucketZoom": 9, "zoom": 9.5 },
+        { "bucketZoom": 10, "zoom": 10.5 }
+      ]
+    },
+    {
+      "name": "enum-interpolate",
+      "property": {
+        "name": "icon-animation",
+        "type": "enum",
+        "default": "none",
+        "values": ["none", "pulse", "61", "1.5", "-7", "true", "false", "0"],
+        "expressions": "data-driven"
+      },
+      "value": ["interpolate", ["linear"], ["zoom"], 0, "none", 10, "pulse"],
+      "evaluations": [{ "zoom": 10 }],
+      "factors": []
+    },
+    {
+      "name": "enum-geometry-type",
+      "property": {
+        "name": "p-geometry",
+        "type": "enum",
+        "default": "Unknown",
+        "values": ["Unknown", "Point", "LineString", "Polygon"],
+        "expressions": "data-driven"
+      },
+      "value": ["geometry-type"],
+      "evaluations": [
+        { "zoom": 10, "feature": { "id": 1, "type": 1, "properties": {} } },
+        { "zoom": 10, "feature": { "id": 2, "type": 2, "properties": {} } },
+        { "zoom": 10, "feature": { "id": 3, "type": 3, "properties": {} } },
+        { "zoom": 10 }
+      ],
+      "factors": []
+    },
+    {
+      "name": "camera-get",
+      "property": {
+        "name": "icon-pitch-alignment",
+        "type": "enum",
+        "default": "auto",
+        "values": ["auto", "map", "viewport"],
+        "expressions": "camera"
+      },
+      "value": ["get", "a"],
+      "evaluations": [{ "zoom": 10 }],
+      "factors": []
+    },
+    {
+      "name": "camera-composite",
+      "property": {
+        "name": "p-camera",
+        "type": "float",
+        "default": 5,
+        "expressions": "camera"
+      },
+      "value": ["interpolate", ["linear"], ["zoom"], 0, ["get", "a"], 10, 1],
+      "evaluations": [{ "zoom": 10 }],
+      "factors": []
+    },
+    {
+      "name": "camera-feature-state",
+      "property": {
+        "name": "p-camera",
+        "type": "float",
+        "default": 5,
+        "expressions": "camera"
+      },
+      "value": ["number", ["feature-state", "s"], 1],
+      "evaluations": [{ "zoom": 10 }],
+      "factors": []
+    },
+    {
+      "name": "camera-id",
+      "property": {
+        "name": "p-camera",
+        "type": "float",
+        "default": 5,
+        "expressions": "camera"
+      },
+      "value": ["id"],
+      "evaluations": [{ "zoom": 10 }],
+      "factors": []
+    },
+    {
+      "name": "camera-zoom",
+      "property": {
+        "name": "p-camera",
+        "type": "float",
+        "default": 5,
+        "expressions": "camera"
+      },
+      "value": ["interpolate", ["linear"], ["zoom"], 0, 0, 10, 100],
+      "evaluations": [
+        { "zoom": 0 },
+        { "zoom": 2.5 },
+        { "zoom": 10 },
+        { "zoom": 12 }
+      ],
+      "factors": [{ "bucketZoom": 2, "zoom": 2.5 }]
+    },
+    {
+      "name": "camera-enum-zoom",
+      "property": {
+        "name": "icon-pitch-alignment",
+        "type": "enum",
+        "default": "auto",
+        "values": ["auto", "map", "viewport"],
+        "expressions": "camera"
+      },
+      "value": ["step", ["zoom"], "map", 10, "viewport"],
+      "evaluations": [{ "zoom": 5 }, { "zoom": 10 }],
+      "factors": []
+    },
+    {
+      "name": "data-driven-feature-state",
+      "property": {
+        "name": "icon-size",
+        "type": "float",
+        "default": 1,
+        "minimum": 0,
+        "expressions": "data-driven"
+      },
+      "value": ["number", ["feature-state", "s"], 0.25],
+      "evaluations": [
+        {
+          "zoom": 10,
+          "feature": { "id": 1, "type": 1, "properties": {} },
+          "state": { "s": 0.75 }
+        },
+        { "zoom": 10 }
+      ],
+      "factors": []
+    },
+    {
+      "name": "range-above-max-within-f32",
+      "property": {
+        "name": "icon-animation-speed",
+        "type": "float",
+        "default": 1,
+        "minimum": -4,
+        "maximum": 4,
+        "expressions": "data-driven"
+      },
+      "value": 4.0000001,
+      "evaluations": [{ "zoom": 10 }],
+      "factors": []
+    },
+    {
+      "name": "range-above-max-beyond-f32",
+      "property": {
+        "name": "icon-animation-speed",
+        "type": "float",
+        "default": 1,
+        "minimum": -4,
+        "maximum": 4,
+        "expressions": "data-driven"
+      },
+      "value": 4.0000003,
+      "evaluations": [{ "zoom": 10 }],
+      "factors": []
+    },
+    {
+      "name": "range-below-min-within-f32",
+      "property": {
+        "name": "icon-animation-speed",
+        "type": "float",
+        "default": 1,
+        "minimum": -4,
+        "maximum": 4,
+        "expressions": "data-driven"
+      },
+      "value": -4.0000001,
+      "evaluations": [{ "zoom": 10 }],
+      "factors": []
+    },
+    {
+      "name": "range-max",
+      "property": {
+        "name": "icon-animation-speed",
+        "type": "float",
+        "default": 1,
+        "minimum": -4,
+        "maximum": 4,
+        "expressions": "data-driven"
+      },
+      "value": 4,
+      "evaluations": [{ "zoom": 10 }],
+      "factors": []
+    },
+    {
+      "name": "range-min",
+      "property": {
+        "name": "icon-animation-speed",
+        "type": "float",
+        "default": 1,
+        "minimum": -4,
+        "maximum": 4,
+        "expressions": "data-driven"
+      },
+      "value": -4,
+      "evaluations": [{ "zoom": 10 }],
+      "factors": []
+    },
+    {
+      "name": "range-out-max",
+      "property": {
+        "name": "icon-animation-speed",
+        "type": "float",
+        "default": 1,
+        "minimum": -4,
+        "maximum": 4,
+        "expressions": "data-driven"
+      },
+      "value": 5,
+      "evaluations": [{ "zoom": 10 }],
+      "factors": []
+    },
+    {
+      "name": "range-out-min",
+      "property": {
+        "name": "icon-size",
+        "type": "float",
+        "default": 1,
+        "minimum": 0,
+        "expressions": "data-driven"
+      },
+      "value": -1,
+      "evaluations": [{ "zoom": 10 }],
+      "factors": []
+    },
+    {
+      "name": "range-out-opacity",
+      "property": {
+        "name": "icon-opacity",
+        "type": "float",
+        "default": 1,
+        "minimum": 0,
+        "maximum": 1,
+        "expressions": "data-driven"
+      },
+      "value": 1.5,
+      "evaluations": [{ "zoom": 10 }],
+      "factors": []
+    },
+    {
+      "name": "range-f32-bound",
+      "property": {
+        "name": "p-tenth",
+        "type": "float",
+        "default": 0,
+        "minimum": 0,
+        "maximum": 0.1,
+        "expressions": "camera"
+      },
+      "value": 0.1,
+      "evaluations": [{ "zoom": 10 }],
+      "factors": []
+    },
+    {
+      "name": "range-folded-within-f32",
+      "property": {
+        "name": "icon-animation-speed",
+        "type": "float",
+        "default": 1,
+        "minimum": -4,
+        "maximum": 4,
+        "expressions": "data-driven"
+      },
+      "value": ["+", 4, 1e-7],
+      "evaluations": [{ "zoom": 10 }],
+      "factors": []
+    },
+    {
+      "name": "range-folded-out",
+      "property": {
+        "name": "icon-opacity",
+        "type": "float",
+        "default": 1,
+        "minimum": 0,
+        "maximum": 1,
+        "expressions": "data-driven"
+      },
+      "value": ["+", 1, 0.5],
+      "evaluations": [{ "zoom": 10 }],
+      "factors": []
+    },
+    {
+      "name": "range-folded-nan-bounded",
+      "property": {
+        "name": "icon-opacity",
+        "type": "float",
+        "default": 1,
+        "minimum": 0,
+        "maximum": 1,
+        "expressions": "data-driven"
+      },
+      "value": ["/", 0, 0],
+      "evaluations": [{ "zoom": 10 }],
+      "factors": []
+    },
+    {
+      "name": "range-folded-nan-min",
+      "property": {
+        "name": "icon-size",
+        "type": "float",
+        "default": 1,
+        "minimum": 0,
+        "expressions": "data-driven"
+      },
+      "value": ["/", 0, 0],
+      "evaluations": [{ "zoom": 10 }],
+      "factors": []
+    },
+    {
+      "name": "range-folded-nan-unbounded",
+      "property": {
+        "name": "icon-animation-offset",
+        "type": "float",
+        "default": 0,
+        "expressions": "data-driven"
+      },
+      "value": ["/", 0, 0],
+      "evaluations": [{ "zoom": 10 }],
+      "factors": []
+    },
+    {
+      "name": "range-folded-infinity-min",
+      "property": {
+        "name": "icon-size",
+        "type": "float",
+        "default": 1,
+        "minimum": 0,
+        "expressions": "data-driven"
+      },
+      "value": ["/", 1, 0],
+      "evaluations": [{ "zoom": 10 }],
+      "factors": []
+    },
+    {
+      "name": "range-folded-infinity-bounded",
+      "property": {
+        "name": "icon-opacity",
+        "type": "float",
+        "default": 1,
+        "minimum": 0,
+        "maximum": 1,
+        "expressions": "data-driven"
+      },
+      "value": ["/", 1, 0],
+      "evaluations": [{ "zoom": 10 }],
+      "factors": []
+    },
+    {
+      "name": "range-camera-unchecked",
+      "property": {
+        "name": "icon-opacity",
+        "type": "float",
+        "default": 1,
+        "minimum": 0,
+        "maximum": 1,
+        "expressions": "data-driven"
+      },
+      "value": ["interpolate", ["linear"], ["zoom"], 0, 0, 10, 2],
+      "evaluations": [{ "zoom": 5 }, { "zoom": 10 }],
+      "factors": []
+    },
+    {
+      "name": "range-data-unchecked",
+      "property": {
+        "name": "icon-opacity",
+        "type": "float",
+        "default": 1,
+        "minimum": 0,
+        "maximum": 1,
+        "expressions": "data-driven"
+      },
+      "value": ["get", "a"],
+      "evaluations": [
+        {
+          "zoom": 10,
+          "feature": { "id": 1, "type": 1, "properties": { "a": 5 } }
+        },
+        {
+          "zoom": 10,
+          "feature": { "id": 1, "type": 1, "properties": { "a": -3 } }
+        }
+      ],
+      "factors": []
+    },
+    {
+      "name": "rotation-literal-360",
+      "property": {
+        "name": "icon-rotate",
+        "type": "rotation",
+        "default": 0,
+        "expressions": "data-driven"
+      },
+      "value": 360,
+      "evaluations": [{ "zoom": 10 }],
+      "factors": []
+    },
+    {
+      "name": "rotation-literal-720",
+      "property": {
+        "name": "icon-rotate",
+        "type": "rotation",
+        "default": 0,
+        "expressions": "data-driven"
+      },
+      "value": 720,
+      "evaluations": [{ "zoom": 10 }],
+      "factors": []
+    },
+    {
+      "name": "rotation-literal-minus-360",
+      "property": {
+        "name": "icon-rotate",
+        "type": "rotation",
+        "default": 0,
+        "expressions": "data-driven"
+      },
+      "value": -360,
+      "evaluations": [{ "zoom": 10 }],
+      "factors": []
+    },
+    {
+      "name": "rotation-literal-minus-90",
+      "property": {
+        "name": "icon-rotate",
+        "type": "rotation",
+        "default": 0,
+        "expressions": "data-driven"
+      },
+      "value": -90,
+      "evaluations": [{ "zoom": 10 }],
+      "factors": []
+    },
+    {
+      "name": "rotation-literal-almost-360",
+      "property": {
+        "name": "icon-rotate",
+        "type": "rotation",
+        "default": 0,
+        "expressions": "data-driven"
+      },
+      "value": 359.99999999,
+      "evaluations": [{ "zoom": 10 }],
+      "factors": []
+    },
+    {
+      "name": "rotation-literal-725.5",
+      "property": {
+        "name": "icon-rotate",
+        "type": "rotation",
+        "default": 0,
+        "expressions": "data-driven"
+      },
+      "value": 725.5,
+      "evaluations": [{ "zoom": 10 }],
+      "factors": []
+    },
+    {
+      "name": "rotation-folded-minus-90",
+      "property": {
+        "name": "icon-rotate",
+        "type": "rotation",
+        "default": 0,
+        "expressions": "data-driven"
+      },
+      "value": ["-", 0, 90],
+      "evaluations": [{ "zoom": 10 }],
+      "factors": []
+    },
+    {
+      "name": "rotation-folded-almost-360",
+      "property": {
+        "name": "icon-rotate",
+        "type": "rotation",
+        "default": 0,
+        "expressions": "data-driven"
+      },
+      "value": ["+", 359.99999999, 0],
+      "evaluations": [{ "zoom": 10 }],
+      "factors": []
+    },
+    {
+      "name": "rotation-get",
+      "property": {
+        "name": "icon-rotate",
+        "type": "rotation",
+        "default": 0,
+        "expressions": "data-driven"
+      },
+      "value": ["get", "r"],
+      "evaluations": [
+        {
+          "zoom": 10,
+          "feature": { "id": 1, "type": 1, "properties": { "r": 360 } }
+        },
+        {
+          "zoom": 10,
+          "feature": { "id": 1, "type": 1, "properties": { "r": 720 } }
+        },
+        {
+          "zoom": 10,
+          "feature": { "id": 1, "type": 1, "properties": { "r": -360 } }
+        },
+        {
+          "zoom": 10,
+          "feature": { "id": 1, "type": 1, "properties": { "r": -90 } }
+        },
+        {
+          "zoom": 10,
+          "feature": { "id": 1, "type": 1, "properties": { "r": 1000000000 } }
+        },
+        {
+          "zoom": 10,
+          "feature": {
+            "id": 1,
+            "type": 1,
+            "properties": { "r": 359.99999999 }
+          }
+        },
+        {
+          "zoom": 10,
+          "feature": { "id": 1, "type": 1, "properties": { "r": 45.5 } }
+        },
+        { "zoom": 10, "feature": { "id": 1, "type": 1, "properties": {} } },
+        {
+          "zoom": 10,
+          "feature": { "id": 1, "type": 1, "properties": { "r": "x" } }
+        },
+        { "zoom": 10 }
+      ],
+      "factors": []
+    },
+    {
+      "name": "rotation-default-wraps",
+      "property": {
+        "name": "p-rotate-default",
+        "type": "rotation",
+        "default": -90,
+        "expressions": "data-driven"
+      },
+      "value": ["get", "r"],
+      "evaluations": [
+        { "zoom": 10, "feature": { "id": 1, "type": 1, "properties": {} } },
+        {
+          "zoom": 10,
+          "feature": { "id": 1, "type": 1, "properties": { "r": 10 } }
+        },
+        { "zoom": 10 }
+      ],
+      "factors": []
+    },
+    {
+      "name": "rotation-default-null",
+      "property": {
+        "name": "p-rotate-default",
+        "type": "rotation",
+        "default": -90,
+        "expressions": "data-driven"
+      },
+      "value": null,
+      "evaluations": [{ "zoom": 10 }],
+      "factors": []
+    },
+    {
+      "name": "rotation-camera",
+      "property": {
+        "name": "icon-rotate",
+        "type": "rotation",
+        "default": 0,
+        "expressions": "data-driven"
+      },
+      "value": ["interpolate", ["linear"], ["zoom"], 0, -90, 10, 450],
+      "evaluations": [{ "zoom": 0 }, { "zoom": 5 }, { "zoom": 10 }],
+      "factors": []
+    },
+    {
+      "name": "rotation-composite",
+      "property": {
+        "name": "icon-rotate",
+        "type": "rotation",
+        "default": 0,
+        "expressions": "data-driven"
+      },
+      "value": [
+        "interpolate",
+        ["linear"],
+        ["zoom"],
+        10,
+        ["get", "a"],
+        11,
+        ["get", "b"]
+      ],
+      "evaluations": [
+        {
+          "zoom": 10,
+          "feature": {
+            "id": 1,
+            "type": 1,
+            "properties": { "a": 350, "b": 10 }
+          }
+        },
+        {
+          "zoom": 10.5,
+          "feature": {
+            "id": 1,
+            "type": 1,
+            "properties": { "a": 350, "b": 10 }
+          }
+        }
+      ],
+      "factors": [{ "bucketZoom": 10, "zoom": 10.5 }]
+    },
+    {
+      "name": "rotation-bounded-270",
+      "property": {
+        "name": "p-rotate-bounded",
+        "type": "rotation",
+        "default": 0,
+        "minimum": 0,
+        "maximum": 180,
+        "expressions": "camera"
+      },
+      "value": 270,
+      "evaluations": [{ "zoom": 10 }],
+      "factors": []
+    },
+    {
+      "name": "rotation-bounded-minus-90",
+      "property": {
+        "name": "p-rotate-bounded",
+        "type": "rotation",
+        "default": 0,
+        "minimum": 0,
+        "maximum": 180,
+        "expressions": "camera"
+      },
+      "value": -90,
+      "evaluations": [{ "zoom": 10 }],
+      "factors": []
+    },
+    {
+      "name": "rotation-bounded-540",
+      "property": {
+        "name": "p-rotate-bounded",
+        "type": "rotation",
+        "default": 0,
+        "minimum": 0,
+        "maximum": 180,
+        "expressions": "camera"
+      },
+      "value": 540,
+      "evaluations": [{ "zoom": 10 }],
+      "factors": []
+    },
+    {
+      "name": "rotation-bounded-180",
+      "property": {
+        "name": "p-rotate-bounded",
+        "type": "rotation",
+        "default": 0,
+        "minimum": 0,
+        "maximum": 180,
+        "expressions": "camera"
+      },
+      "value": 180,
+      "evaluations": [{ "zoom": 10 }],
+      "factors": []
+    },
+    {
+      "name": "color-get",
+      "property": {
+        "name": "icon-color",
+        "type": "color",
+        "default": [1, 0.5, 0, 0.5],
+        "expressions": "data-driven"
+      },
+      "value": ["get", "c"],
+      "evaluations": [
+        {
+          "zoom": 10,
+          "feature": { "id": 1, "type": 1, "properties": { "c": "red" } }
+        },
+        {
+          "zoom": 10,
+          "feature": {
+            "id": 1,
+            "type": 1,
+            "properties": { "c": "rgba(255, 0, 0, 0.5)" }
+          }
+        },
+        {
+          "zoom": 10,
+          "feature": { "id": 1, "type": 1, "properties": { "c": "#00ff0080" } }
+        },
+        {
+          "zoom": 10,
+          "feature": { "id": 1, "type": 1, "properties": { "c": "nonsense" } }
+        },
+        {
+          "zoom": 10,
+          "feature": { "id": 1, "type": 1, "properties": { "c": 5 } }
+        },
+        { "zoom": 10, "feature": { "id": 1, "type": 1, "properties": {} } },
+        { "zoom": 10 }
+      ],
+      "factors": []
+    },
+    {
+      "name": "color-literal",
+      "property": {
+        "name": "icon-color",
+        "type": "color",
+        "default": [1, 0.5, 0, 0.5],
+        "expressions": "data-driven"
+      },
+      "value": "rgba(0, 0, 255, 0.25)",
+      "evaluations": [{ "zoom": 10 }],
+      "factors": []
+    },
+    {
+      "name": "color-folded",
+      "property": {
+        "name": "icon-color",
+        "type": "color",
+        "default": [1, 0.5, 0, 0.5],
+        "expressions": "data-driven"
+      },
+      "value": ["rgba", 255, 0, 0, 0.5],
+      "evaluations": [{ "zoom": 10 }],
+      "factors": []
+    },
+    {
+      "name": "color-null",
+      "property": {
+        "name": "icon-color",
+        "type": "color",
+        "default": [1, 0.5, 0, 0.5],
+        "expressions": "data-driven"
+      },
+      "value": null,
+      "evaluations": [{ "zoom": 10 }],
+      "factors": []
+    },
+    {
+      "name": "color-to-color-fallback",
+      "property": {
+        "name": "icon-color",
+        "type": "color",
+        "default": [1, 0.5, 0, 0.5],
+        "expressions": "data-driven"
+      },
+      "value": ["to-color", ["get", "c"], "green"],
+      "evaluations": [
+        { "zoom": 10, "feature": { "id": 1, "type": 1, "properties": {} } },
+        {
+          "zoom": 10,
+          "feature": { "id": 1, "type": 1, "properties": { "c": "blue" } }
+        }
+      ],
+      "factors": []
+    },
+    {
+      "name": "color-camera",
+      "property": {
+        "name": "p-camera-color",
+        "type": "color",
+        "default": [0.2, 0.4, 0.6, 0.8],
+        "expressions": "camera"
+      },
+      "value": ["interpolate", ["linear"], ["zoom"], 0, "red", 10, "blue"],
+      "evaluations": [{ "zoom": 0 }, { "zoom": 5 }, { "zoom": 10 }],
+      "factors": []
+    },
+    {
+      "name": "color-composite",
+      "property": {
+        "name": "icon-color",
+        "type": "color",
+        "default": [1, 0.5, 0, 0.5],
+        "expressions": "data-driven"
+      },
+      "value": [
+        "interpolate",
+        ["linear"],
+        ["zoom"],
+        10,
+        ["get", "a"],
+        11,
+        "blue"
+      ],
+      "evaluations": [
+        {
+          "zoom": 10,
+          "feature": { "id": 1, "type": 1, "properties": { "a": "red" } }
+        },
+        { "zoom": 10, "feature": { "id": 1, "type": 1, "properties": {} } }
+      ],
+      "factors": [{ "bucketZoom": 10, "zoom": 10.25 }]
+    },
+    {
+      "name": "float2-get",
+      "property": {
+        "name": "icon-offset",
+        "type": "float2",
+        "default": [1, -2],
+        "expressions": "data-driven"
+      },
+      "value": ["get", "xy"],
+      "evaluations": [
+        {
+          "zoom": 10,
+          "feature": { "id": 1, "type": 1, "properties": { "xy": [1, 2] } }
+        },
+        {
+          "zoom": 10,
+          "feature": {
+            "id": 1,
+            "type": 1,
+            "properties": { "xy": [1.5, -2.25] }
+          }
+        },
+        {
+          "zoom": 10,
+          "feature": { "id": 1, "type": 1, "properties": { "xy": [1] } }
+        },
+        {
+          "zoom": 10,
+          "feature": { "id": 1, "type": 1, "properties": { "xy": "a" } }
+        },
+        {
+          "zoom": 10,
+          "feature": { "id": 1, "type": 1, "properties": { "xy": [1, "a"] } }
+        },
+        { "zoom": 10, "feature": { "id": 1, "type": 1, "properties": {} } },
+        { "zoom": 10 }
+      ],
+      "factors": []
+    },
+    {
+      "name": "float2-literal",
+      "property": {
+        "name": "icon-offset",
+        "type": "float2",
+        "default": [1, -2],
+        "expressions": "data-driven"
+      },
+      "value": [3, -4],
+      "evaluations": [{ "zoom": 10 }],
+      "factors": []
+    },
+    {
+      "name": "float2-folded",
+      "property": {
+        "name": "icon-offset",
+        "type": "float2",
+        "default": [1, -2],
+        "expressions": "data-driven"
+      },
+      "value": ["literal", [3, 4]],
+      "evaluations": [{ "zoom": 10 }],
+      "factors": []
+    },
+    {
+      "name": "float2-literal-short",
+      "property": {
+        "name": "icon-offset",
+        "type": "float2",
+        "default": [1, -2],
+        "expressions": "data-driven"
+      },
+      "value": [1],
+      "evaluations": [{ "zoom": 10 }],
+      "factors": []
+    },
+    {
+      "name": "float2-literal-long",
+      "property": {
+        "name": "icon-offset",
+        "type": "float2",
+        "default": [1, -2],
+        "expressions": "data-driven"
+      },
+      "value": [1, 2, 3],
+      "evaluations": [{ "zoom": 10 }],
+      "factors": []
+    },
+    {
+      "name": "float2-composite",
+      "property": {
+        "name": "icon-offset",
+        "type": "float2",
+        "default": [1, -2],
+        "expressions": "data-driven"
+      },
+      "value": [
+        "interpolate",
+        ["linear"],
+        ["zoom"],
+        10,
+        ["literal", [0, 0]],
+        11,
+        ["get", "xy"]
+      ],
+      "evaluations": [
+        {
+          "zoom": 10,
+          "feature": { "id": 1, "type": 1, "properties": { "xy": [4, -8] } }
+        },
+        {
+          "zoom": 10.5,
+          "feature": { "id": 1, "type": 1, "properties": { "xy": [4, -8] } }
+        }
+      ],
+      "factors": [{ "bucketZoom": 10, "zoom": 10.5 }]
+    },
+    {
+      "name": "double2-get",
+      "property": {
+        "name": "p-lnglat",
+        "type": "double2",
+        "default": [0.1, 0.2],
+        "expressions": "data-driven"
+      },
+      "value": ["get", "ll"],
+      "evaluations": [
+        {
+          "zoom": 10,
+          "feature": { "id": 1, "type": 1, "properties": { "ll": [0.1, 0.2] } }
+        },
+        {
+          "zoom": 10,
+          "feature": { "id": 1, "type": 1, "properties": { "ll": "x" } }
+        },
+        { "zoom": 10 }
+      ],
+      "factors": []
+    },
+    {
+      "name": "nonfinite-divide",
+      "property": {
+        "name": "icon-animation-offset",
+        "type": "float",
+        "default": 0,
+        "expressions": "data-driven"
+      },
+      "value": ["/", ["get", "a"], ["get", "b"]],
+      "evaluations": [
+        {
+          "zoom": 10,
+          "feature": { "id": 1, "type": 1, "properties": { "a": 1, "b": 0 } }
+        },
+        {
+          "zoom": 10,
+          "feature": { "id": 1, "type": 1, "properties": { "a": -1, "b": 0 } }
+        },
+        {
+          "zoom": 10,
+          "feature": { "id": 1, "type": 1, "properties": { "a": 0, "b": 0 } }
+        },
+        {
+          "zoom": 10,
+          "feature": { "id": 1, "type": 1, "properties": { "a": 1, "b": 2 } }
+        },
+        {
+          "zoom": 10,
+          "feature": { "id": 1, "type": 1, "properties": { "a": "x", "b": 1 } }
+        },
+        { "zoom": 10 }
+      ],
+      "factors": []
+    },
+    {
+      "name": "nonfinite-sqrt",
+      "property": {
+        "name": "icon-size",
+        "type": "float",
+        "default": 1,
+        "minimum": 0,
+        "expressions": "data-driven"
+      },
+      "value": ["sqrt", ["get", "a"]],
+      "evaluations": [
+        {
+          "zoom": 10,
+          "feature": { "id": 1, "type": 1, "properties": { "a": -1 } }
+        },
+        {
+          "zoom": 10,
+          "feature": { "id": 1, "type": 1, "properties": { "a": 4 } }
+        }
+      ],
+      "factors": []
+    },
+    {
+      "name": "nonfinite-camera",
+      "property": {
+        "name": "icon-animation-offset",
+        "type": "float",
+        "default": 0,
+        "expressions": "data-driven"
+      },
+      "value": ["interpolate", ["linear"], ["zoom"], 0, ["sqrt", -1], 10, 1],
+      "evaluations": [{ "zoom": 0 }, { "zoom": 5 }, { "zoom": 10 }],
+      "factors": []
+    },
+    {
+      "name": "nonfinite-folded-unbounded",
+      "property": {
+        "name": "icon-animation-offset",
+        "type": "float",
+        "default": 0,
+        "expressions": "data-driven"
+      },
+      "value": ["/", 1, 0],
+      "evaluations": [{ "zoom": 10 }],
+      "factors": []
+    },
+    {
+      "name": "nonfinite-rotation",
+      "property": {
+        "name": "icon-rotate",
+        "type": "rotation",
+        "default": 0,
+        "expressions": "data-driven"
+      },
+      "value": ["/", ["get", "a"], 0],
+      "evaluations": [
+        {
+          "zoom": 10,
+          "feature": { "id": 1, "type": 1, "properties": { "a": 1 } }
+        },
+        {
+          "zoom": 10,
+          "feature": { "id": 1, "type": 1, "properties": { "a": 0 } }
+        }
+      ],
+      "factors": []
+    },
+    {
+      "name": "state-number-fallback",
+      "property": {
+        "name": "icon-size",
+        "type": "float",
+        "default": 1,
+        "minimum": 0,
+        "expressions": "data-driven"
+      },
+      "value": ["number", ["feature-state", "s"], 0.25],
+      "evaluations": [
+        {
+          "zoom": 10,
+          "feature": { "id": 1, "type": 1, "properties": {} },
+          "state": { "s": 0.75 }
+        },
+        { "zoom": 10, "feature": { "id": 1, "type": 1, "properties": {} } },
+        {
+          "zoom": 10,
+          "feature": { "id": 1, "type": 1, "properties": {} },
+          "state": { "s": "x" }
+        },
+        { "zoom": 10 }
+      ],
+      "factors": []
+    },
+    {
+      "name": "state-bare",
+      "property": {
+        "name": "icon-size",
+        "type": "float",
+        "default": 1,
+        "minimum": 0,
+        "expressions": "data-driven"
+      },
+      "value": ["feature-state", "s"],
+      "evaluations": [
+        {
+          "zoom": 10,
+          "feature": { "id": 1, "type": 1, "properties": {} },
+          "state": { "s": 2 }
+        },
+        { "zoom": 10, "feature": { "id": 1, "type": 1, "properties": {} } },
+        { "zoom": 10 }
+      ],
+      "factors": []
+    },
+    {
+      "name": "state-coalesce-get",
+      "property": {
+        "name": "icon-size",
+        "type": "float",
+        "default": 1,
+        "minimum": 0,
+        "expressions": "data-driven"
+      },
+      "value": ["coalesce", ["feature-state", "s"], ["get", "a"]],
+      "evaluations": [
+        {
+          "zoom": 10,
+          "feature": { "id": 1, "type": 1, "properties": { "a": 3 } }
+        },
+        {
+          "zoom": 10,
+          "feature": { "id": 1, "type": 1, "properties": { "a": 3 } },
+          "state": { "s": 5 }
+        },
+        { "zoom": 10 }
+      ],
+      "factors": []
+    },
+    {
+      "name": "state-hover",
+      "property": {
+        "name": "icon-size",
+        "type": "float",
+        "default": 1,
+        "minimum": 0,
+        "expressions": "data-driven"
+      },
+      "value": ["case", ["boolean", ["feature-state", "hover"], false], 2, 1],
+      "evaluations": [
+        {
+          "zoom": 10,
+          "feature": { "id": 1, "type": 1, "properties": {} },
+          "state": { "hover": true }
+        },
+        { "zoom": 10, "feature": { "id": 1, "type": 1, "properties": {} } },
+        { "zoom": 10 }
+      ],
+      "factors": []
+    },
+    {
+      "name": "without-get",
+      "property": {
+        "name": "icon-size",
+        "type": "float",
+        "default": 1,
+        "minimum": 0,
+        "expressions": "data-driven"
+      },
+      "value": ["get", "a"],
+      "evaluations": [
+        {
+          "zoom": 10,
+          "feature": { "id": 1, "type": 1, "properties": { "a": 3 } }
+        },
+        {
+          "zoom": 10,
+          "feature": { "id": 1, "type": 1, "properties": { "a": "3" } }
+        },
+        {
+          "zoom": 10,
+          "feature": { "id": 1, "type": 1, "properties": { "a": true } }
+        },
+        { "zoom": 10 }
+      ],
+      "factors": []
+    },
+    {
+      "name": "without-coalesce-get",
+      "property": {
+        "name": "icon-size",
+        "type": "float",
+        "default": 1,
+        "minimum": 0,
+        "expressions": "data-driven"
+      },
+      "value": ["coalesce", ["get", "a"], 7],
+      "evaluations": [
+        { "zoom": 10, "feature": { "id": 1, "type": 1, "properties": {} } },
+        { "zoom": 10 }
+      ],
+      "factors": []
+    },
+    {
+      "name": "without-has",
+      "property": {
+        "name": "icon-size",
+        "type": "float",
+        "default": 1,
+        "minimum": 0,
+        "expressions": "data-driven"
+      },
+      "value": ["case", ["has", "a"], 2, 3],
+      "evaluations": [
+        {
+          "zoom": 10,
+          "feature": { "id": 1, "type": 1, "properties": { "a": 0 } }
+        },
+        { "zoom": 10, "feature": { "id": 1, "type": 1, "properties": {} } },
+        { "zoom": 10 }
+      ],
+      "factors": []
+    },
+    {
+      "name": "without-id",
+      "property": {
+        "name": "icon-size",
+        "type": "float",
+        "default": 1,
+        "minimum": 0,
+        "expressions": "data-driven"
+      },
+      "value": ["id"],
+      "evaluations": [
+        { "zoom": 10, "feature": { "id": 5, "type": 1, "properties": {} } },
+        { "zoom": 10, "feature": { "id": "x", "type": 1, "properties": {} } },
+        { "zoom": 10, "feature": { "type": 1, "properties": {} } },
+        { "zoom": 10 }
+      ],
+      "factors": []
+    },
+    {
+      "name": "without-properties",
+      "property": {
+        "name": "icon-size",
+        "type": "float",
+        "default": 1,
+        "minimum": 0,
+        "expressions": "data-driven"
+      },
+      "value": ["get", "a", ["properties"]],
+      "evaluations": [
+        {
+          "zoom": 10,
+          "feature": { "id": 1, "type": 1, "properties": { "a": 4 } }
+        },
+        { "zoom": 10 }
+      ],
+      "factors": []
+    },
+    {
+      "name": "zoom-inside-expression",
+      "property": {
+        "name": "icon-size",
+        "type": "float",
+        "default": 1,
+        "minimum": 0,
+        "expressions": "data-driven"
+      },
+      "value": ["*", ["zoom"], ["get", "a"]],
+      "evaluations": [{ "zoom": 10 }],
+      "factors": []
+    },
+    {
+      "name": "composite-linear",
+      "property": {
+        "name": "icon-size",
+        "type": "float",
+        "default": 1,
+        "minimum": 0,
+        "expressions": "data-driven"
+      },
+      "value": [
+        "interpolate",
+        ["linear"],
+        ["zoom"],
+        10,
+        ["get", "a"],
+        11,
+        ["get", "b"]
+      ],
+      "evaluations": [
+        {
+          "zoom": 9,
+          "feature": { "id": 1, "type": 1, "properties": { "a": 1, "b": 3 } }
+        },
+        {
+          "zoom": 10,
+          "feature": { "id": 1, "type": 1, "properties": { "a": 1, "b": 3 } }
+        },
+        {
+          "zoom": 10.5,
+          "feature": { "id": 1, "type": 1, "properties": { "a": 1, "b": 3 } }
+        },
+        {
+          "zoom": 11,
+          "feature": { "id": 1, "type": 1, "properties": { "a": 1, "b": 3 } }
+        },
+        {
+          "zoom": 12,
+          "feature": { "id": 1, "type": 1, "properties": { "a": 1, "b": 3 } }
+        },
+        { "zoom": 10 }
+      ],
+      "factors": [
+        { "bucketZoom": 10, "zoom": 10 },
+        { "bucketZoom": 10, "zoom": 10.25 },
+        { "bucketZoom": 10, "zoom": 10.5 },
+        { "bucketZoom": 10, "zoom": 10.999 },
+        { "bucketZoom": 10, "zoom": 11 },
+        { "bucketZoom": 10, "zoom": 9.5 },
+        { "bucketZoom": 10, "zoom": 11.5 },
+        { "bucketZoom": 9, "zoom": 9.3 },
+        { "bucketZoom": 3, "zoom": 3.7 }
+      ]
+    },
+    {
+      "name": "composite-exponential",
+      "property": {
+        "name": "icon-size",
+        "type": "float",
+        "default": 1,
+        "minimum": 0,
+        "expressions": "data-driven"
+      },
+      "value": [
+        "interpolate",
+        ["exponential", 2],
+        ["zoom"],
+        0,
+        ["get", "a"],
+        20,
+        ["get", "b"]
+      ],
+      "evaluations": [
+        {
+          "zoom": 5,
+          "feature": { "id": 1, "type": 1, "properties": { "a": 1, "b": 100 } }
+        },
+        {
+          "zoom": 12.3,
+          "feature": { "id": 1, "type": 1, "properties": { "a": 1, "b": 100 } }
+        }
+      ],
+      "factors": [
+        { "bucketZoom": 5, "zoom": 5.5 },
+        { "bucketZoom": 12, "zoom": 12.3 },
+        { "bucketZoom": 0, "zoom": 0.75 }
+      ]
+    },
+    {
+      "name": "composite-cubic-bezier",
+      "property": {
+        "name": "icon-size",
+        "type": "float",
+        "default": 1,
+        "minimum": 0,
+        "expressions": "data-driven"
+      },
+      "value": [
+        "interpolate",
+        ["cubic-bezier", 0.42, 0, 0.58, 1],
+        ["zoom"],
+        0,
+        ["get", "a"],
+        10,
+        ["get", "b"]
+      ],
+      "evaluations": [
+        {
+          "zoom": 3,
+          "feature": { "id": 1, "type": 1, "properties": { "a": 0, "b": 10 } }
+        }
+      ],
+      "factors": [
+        { "bucketZoom": 3, "zoom": 3.5 },
+        { "bucketZoom": 3, "zoom": 3.2 },
+        { "bucketZoom": 7, "zoom": 7.9 }
+      ]
+    },
+    {
+      "name": "composite-step",
+      "property": {
+        "name": "icon-size",
+        "type": "float",
+        "default": 1,
+        "minimum": 0,
+        "expressions": "data-driven"
+      },
+      "value": ["step", ["zoom"], ["get", "a"], 10, ["get", "b"]],
+      "evaluations": [
+        {
+          "zoom": 9,
+          "feature": { "id": 1, "type": 1, "properties": { "a": 2, "b": 4 } }
+        },
+        {
+          "zoom": 10,
+          "feature": { "id": 1, "type": 1, "properties": { "a": 2, "b": 4 } }
+        }
+      ],
+      "factors": [
+        { "bucketZoom": 9, "zoom": 9.5 },
+        { "bucketZoom": 10, "zoom": 10.5 }
+      ]
+    },
+    {
+      "name": "source-factor",
+      "property": {
+        "name": "icon-size",
+        "type": "float",
+        "default": 1,
+        "minimum": 0,
+        "expressions": "data-driven"
+      },
+      "value": ["get", "a"],
+      "evaluations": [
+        {
+          "zoom": 10,
+          "feature": { "id": 1, "type": 1, "properties": { "a": 2 } }
+        }
+      ],
+      "factors": [{ "bucketZoom": 10, "zoom": 10.5 }]
+    },
+    {
+      "name": "composite-feature-state",
+      "property": {
+        "name": "icon-size",
+        "type": "float",
+        "default": 1,
+        "minimum": 0,
+        "expressions": "data-driven"
+      },
+      "value": [
+        "interpolate",
+        ["linear"],
+        ["zoom"],
+        10,
+        ["number", ["feature-state", "s"], 1],
+        11,
+        ["get", "a"]
+      ],
+      "evaluations": [
+        {
+          "zoom": 10,
+          "feature": { "id": 1, "type": 1, "properties": { "a": 3 } }
+        },
+        {
+          "zoom": 10,
+          "feature": { "id": 1, "type": 1, "properties": { "a": 3 } },
+          "state": { "s": 2 }
+        },
+        { "zoom": 10 }
+      ],
+      "factors": [{ "bucketZoom": 10, "zoom": 10.5 }]
+    },
+    {
+      "name": "null-value",
+      "property": {
+        "name": "icon-size",
+        "type": "float",
+        "default": 1,
+        "minimum": 0,
+        "expressions": "data-driven"
+      },
+      "value": null,
+      "evaluations": [{ "zoom": 10 }],
+      "factors": []
+    },
+    {
+      "name": "parse-unknown-operator",
+      "property": {
+        "name": "icon-size",
+        "type": "float",
+        "default": 1,
+        "minimum": 0,
+        "expressions": "data-driven"
+      },
+      "value": ["nope"],
+      "evaluations": [{ "zoom": 10 }],
+      "factors": []
+    },
+    {
+      "name": "parse-bad-arguments",
+      "property": {
+        "name": "icon-size",
+        "type": "float",
+        "default": 1,
+        "minimum": 0,
+        "expressions": "data-driven"
+      },
+      "value": ["get"],
+      "evaluations": [{ "zoom": 10 }],
+      "factors": []
+    },
+    {
+      "name": "parse-string-for-number",
+      "property": {
+        "name": "icon-size",
+        "type": "float",
+        "default": 1,
+        "minimum": 0,
+        "expressions": "data-driven"
+      },
+      "value": "big",
+      "evaluations": [{ "zoom": 10 }],
+      "factors": []
+    },
+    {
+      "name": "parse-color-invalid",
+      "property": {
+        "name": "icon-color",
+        "type": "color",
+        "default": [1, 0.5, 0, 0.5],
+        "expressions": "data-driven"
+      },
+      "value": "not a color",
+      "evaluations": [{ "zoom": 10 }],
+      "factors": []
+    },
+    {
+      "name": "transition-float",
+      "property": {
+        "name": "icon-size",
+        "type": "float",
+        "default": 1,
+        "minimum": 0,
+        "expressions": "data-driven"
+      },
+      "value": 10,
+      "evaluations": [{ "zoom": 10 }],
+      "factors": [],
+      "transitions": [
+        {
+          "initial": 10,
+          "steps": [
+            { "set": 30, "now": 0, "duration": 100, "delay": 0 },
+            { "now": 0, "zoom": 10 },
+            { "now": 25, "zoom": 10 },
+            { "now": 50, "zoom": 10 },
+            { "now": 99, "zoom": 10 },
+            { "now": 100, "zoom": 10 },
+            { "now": 150, "zoom": 10 }
+          ]
+        },
+        {
+          "initial": 10,
+          "steps": [
+            { "set": ["get", "a"], "now": 0, "duration": 100, "delay": 0 },
+            { "now": 0, "zoom": 10 },
+            { "now": 50, "zoom": 10 },
+            { "now": 150, "zoom": 10 }
+          ]
+        },
+        {
+          "initial": ["get", "a"],
+          "steps": [
+            { "set": 30, "now": 0, "duration": 100, "delay": 0 },
+            { "now": 0, "zoom": 10 },
+            { "now": 50, "zoom": 10 },
+            { "now": 99, "zoom": 10 },
+            { "now": 100, "zoom": 10 }
+          ]
+        },
+        {
+          "initial": 10,
+          "steps": [
+            { "set": 30, "now": 0, "duration": 100, "delay": 50 },
+            { "now": 0, "zoom": 10 },
+            { "now": 25, "zoom": 10 },
+            { "now": 50, "zoom": 10 },
+            { "now": 100, "zoom": 10 },
+            { "now": 150, "zoom": 10 }
+          ]
+        },
+        {
+          "initial": 10,
+          "steps": [
+            { "set": ["get", "a"], "now": 0, "duration": 100, "delay": 0 },
+            { "set": 30, "now": 50, "duration": 100, "delay": 0 },
+            { "now": 60, "zoom": 10 },
+            { "now": 149, "zoom": 10 },
+            { "now": 150, "zoom": 10 }
+          ]
+        },
+        {
+          "initial": ["interpolate", ["linear"], ["zoom"], 0, 0, 10, 100],
+          "steps": [
+            { "set": 50, "now": 0, "duration": 100, "delay": 0 },
+            { "now": 0, "zoom": 2 },
+            { "now": 50, "zoom": 2 },
+            { "now": 100, "zoom": 2 }
+          ]
+        },
+        {
+          "initial": 10,
+          "steps": [
+            { "set": 30, "now": 0, "duration": 0, "delay": 0 },
+            { "now": 0, "zoom": 10 }
+          ]
+        },
+        {
+          "initial": 10,
+          "steps": [
+            { "set": 30, "now": 0, "duration": 100, "delay": 0 },
+            { "set": 50, "now": 50, "duration": 100, "delay": 0 },
+            { "now": 50, "zoom": 10 },
+            { "now": 100, "zoom": 10 },
+            { "now": 150, "zoom": 10 }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "transition-enum",
+      "property": {
+        "name": "icon-animation",
+        "type": "enum",
+        "default": "none",
+        "values": ["none", "pulse", "61", "1.5", "-7", "true", "false", "0"],
+        "expressions": "data-driven"
+      },
+      "value": "none",
+      "evaluations": [{ "zoom": 10 }],
+      "factors": [],
+      "transitions": [
+        {
+          "initial": "none",
+          "steps": [
+            { "set": "pulse", "now": 0, "duration": 100, "delay": 0 },
+            { "now": 0, "zoom": 10 },
+            { "now": 50, "zoom": 10 },
+            { "now": 99, "zoom": 10 },
+            { "now": 100, "zoom": 10 }
+          ]
+        },
+        {
+          "initial": "none",
+          "steps": [
+            { "set": ["get", "wmo"], "now": 0, "duration": 100, "delay": 0 },
+            { "now": 0, "zoom": 10 },
+            { "now": 50, "zoom": 10 }
+          ]
+        },
+        {
+          "initial": ["get", "wmo"],
+          "steps": [
+            { "set": "pulse", "now": 0, "duration": 100, "delay": 0 },
+            { "now": 50, "zoom": 10 },
+            { "now": 100, "zoom": 10 }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "transition-rotation",
+      "property": {
+        "name": "icon-rotate",
+        "type": "rotation",
+        "default": 0,
+        "expressions": "data-driven"
+      },
+      "value": 350,
+      "evaluations": [{ "zoom": 10 }],
+      "factors": [],
+      "transitions": [
+        {
+          "initial": 350,
+          "steps": [
+            { "set": 10, "now": 0, "duration": 100, "delay": 0 },
+            { "now": 50, "zoom": 10 },
+            { "now": 100, "zoom": 10 }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "transition-color",
+      "property": {
+        "name": "icon-color",
+        "type": "color",
+        "default": [1, 0.5, 0, 0.5],
+        "expressions": "data-driven"
+      },
+      "value": "red",
+      "evaluations": [{ "zoom": 10 }],
+      "factors": [],
+      "transitions": [
+        {
+          "initial": "red",
+          "steps": [
+            { "set": "blue", "now": 0, "duration": 100, "delay": 0 },
+            { "now": 50, "zoom": 10 },
+            { "now": 100, "zoom": 10 }
+          ]
+        }
+      ]
+    }
+  ]
+}

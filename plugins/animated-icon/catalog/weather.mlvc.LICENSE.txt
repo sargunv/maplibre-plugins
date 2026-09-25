@@ -1,0 +1,36 @@
+catalog/weather.mlvc contains data derived from:
+
+- clear-day: Meteocons by Bas Milius (https://github.com/basmilius/meteocons), flat/clear-day from @meteocons/lottie 3.0.0-next.10
+- clear-night: Meteocons by Bas Milius, flat/clear-night
+- partly-cloudy-day: Meteocons by Bas Milius, flat/partly-cloudy-day
+- partly-cloudy-night: Meteocons by Bas Milius, flat/partly-cloudy-night
+- overcast: Meteocons by Bas Milius, flat/overcast
+- fog: Meteocons by Bas Milius, flat/fog
+- drizzle: Meteocons by Bas Milius, flat/drizzle
+- rain: Meteocons by Bas Milius, flat/rain
+- sleet: Meteocons by Bas Milius, flat/sleet
+- snow: Meteocons by Bas Milius, flat/snow
+- thunderstorms-rain: Meteocons by Bas Milius, flat/thunderstorms-rain
+- wind: Meteocons by Bas Milius, flat/wind
+
+MIT License
+
+Copyright (c) 2020-present Bas Milius
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.

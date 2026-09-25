@@ -1,6 +1,7 @@
 # Windowed viewer: loads a native plugin into maplibre-native-c and shows its
 # example layer on a live map. Edit the layer JSON while it runs to tweak
-# paint properties. Needs `mise run ffi:build` first.
+# paint properties. `weather` opens the animated-icon weather-stations demo.
+# Needs `mise run ffi:build` first.
 
 [tools]
 "core:zig" = "{{vars.zig_version}}"
@@ -26,6 +27,14 @@ zig build \
   -Ddependency-include-dir="$MLN_FFI_DIR/third_party/maplibre-native/vendor/Vulkan-Headers/include"
 '''
 
+[tasks.test]
+description = "Run the viewer's unit tests (the play-once pick)."
+run = '''
+zig build test \
+  -Dnative-install-dir="$MLN_NATIVE_INSTALL_DIR" \
+  -Ddependency-include-dir="$MLN_FFI_DIR/third_party/maplibre-native/vendor/Vulkan-Headers/include"
+'''
+
 [tasks.run]
 description = "Open the viewer on a plugin's example layer; edit the JSON live."
 usage = '''
@@ -37,4 +46,21 @@ zig build "run-$usage_plugin" \
   -Dnative-install-dir="$MLN_NATIVE_INSTALL_DIR" \
   -Ddependency-include-dir="$MLN_FFI_DIR/third_party/maplibre-native/vendor/Vulkan-Headers/include" \
   -- --layer "../../plugins/$usage_plugin/examples/layer.json" $usage_args
+'''
+
+[tasks.weather]
+description = "Open the viewer on the weather-stations demo (icons loop, out of sync); pass --layer ../../plugins/animated-icon/examples/weather/play-once.layer.json for hover play-once."
+usage = '''
+arg "[args]..." var=#true help="Extra viewer flags, e.g. --layer ../../plugins/animated-icon/examples/weather/play-once.layer.json"
+'''
+run = '''
+zig build run-animated-icon \
+  -Dnative-install-dir="$MLN_NATIVE_INSTALL_DIR" \
+  -Ddependency-include-dir="$MLN_FFI_DIR/third_party/maplibre-native/vendor/Vulkan-Headers/include" \
+  -- --layer ../../plugins/animated-icon/examples/weather/layer.json \
+  --geojson stations=../../plugins/animated-icon/examples/weather/stations.geojson \
+  --catalog ../../plugins/animated-icon/catalog/weather.mlvc \
+  --play-once stations \
+  --style https://tiles.openfreemap.org/styles/dark --center 12,28 --zoom 2.6 --bearing 0 --pitch 0 \
+  $usage_args
 '''

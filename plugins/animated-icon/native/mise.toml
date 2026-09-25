@@ -1,0 +1,10 @@
+[tools]
+"core:zig" = "{{vars.zig_version}}"
+
+[tasks.build]
+description = "Build the animated-icon plugin shared library into zig-out/lib."
+run = "zig build"
+
+[tasks.test]
+description = "Run the plugin's Zig unit tests (no native library needed)."
+run = "zig build test"

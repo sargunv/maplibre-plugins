@@ -1,0 +1,38 @@
+{
+  "id": "weather-stations",
+  "type": "animated-icon",
+  "source": "stations",
+  "filter": ["<=", ["id"], ["step", ["zoom"], 40, 2, 80, 3, 160, 4, 240]],
+  "paint": {
+    "icon-animation": [
+      "match",
+      ["get", "condition"],
+      "clear",
+      [
+        "case",
+        ["boolean", ["get", "is_day"], true],
+        "clear-day",
+        "clear-night"
+      ],
+      "partly-cloudy",
+      [
+        "case",
+        ["boolean", ["get", "is_day"], true],
+        "partly-cloudy-day",
+        "partly-cloudy-night"
+      ],
+      "thunderstorm",
+      "thunderstorms-rain",
+      ["string", ["get", "condition"], "none"]
+    ],
+    "icon-animation-mode": "once",
+    "icon-animation-speed": 1,
+    "icon-animation-speed-transition": { "duration": 0, "delay": 0 },
+    "icon-animation-offset": [
+      "-",
+      0,
+      ["number", ["feature-state", "start"], 8192]
+    ],
+    "icon-size": ["interpolate", ["linear"], ["zoom"], 1, 0.6, 4, 1, 8, 1.4]
+  }
+}

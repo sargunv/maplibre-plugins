@@ -1,0 +1,27 @@
+{
+  "id": "weather-stations-labels",
+  "type": "symbol",
+  "source": "stations",
+  "filter": ["<=", ["id"], ["step", ["zoom"], 40, 2, 80, 3, 160, 4, 240]],
+  "layout": {
+    "text-field": [
+      "format",
+      ["get", "name"],
+      { "font-scale": 0.85 },
+      "\n",
+      {},
+      ["concat", ["to-string", ["get", "temperature"]], "°"],
+      { "font-scale": 1.1 }
+    ],
+    "text-font": ["Noto Sans Regular"],
+    "text-size": 12,
+    "text-anchor": "top",
+    "text-offset": [0, 1.6],
+    "text-optional": true
+  },
+  "paint": {
+    "text-color": "#e8edf5",
+    "text-halo-color": "rgba(0, 0, 0, 0.75)",
+    "text-halo-width": 1.2
+  }
+}

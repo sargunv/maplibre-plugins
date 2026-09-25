@@ -1,0 +1,8 @@
+.{
+    .name = .animated_icon,
+    .version = "0.2.0",
+    .minimum_zig_version = "0.16.0",
+    .dependencies = .{},
+    .paths = .{""},
+    .fingerprint = 0xc588576cd3a5db3f,
+}

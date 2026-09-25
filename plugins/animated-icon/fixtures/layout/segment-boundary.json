@@ -1,0 +1,22 @@
+{
+  "description": "16384 anchors: the first segment takes 16383 (65532 vertices), the next one the last anchor, with indices relative to it.",
+  "extent": 8192,
+  "grid": {
+    "index": 5,
+    "origin": [10, 20],
+    "step": [60, 50],
+    "columns": 128,
+    "rows": 128
+  },
+  "expected": {
+    "anchor_count": 16384,
+    "samples": [
+      [0, 10, 20, 5],
+      [127, 7630, 20, 5],
+      [128, 10, 70, 5],
+      [16382, 7570, 6370, 5],
+      [16383, 7630, 6370, 5]
+    ],
+    "segments": [[0, 0, 65532, 98298], [65532, 98298, 4, 6]]
+  }
+}

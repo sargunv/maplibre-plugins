@@ -1,0 +1,32 @@
+{
+  "description": "A tile owns points with 0 <= x < extent and 0 <= y < extent; points on the far edges and in the buffer belong to neighbours.",
+  "extent": 8192,
+  "features": [
+    {
+      "index": 0,
+      "points": [[0, 0], [8191, 0], [8192, 0], [-1, 0], [4096, 4096]]
+    },
+    {
+      "index": 1,
+      "points": [
+        [0, 8191],
+        [8191, 8191],
+        [0, 8192],
+        [8191, -1],
+        [-128, -128],
+        [8320, 8320]
+      ]
+    }
+  ],
+  "expected": {
+    "anchor_count": 5,
+    "anchors": [
+      [0, 0, 0],
+      [8191, 0, 0],
+      [4096, 4096, 0],
+      [0, 8191, 1],
+      [8191, 8191, 1]
+    ],
+    "segments": [[0, 0, 20, 30]]
+  }
+}

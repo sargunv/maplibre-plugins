@@ -12,5 +12,8 @@ export default defineConfig({
   // The dev-server dependency optimizer drops maplibre-gl's worker chunk
   // (maplibre-gl-worker.mjs 404s and the map never loads); serve it as-is.
   optimizeDeps: { exclude: ["maplibre-gl"] },
+  // Keep `/*! ... */` comments in the minified bundle: they carry the
+  // licenses of bundled artwork, such as the animated-icon demo catalog's.
+  build: { rolldownOptions: { output: { comments: { legal: true } } } },
   lint: { options: { typeAware: true, typeCheck: true } },
 });

@@ -21,6 +21,24 @@ local lintSteps = new Mapping<String, Step> {
     check = "node scripts/sync-shaders.mjs --check"
     fix = "node scripts/sync-shaders.mjs"
   }
+  // The animated-icon catalogs, the demo's JS copy and the catalog fixtures
+  // are baked from the Lottie sources. The check compares the input and
+  // output hashes in catalog/stamps.json, so it never bakes; CI's
+  // `mise run bake:check` runs the one full rebake.
+  ["bake"] {
+    glob = List(
+      "plugins/animated-icon/animations/**",
+      "plugins/animated-icon/baker/package.json",
+      "plugins/animated-icon/baker/src/**",
+      "plugins/animated-icon/catalog/**",
+      "plugins/animated-icon/fixtures/catalog/**",
+      "plugins/animated-icon/js/src/catalog.ts",
+      "plugins/animated-icon/js/src/generated/catalog.ts",
+      "pnpm-lock.yaml"
+    )
+    check = "node plugins/animated-icon/baker/src/cli.ts --check"
+    fix = "node plugins/animated-icon/baker/src/cli.ts"
+  }
   // The submodule pin must be an upstream commit, never one of the carried
   // patch commits `git add -A` would pick up from the patched checkout.
   ["ffi-pin"] {
