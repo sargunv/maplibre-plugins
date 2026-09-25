@@ -1,0 +1,33 @@
+{
+  "id": "snow",
+  "type": "particle-emitter",
+  "metadata": {
+    "maplibre-plugins:title": "Snow",
+    "maplibre-plugins:camera": {
+      "center": [37.7544, -122.4477],
+      "zoom": 14,
+      "bearing": 0,
+      "pitch": 50
+    }
+  },
+  "paint": {
+    "emitter-kind": "weather",
+    "particle-count": 7000,
+    "particle-lifetime": [6, 10],
+    "particle-direction": [0, -90],
+    "particle-spread": [25, 0],
+    "particle-speed": [35, 80],
+    "particle-wind": [20, 8],
+    "particle-wander": [16, 0.3],
+    "particle-spin": [-90, 90],
+    "particle-shape": "flake",
+    "particle-size": [4, 8],
+    "particle-size-clamp": [1.5, 20],
+    "particle-color": "rgba(255,255,255,0.95)",
+    "particle-fade": [0.25, 0.25],
+    "particle-additive": [0, 0],
+    "emitter-center-thinning": 0.4,
+    "emitter-screen-tint": "rgba(70,82,105,0.4)",
+    "emitter-vignette": 0.5
+  }
+}

@@ -1,0 +1,1188 @@
+{
+  "$comment": "Inputs and outputs of native/src/record.zig, the emitter's CPU half. frame: the build_frame context fields it reads (zoom, center [lat, lon] unwrapped, pitch in radians, camera-to-center distance, proj_matrix column-major, z in meters). paint: all 35 particle-emitter properties in definition order as MapLibre Native delivers them: f32 numbers, [x, y] for float2 and [lat, lon] for emitter-position, premultiplied [r, g, b, a] colors, enum strings. expected.header: the header parts build_frame writes (P_rel columns, ppm at the camera, pitch, eye (x, y px from the center, z m, box px), the two weather pools and weights; the pools come from the stored f32 eye and ppmCam). expected.row: the 15-vec4 table row, null when nothing is drawn. Frame values are f64; paint and expected values are f32, compared exactly. Regenerate with UPDATE_FIXTURES=1 zig build test in native/, then dprint fmt this file.",
+  "cases": [
+    {
+      "name": "point in ground space, defaults, looking straight down",
+      "frame": {
+        "zoom": 14,
+        "center": [37.7544, -122.4477],
+        "pitch": 0,
+        "cameraToCenterDistance": 900,
+        "projMatrix": [
+          2.25,
+          0,
+          0,
+          0,
+          0,
+          -3,
+          0,
+          0,
+          0,
+          0,
+          -0.26528005019749024,
+          -0.2647500201271656,
+          -3017398.02624,
+          9728930.63504413,
+          865.7657657657657,
+          900
+        ]
+      },
+      "paint": {
+        "emitter-kind": "point",
+        "emitter-position": [37.7544, -122.4477],
+        "emitter-radius": 0,
+        "emitter-height": [0, 0],
+        "particle-space": "ground",
+        "particle-scale": 1,
+        "particle-count": 256,
+        "particle-lifetime": [1, 2],
+        "particle-explosiveness": 0,
+        "particle-burst-interval": [0, 0],
+        "particle-burst-groups": 1,
+        "particle-seed": 0,
+        "particle-speed": [20, 40],
+        "particle-direction": [0, 90],
+        "particle-spread": [15, 0],
+        "particle-gravity": 0,
+        "particle-drag": 0,
+        "particle-wind": [0, 0],
+        "particle-wander": [0, 0.5],
+        "particle-spin": [0, 0],
+        "particle-shape": "glow",
+        "particle-size": [6, 10],
+        "particle-growth": 1,
+        "particle-size-clamp": [0.5, 128],
+        "particle-stretch": 0,
+        "particle-color": [1, 0.8999999761581421, 0.6000000238418579, 1],
+        "particle-color-end": [0, 0, 0, 0],
+        "particle-color-variation": [0, 0],
+        "particle-opacity": 1,
+        "particle-fade": [0.10000000149011612, 0.30000001192092896],
+        "particle-additive": [0, 0],
+        "particle-twinkle": [0, 2],
+        "emitter-center-thinning": 0,
+        "emitter-screen-tint": [0, 0, 0, 0],
+        "emitter-vignette": 0
+      },
+      "expected": {
+        "visible": true,
+        "poolSize": 512,
+        "header": {
+          "pRel": [
+            [2.25, 0, 0, 0],
+            [0, -3, 0, 0],
+            [0, 0, -0.2652800381183624, -0.26475003361701965],
+            [0, 0, 865.7657470703125, 900]
+          ],
+          "ppmCam": 0.26475003361701965,
+          "pitch": 0,
+          "eye": [-0, 0, 3399.43310546875, 900],
+          "pool0": [
+            0.07309937477111816,
+            0.6923573613166809,
+            0.00000003216851141019106,
+            1
+          ],
+          "pool1": [
+            0.14619874954223633,
+            0.3847147822380066,
+            0.00000006433702282038212,
+            0.5
+          ],
+          "weights": [1, 0, 900, 0]
+        },
+        "row": [
+          [0, 0, 1, 1],
+          [1, 0.8999999761581421, 0.6000000238418579, 1],
+          [1, 0.8999999761581421, 0.6000000238418579, 1],
+          [6, 10, 1, 0],
+          [0.5, 128, 0, 0],
+          [0.10000000149011612, 0.30000001192092896, 0, 0],
+          [0, 2, 0, 0],
+          [1, 2, 0, 0],
+          [256, 0, 1, 1114112],
+          [20, 40, 0, 90],
+          [15, 0, 0, 0],
+          [0, 0, 0, 0.5],
+          [0, 0, 0, 0],
+          [0, 0, 0, 0],
+          [0, 0, 0, 0]
+        ]
+      }
+    },
+    {
+      "name": "circle in world space off center, pitched and turned camera, colors over life",
+      "frame": {
+        "zoom": 18.5,
+        "center": [37.763, -122.5107],
+        "pitch": 1.0471975511965976,
+        "cameraToCenterDistance": 900,
+        "projMatrix": [
+          1.948557158514987,
+          0.7500000000000001,
+          0.43387959418829974,
+          0.43301270189221924,
+          1.1249999999999998,
+          -1.2990381056766584,
+          -0.7515015015015015,
+          -0.75,
+          0,
+          15.565655524708891,
+          -3.00160902326025,
+          -2.995611802434555,
+          -141610220.07367802,
+          72582484.41987562,
+          41990277.61279806,
+          41906416.91826699
+        ]
+      },
+      "paint": {
+        "emitter-kind": "circle",
+        "emitter-position": [37.76312, -122.51055],
+        "emitter-radius": 5,
+        "emitter-height": [0, 1],
+        "particle-space": "world",
+        "particle-scale": 1.5,
+        "particle-count": 600,
+        "particle-lifetime": [0.699999988079071, 1.2999999523162842],
+        "particle-explosiveness": 0,
+        "particle-burst-interval": [0, 0],
+        "particle-burst-groups": 1,
+        "particle-seed": 42.70000076293945,
+        "particle-speed": [2, 5],
+        "particle-direction": [0, 90],
+        "particle-spread": [20, 0],
+        "particle-gravity": -6,
+        "particle-drag": 1.2000000476837158,
+        "particle-wind": [1, 0.30000001192092896],
+        "particle-wander": [1.2000000476837158, 1.600000023841858],
+        "particle-spin": [0, 0],
+        "particle-shape": "glow",
+        "particle-size": [4, 8],
+        "particle-growth": 0.30000001192092896,
+        "particle-size-clamp": [2, 200],
+        "particle-stretch": 0,
+        "particle-color": [1, 0.8234999775886536, 0.47839999198913574, 1],
+        "particle-color-end": [
+          0.8999999761581421,
+          0.20825999975204468,
+          0.10943999886512756,
+          0.8999999761581421
+        ],
+        "particle-color-variation": [10, 0],
+        "particle-opacity": 0.800000011920929,
+        "particle-fade": [0.05999999865889549, 0.44999998807907104],
+        "particle-additive": [1, 0.4000000059604645],
+        "particle-twinkle": [0.30000001192092896, 8],
+        "emitter-center-thinning": 0,
+        "emitter-screen-tint": [0, 0, 0, 0],
+        "emitter-vignette": 0
+      },
+      "expected": {
+        "visible": true,
+        "poolSize": 1024,
+        "header": {
+          "pRel": [
+            [1.9485571384429932, 0.75, 0.4338795840740204, 0.4330126941204071],
+            [1.125, -1.299038052558899, -0.7515015006065369, -0.75],
+            [0, 15.565655708312988, -3.0016090869903564, -2.9956119060516357],
+            [0, 0, 865.7657470703125, 900]
+          ],
+          "ppmCam": 5.9912238121032715,
+          "pitch": 1.0471975803375244,
+          "eye": [-389.71142578125, 675, 75.10986328125, 900],
+          "pool0": [
+            0.7655122876167297,
+            0.05356656387448311,
+            0.3535533845424652,
+            1.4142135381698608
+          ],
+          "pool1": [
+            0.5310245752334595,
+            0.10713312774896622,
+            0.7071067690849304,
+            0.7071067690849304
+          ],
+          "weights": [0.5, 0.5, 450, 0]
+        },
+        "row": [
+          [79.08855438232422, -80.0339584350586, 5.9913153648376465, 1.5],
+          [
+            0.800000011920929,
+            0.6588000059127808,
+            0.3827199935913086,
+            0.800000011920929
+          ],
+          [
+            0.800000011920929,
+            0.2324880212545395,
+            0.1258240044116974,
+            0.800000011920929
+          ],
+          [4, 8, 0.30000001192092896, 0],
+          [2, 200, 0, 0],
+          [0.05999999865889549, 0.44999998807907104, 1, 0.4000000059604645],
+          [0.30000001192092896, 8, 10, 0],
+          [0.699999988079071, 1.2999999523162842, 0, 0],
+          [600, 0, 1, 6357034],
+          [2, 5, 0, 90],
+          [20, 0, -6, 1.2000000476837158],
+          [1, 0.30000001192092896, 1.2000000476837158, 1.600000023841858],
+          [5, 0, 1, 0],
+          [0, 0, 0, 0],
+          [0, 0, 0, 0]
+        ]
+      }
+    },
+    {
+      "name": "screen-space bursts with a tint, vignette past its maximum",
+      "frame": {
+        "zoom": 15.4,
+        "center": [37.8078, -122.4235],
+        "pitch": 0.5235987755982988,
+        "cameraToCenterDistance": 900,
+        "projMatrix": [
+          2.173333109150404,
+          -0.6724316041260401,
+          -0.12966860067448607,
+          -0.12940952255126034,
+          -0.5823428514806717,
+          -2.509548911213424,
+          -0.4839298058635421,
+          -0.4829629131445341,
+          0,
+          1.0486973407394145,
+          -0.606677835501822,
+          -0.6054656919743457,
+          -2713437.7659169966,
+          23847762.975566152,
+          4599558.0867157215,
+          4590404.124504503
+        ]
+      },
+      "paint": {
+        "emitter-kind": "point",
+        "emitter-position": [37.8071, -122.4242],
+        "emitter-radius": 0,
+        "emitter-height": [0, 0],
+        "particle-space": "screen",
+        "particle-scale": 1,
+        "particle-count": 2400,
+        "particle-lifetime": [1.7999999523162842, 2.5999999046325684],
+        "particle-explosiveness": 1,
+        "particle-burst-interval": [2.799999952316284, 0.8999999761581421],
+        "particle-burst-groups": 4,
+        "particle-seed": 0,
+        "particle-speed": [52, 68],
+        "particle-direction": [45, 10],
+        "particle-spread": [180, 0],
+        "particle-gravity": 0,
+        "particle-drag": 0,
+        "particle-wind": [0, 0],
+        "particle-wander": [0, 0.5],
+        "particle-spin": [-90, 90],
+        "particle-shape": "spark",
+        "particle-size": [6, 10],
+        "particle-growth": 1,
+        "particle-size-clamp": [0.5, 128],
+        "particle-stretch": 0.04500000178813934,
+        "particle-color": [1, 0.3019999861717224, 0.42750000953674316, 1],
+        "particle-color-end": [
+          0.6000000238418579,
+          0.49410000443458557,
+          0.32940003275871277,
+          0.6000000238418579
+        ],
+        "particle-color-variation": [12, 180],
+        "particle-opacity": 1,
+        "particle-fade": [0.10000000149011612, 0.30000001192092896],
+        "particle-additive": [0, 0],
+        "particle-twinkle": [0, 2],
+        "emitter-center-thinning": 0,
+        "emitter-screen-tint": [
+          0,
+          0.00686000008136034,
+          0.02744000032544136,
+          0.3499999940395355
+        ],
+        "emitter-vignette": 1.5
+      },
+      "expected": {
+        "visible": true,
+        "poolSize": 4096,
+        "header": {
+          "pRel": [
+            [
+              2.173333168029785,
+              -0.6724315881729126,
+              -0.12966859340667725,
+              -0.129409521818161
+            ],
+            [
+              -0.5823428630828857,
+              -2.5095489025115967,
+              -0.4839298129081726,
+              -0.4829629063606262
+            ],
+            [0, 1.0486973524093628, -0.6066778302192688, -0.6054657101631165],
+            [0, 0, 865.7657470703125, 900]
+          ],
+          "ppmCam": 0.6991315484046936,
+          "pitch": 0.5235987901687622,
+          "eye": [
+            116.46856689453125,
+            434.6666259765625,
+            1114.8443603515625,
+            900
+          ],
+          "pool0": [
+            0.9947717785835266,
+            0.03457051143050194,
+            0.31264904141426086,
+            0.6597539782524109
+          ],
+          "pool1": [
+            0.4973858892917633,
+            0.5172852277755737,
+            0.6563245058059692,
+            1.3195079565048218
+          ],
+          "weights": [
+            0.4000000059604645,
+            0.6000000238418579,
+            779.4228515625,
+            0
+          ]
+        },
+        "row": [
+          [-43.045467376708984, 54.48273849487305, 1, 1],
+          [1, 0.3019999861717224, 0.42750000953674316, 1],
+          [1, 0.6148999929428101, 0.5004000067710876, 1],
+          [6, 10, 1, 0.04500000178813934],
+          [0.5, 128, -90, 90],
+          [0.10000000149011612, 0.30000001192092896, 0, 0],
+          [0, 2, 12, 180],
+          [
+            1.7999999523162842,
+            2.5999999046325684,
+            2.799999952316284,
+            0.8999999761581421
+          ],
+          [2400, 1, 4, 196608],
+          [52, 68, 45, 10],
+          [180, 0, 0, 0],
+          [0, 0, 0, 0.5],
+          [0, 0, 0, 0],
+          [0, 0.00686000008136034, 0.02744000032544136, 0.3499999940395355],
+          [1, 0, 0, 0]
+        ]
+      }
+    },
+    {
+      "name": "weather just below an integer zoom",
+      "frame": {
+        "zoom": 13.999,
+        "center": [37.7544, -122.4477],
+        "pitch": 0.8726646259971648,
+        "cameraToCenterDistance": 900,
+        "projMatrix": [
+          2.114308396768294,
+          -0.6595389311788626,
+          -0.26252716001963394,
+          -0.2620026302293849,
+          -0.7695453224827546,
+          -1.8120683206651613,
+          -0.7212874441474946,
+          -0.7198463103929542,
+          0,
+          0.6078285584766129,
+          -0.170349932584578,
+          -0.17000957307891454,
+          -339573.5155609166,
+          6756296.03234957,
+          2690185.722139402,
+          2684846.6897275355
+        ]
+      },
+      "paint": {
+        "emitter-kind": "weather",
+        "emitter-position": [0, 0],
+        "emitter-radius": 0,
+        "emitter-height": [0, 0],
+        "particle-space": "ground",
+        "particle-scale": 1,
+        "particle-count": 3500,
+        "particle-lifetime": [6, 10],
+        "particle-explosiveness": 0,
+        "particle-burst-interval": [0, 0],
+        "particle-burst-groups": 1,
+        "particle-seed": 0,
+        "particle-speed": [35, 80],
+        "particle-direction": [0, -90],
+        "particle-spread": [25, 0],
+        "particle-gravity": 0,
+        "particle-drag": 0,
+        "particle-wind": [20, 8],
+        "particle-wander": [16, 0.30000001192092896],
+        "particle-spin": [-90, 90],
+        "particle-shape": "flake",
+        "particle-size": [2.5, 5],
+        "particle-growth": 1,
+        "particle-size-clamp": [1.2000000476837158, 14],
+        "particle-stretch": 0,
+        "particle-color": [
+          0.9200000166893005,
+          0.9200000166893005,
+          0.9200000166893005,
+          0.9200000166893005
+        ],
+        "particle-color-end": [0, 0, 0, 0],
+        "particle-color-variation": [0, 0],
+        "particle-opacity": 1,
+        "particle-fade": [0.25, 0.25],
+        "particle-additive": [0.10000000149011612, 0.10000000149011612],
+        "particle-twinkle": [0, 2],
+        "emitter-center-thinning": 0.4000000059604645,
+        "emitter-screen-tint": [
+          0.15883199870586395,
+          0.16376399993896484,
+          0.17294400930404663,
+          0.18000000715255737
+        ],
+        "emitter-vignette": 0.6000000238418579
+      },
+      "expected": {
+        "visible": true,
+        "poolSize": 8192,
+        "header": {
+          "pRel": [
+            [
+              2.1143083572387695,
+              -0.6595389246940613,
+              -0.2625271677970886,
+              -0.2620026171207428
+            ],
+            [
+              -0.769545316696167,
+              -1.8120683431625366,
+              -0.7212874293327332,
+              -0.7198463082313538
+            ],
+            [0, 0.6078285574913025, -0.17034992575645447, -0.1700095683336258],
+            [0, 0, 865.7657470703125, 900]
+          ],
+          "ppmCam": 0.26448795199394226,
+          "pitch": 0.8726646304130554,
+          "eye": [235.8023681640625, 647.8616943359375, 2187.27880859375, 900],
+          "pool0": [
+            0.33528366684913635,
+            0.972011923789978,
+            0.6432333588600159,
+            0.9993070960044861
+          ],
+          "pool1": [
+            0.16764183342456818,
+            0.986005961894989,
+            0.32161667943000793,
+            1.9986141920089722
+          ],
+          "weights": [
+            0.9990000128746033,
+            0.0010000000474974513,
+            578.5089111328125,
+            0
+          ]
+        },
+        "row": [
+          [0, 0, 1, 1],
+          [
+            0.9200000166893005,
+            0.9200000166893005,
+            0.9200000166893005,
+            0.9200000166893005
+          ],
+          [
+            0.9200000166893005,
+            0.9200000166893005,
+            0.9200000166893005,
+            0.9200000166893005
+          ],
+          [2.5, 5, 1, 0],
+          [1.2000000476837158, 14, -90, 90],
+          [0.25, 0.25, 0.10000000149011612, 0.10000000149011612],
+          [0, 2, 0, 0],
+          [6, 10, 0, 0],
+          [3500, 0, 1, 9764864],
+          [35, 80, 0, -90],
+          [25, 0, 0, 0],
+          [20, 8, 16, 0.30000001192092896],
+          [0, 0, 0, 0.4000000059604645],
+          [
+            0.15883199870586395,
+            0.16376399993896484,
+            0.17294400930404663,
+            0.18000000715255737
+          ],
+          [0.6000000238418579, 0, 0, 0]
+        ]
+      }
+    },
+    {
+      "name": "weather just above an integer zoom, position ignored",
+      "frame": {
+        "zoom": 14.001,
+        "center": [37.7544, -122.4477],
+        "pitch": 0.8726646259971648,
+        "cameraToCenterDistance": 900,
+        "projMatrix": [
+          2.114308396768294,
+          -0.6595389311788626,
+          -0.26252716001963394,
+          -0.2620026302293849,
+          -0.7695453224827546,
+          -1.8120683206651613,
+          -0.7212874441474946,
+          -0.7198463103929542,
+          0,
+          0.608672022694701,
+          -0.1705863217286632,
+          -0.17024548991701755,
+          -340044.5908597964,
+          6765668.742607908,
+          2693916.4966084845,
+          2688570.010101775
+        ]
+      },
+      "paint": {
+        "emitter-kind": "weather",
+        "emitter-position": [95, 0],
+        "emitter-radius": 0,
+        "emitter-height": [0, 0],
+        "particle-space": "ground",
+        "particle-scale": 1,
+        "particle-count": 3500,
+        "particle-lifetime": [6, 10],
+        "particle-explosiveness": 0,
+        "particle-burst-interval": [0, 0],
+        "particle-burst-groups": 1,
+        "particle-seed": 0,
+        "particle-speed": [35, 80],
+        "particle-direction": [0, -90],
+        "particle-spread": [25, 0],
+        "particle-gravity": 0,
+        "particle-drag": 0,
+        "particle-wind": [0, 0],
+        "particle-wander": [0, 0.5],
+        "particle-spin": [0, 0],
+        "particle-shape": "flake",
+        "particle-size": [6, 10],
+        "particle-growth": 1,
+        "particle-size-clamp": [0.5, 128],
+        "particle-stretch": 0,
+        "particle-color": [1, 0.8999999761581421, 0.6000000238418579, 1],
+        "particle-color-end": [0, 0, 0, 0],
+        "particle-color-variation": [0, 0],
+        "particle-opacity": 1,
+        "particle-fade": [0.10000000149011612, 0.30000001192092896],
+        "particle-additive": [0, 0],
+        "particle-twinkle": [0, 2],
+        "emitter-center-thinning": 0,
+        "emitter-screen-tint": [0, 0, 0, 0],
+        "emitter-vignette": 0
+      },
+      "expected": {
+        "visible": true,
+        "poolSize": 8192,
+        "header": {
+          "pRel": [
+            [
+              2.1143083572387695,
+              -0.6595389246940613,
+              -0.2625271677970886,
+              -0.2620026171207428
+            ],
+            [
+              -0.769545316696167,
+              -1.8120683431625366,
+              -0.7212874293327332,
+              -0.7198463082313538
+            ],
+            [0, 0.608672022819519, -0.17058631777763367, -0.1702454835176468],
+            [0, 0, 865.7657470703125, 900]
+          ],
+          "ppmCam": 0.26485496759414673,
+          "pitch": 0.8726646304130554,
+          "eye": [235.8023681640625, 647.8616943359375, 2184.247802734375, 900],
+          "pool0": [
+            0.3349204659461975,
+            0.9730098247528076,
+            0.6423422694206238,
+            1.000693440437317
+          ],
+          "pool1": [
+            0.669840931892395,
+            0.94601970911026,
+            0.28468450903892517,
+            0.5003467202186584
+          ],
+          "weights": [
+            0.9990000128746033,
+            0.0010000000474974513,
+            578.5089111328125,
+            0
+          ]
+        },
+        "row": [
+          [0, 0, 1, 1],
+          [1, 0.8999999761581421, 0.6000000238418579, 1],
+          [1, 0.8999999761581421, 0.6000000238418579, 1],
+          [6, 10, 1, 0],
+          [0.5, 128, 0, 0],
+          [0.10000000149011612, 0.30000001192092896, 0, 0],
+          [0, 2, 0, 0],
+          [6, 10, 0, 0],
+          [3500, 0, 1, 9764864],
+          [35, 80, 0, -90],
+          [25, 0, 0, 0],
+          [0, 0, 0, 0.5],
+          [0, 0, 0, 0],
+          [0, 0, 0, 0],
+          [0, 0, 0, 0]
+        ]
+      }
+    },
+    {
+      "name": "antimeridian: unwrapped center, the emitter's nearest copy",
+      "frame": {
+        "zoom": 12,
+        "center": [-16.5, 180.25],
+        "pitch": 0.3490658503988659,
+        "cameraToCenterDistance": 900,
+        "projMatrix": [
+          0.00000000000000013777276490407724,
+          2.8190778623577253,
+          0.3427048683373317,
+          0.3420201433256687,
+          2.25,
+          -0.00000000000000017261873403417754,
+          -0.00000000000000002098462100307642,
+          -0.00000000000000002094269368838496,
+          0,
+          0.056000534498201734,
+          -0.051389410815885904,
+          -0.051286734670399625,
+          -2578617.5804624287,
+          -5916140.356905618,
+          -718337.5344165252,
+          -716866.3305515571
+        ]
+      },
+      "paint": {
+        "emitter-kind": "circle",
+        "emitter-position": [-16.51, -179.8],
+        "emitter-radius": 40,
+        "emitter-height": [0, 0],
+        "particle-space": "ground",
+        "particle-scale": 1,
+        "particle-count": 64,
+        "particle-lifetime": [1, 2],
+        "particle-explosiveness": 0,
+        "particle-burst-interval": [0, 0],
+        "particle-burst-groups": 1,
+        "particle-seed": 0,
+        "particle-speed": [20, 40],
+        "particle-direction": [0, 90],
+        "particle-spread": [15, 0],
+        "particle-gravity": 0,
+        "particle-drag": 0,
+        "particle-wind": [0, 0],
+        "particle-wander": [0, 0.5],
+        "particle-spin": [0, 0],
+        "particle-shape": "glow",
+        "particle-size": [6, 10],
+        "particle-growth": 1,
+        "particle-size-clamp": [0.5, 128],
+        "particle-stretch": 0,
+        "particle-color": [1, 0.8999999761581421, 0.6000000238418579, 1],
+        "particle-color-end": [0, 0, 0, 0],
+        "particle-color-variation": [0, 0],
+        "particle-opacity": 1,
+        "particle-fade": [0.10000000149011612, 0.30000001192092896],
+        "particle-additive": [0, 0],
+        "particle-twinkle": [0, 2],
+        "emitter-center-thinning": 0,
+        "emitter-screen-tint": [0, 0, 0, 0],
+        "emitter-vignette": 0
+      },
+      "expected": {
+        "visible": true,
+        "poolSize": 128,
+        "header": {
+          "pRel": [
+            [
+              0.00000000000000013777276760710893,
+              2.819077968597412,
+              0.3427048623561859,
+              0.3420201539993286
+            ],
+            [
+              2.25,
+              -0.00000000000000017261873691019539,
+              -0.000000000000000020984620882765876,
+              -0.000000000000000020942694406238013
+            ],
+            [
+              0,
+              0.05600053444504738,
+              -0.051389411091804504,
+              -0.0512867346405983
+            ],
+            [0, 0, 865.7657470703125, 900]
+          ],
+          "ppmCam": 0.054578203707933426,
+          "pitch": 0.3490658402442932,
+          "eye": [
+            -307.818115234375,
+            0.00000000000001884842447592329,
+            15495.625,
+            900
+          ],
+          "pool0": [
+            0.44504159688949585,
+            0.6086022257804871,
+            0.9396926164627075,
+            1
+          ],
+          "pool1": [
+            0.8900831937789917,
+            0.2172044813632965,
+            0.8793852925300598,
+            0.5
+          ],
+          "weights": [1, 0, 845.723388671875, 0]
+        },
+        "row": [
+          [-291.2711181640625, 60.757747650146484, 1, 1],
+          [1, 0.8999999761581421, 0.6000000238418579, 1],
+          [1, 0.8999999761581421, 0.6000000238418579, 1],
+          [6, 10, 1, 0],
+          [0.5, 128, 0, 0],
+          [0.10000000149011612, 0.30000001192092896, 0, 0],
+          [0, 2, 0, 0],
+          [1, 2, 0, 0],
+          [64, 0, 1, 5308416],
+          [20, 40, 0, 90],
+          [15, 0, 0, 0],
+          [0, 0, 0, 0.5],
+          [40, 0, 0, 0],
+          [0, 0, 0, 0],
+          [0, 0, 0, 0]
+        ]
+      }
+    },
+    {
+      "name": "tint only: no particles, the smallest pool",
+      "frame": {
+        "zoom": 16,
+        "center": [37.7684, -122.4861],
+        "pitch": 0.7853981633974483,
+        "cameraToCenterDistance": 900,
+        "projMatrix": [
+          2.25,
+          0,
+          0,
+          0,
+          0,
+          -2.121320343559643,
+          -0.7085224103781121,
+          -0.7071067811865475,
+          0,
+          2.246739669576225,
+          -0.7504125489642315,
+          -0.7489132231920751,
+          -12061539.041280001,
+          27514069.895949673,
+          9190583.472087294,
+          9172256.631983222
+        ]
+      },
+      "paint": {
+        "emitter-kind": "point",
+        "emitter-position": [37.7684, -122.4861],
+        "emitter-radius": 0,
+        "emitter-height": [0, 0],
+        "particle-space": "ground",
+        "particle-scale": 1,
+        "particle-count": 0,
+        "particle-lifetime": [1, 2],
+        "particle-explosiveness": 0,
+        "particle-burst-interval": [0, 0],
+        "particle-burst-groups": 1,
+        "particle-seed": 0,
+        "particle-speed": [20, 40],
+        "particle-direction": [0, 90],
+        "particle-spread": [15, 0],
+        "particle-gravity": 0,
+        "particle-drag": 0,
+        "particle-wind": [0, 0],
+        "particle-wander": [0, 0.5],
+        "particle-spin": [0, 0],
+        "particle-shape": "glow",
+        "particle-size": [6, 10],
+        "particle-growth": 1,
+        "particle-size-clamp": [0.5, 128],
+        "particle-stretch": 0,
+        "particle-color": [1, 0.8999999761581421, 0.6000000238418579, 1],
+        "particle-color-end": [0, 0, 0, 0],
+        "particle-color-variation": [0, 0],
+        "particle-opacity": 1,
+        "particle-fade": [0.10000000149011612, 0.30000001192092896],
+        "particle-additive": [0, 0],
+        "particle-twinkle": [0, 2],
+        "emitter-center-thinning": 0,
+        "emitter-screen-tint": [
+          0.007064999546855688,
+          0.014129999093711376,
+          0.04941000044345856,
+          0.44999998807907104
+        ],
+        "emitter-vignette": 0
+      },
+      "expected": {
+        "visible": true,
+        "poolSize": 64,
+        "header": {
+          "pRel": [
+            [2.25, 0, 0, 0],
+            [0, -2.1213202476501465, -0.7085224390029907, -0.7071067690849304],
+            [0, 2.246739625930786, -0.7504125237464905, -0.7489132285118103],
+            [0, 0, 865.7657470703125, 900]
+          ],
+          "ppmCam": 1.0591232776641846,
+          "pitch": 0.7853981852531433,
+          "eye": [-0, 636.3961181640625, 600.8706665039062, 900],
+          "pool0": [
+            0.3155759274959564,
+            0.8962995409965515,
+            0.7071067690849304,
+            1
+          ],
+          "pool1": [
+            0.6311518549919128,
+            0.7925990223884583,
+            0.4142135679721832,
+            0.5
+          ],
+          "weights": [1, 0, 636.3961181640625, 0]
+        },
+        "row": [
+          [0, 0, 1, 1],
+          [1, 0.8999999761581421, 0.6000000238418579, 1],
+          [1, 0.8999999761581421, 0.6000000238418579, 1],
+          [6, 10, 1, 0],
+          [0.5, 128, 0, 0],
+          [0.10000000149011612, 0.30000001192092896, 0, 0],
+          [0, 2, 0, 0],
+          [1, 2, 0, 0],
+          [0, 0, 1, 1114112],
+          [20, 40, 0, 90],
+          [15, 0, 0, 0],
+          [0, 0, 0, 0.5],
+          [0, 0, 0, 0],
+          [
+            0.007064999546855688,
+            0.014129999093711376,
+            0.04941000044345856,
+            0.44999998807907104
+          ],
+          [0, 0, 0, 0]
+        ]
+      }
+    },
+    {
+      "name": "nothing to draw: no particles and no tint",
+      "frame": {
+        "zoom": 16,
+        "center": [37.7684, -122.4861],
+        "pitch": 0,
+        "cameraToCenterDistance": 900,
+        "projMatrix": [
+          2.25,
+          0,
+          0,
+          0,
+          0,
+          -3,
+          0,
+          0,
+          0,
+          0,
+          -1.0613210588012965,
+          -1.05920053720529,
+          -12061539.041280001,
+          38910770.80293331,
+          865.7657657657657,
+          900
+        ]
+      },
+      "paint": {
+        "emitter-kind": "point",
+        "emitter-position": [37.7684, -122.4861],
+        "emitter-radius": 0,
+        "emitter-height": [0, 0],
+        "particle-space": "ground",
+        "particle-scale": 1,
+        "particle-count": 0,
+        "particle-lifetime": [1, 2],
+        "particle-explosiveness": 0,
+        "particle-burst-interval": [0, 0],
+        "particle-burst-groups": 1,
+        "particle-seed": 0,
+        "particle-speed": [20, 40],
+        "particle-direction": [0, 90],
+        "particle-spread": [15, 0],
+        "particle-gravity": 0,
+        "particle-drag": 0,
+        "particle-wind": [0, 0],
+        "particle-wander": [0, 0.5],
+        "particle-spin": [0, 0],
+        "particle-shape": "glow",
+        "particle-size": [6, 10],
+        "particle-growth": 1,
+        "particle-size-clamp": [0.5, 128],
+        "particle-stretch": 0,
+        "particle-color": [1, 0.8999999761581421, 0.6000000238418579, 1],
+        "particle-color-end": [0, 0, 0, 0],
+        "particle-color-variation": [0, 0],
+        "particle-opacity": 1,
+        "particle-fade": [0.10000000149011612, 0.30000001192092896],
+        "particle-additive": [0, 0],
+        "particle-twinkle": [0, 2],
+        "emitter-center-thinning": 0,
+        "emitter-screen-tint": [0, 0, 0, 0],
+        "emitter-vignette": 0
+      },
+      "expected": {
+        "visible": false,
+        "poolSize": 64,
+        "header": {
+          "pRel": [
+            [2.25, 0, 0, 0],
+            [0, -3, 0, 0],
+            [0, 0, -1.0613210201263428, -1.0592005252838135],
+            [0, 0, 865.7657470703125, 900]
+          ],
+          "ppmCam": 1.0592005252838135,
+          "pitch": 0,
+          "eye": [-0, 0, 849.6974487304688, 900],
+          "pool0": [0.3155759274959564, 0.6034063100814819, 1, 1],
+          "pool1": [
+            0.6311518549919128,
+            0.20681263506412506,
+            0.9999999403953552,
+            0.5
+          ],
+          "weights": [1, 0, 900, 0]
+        },
+        "row": null
+      }
+    },
+    {
+      "name": "unusable position",
+      "frame": {
+        "zoom": 16,
+        "center": [37.7684, -122.4861],
+        "pitch": 0,
+        "cameraToCenterDistance": 900,
+        "projMatrix": [
+          2.25,
+          0,
+          0,
+          0,
+          0,
+          -3,
+          0,
+          0,
+          0,
+          0,
+          -1.0613210588012965,
+          -1.05920053720529,
+          -12061539.041280001,
+          38910770.80293331,
+          865.7657657657657,
+          900
+        ]
+      },
+      "paint": {
+        "emitter-kind": "point",
+        "emitter-position": [91, 0],
+        "emitter-radius": 0,
+        "emitter-height": [0, 0],
+        "particle-space": "ground",
+        "particle-scale": 1,
+        "particle-count": 256,
+        "particle-lifetime": [1, 2],
+        "particle-explosiveness": 0,
+        "particle-burst-interval": [0, 0],
+        "particle-burst-groups": 1,
+        "particle-seed": 0,
+        "particle-speed": [20, 40],
+        "particle-direction": [0, 90],
+        "particle-spread": [15, 0],
+        "particle-gravity": 0,
+        "particle-drag": 0,
+        "particle-wind": [0, 0],
+        "particle-wander": [0, 0.5],
+        "particle-spin": [0, 0],
+        "particle-shape": "glow",
+        "particle-size": [6, 10],
+        "particle-growth": 1,
+        "particle-size-clamp": [0.5, 128],
+        "particle-stretch": 0,
+        "particle-color": [1, 0.8999999761581421, 0.6000000238418579, 1],
+        "particle-color-end": [0, 0, 0, 0],
+        "particle-color-variation": [0, 0],
+        "particle-opacity": 1,
+        "particle-fade": [0.10000000149011612, 0.30000001192092896],
+        "particle-additive": [0, 0],
+        "particle-twinkle": [0, 2],
+        "emitter-center-thinning": 0,
+        "emitter-screen-tint": [0, 0, 0, 0],
+        "emitter-vignette": 0
+      },
+      "expected": {
+        "visible": false,
+        "poolSize": 512,
+        "header": {
+          "pRel": [
+            [2.25, 0, 0, 0],
+            [0, -3, 0, 0],
+            [0, 0, -1.0613210201263428, -1.0592005252838135],
+            [0, 0, 865.7657470703125, 900]
+          ],
+          "ppmCam": 1.0592005252838135,
+          "pitch": 0,
+          "eye": [-0, 0, 849.6974487304688, 900],
+          "pool0": [0.3155759274959564, 0.6034063100814819, 1, 1],
+          "pool1": [
+            0.6311518549919128,
+            0.20681263506412506,
+            0.9999999403953552,
+            0.5
+          ],
+          "weights": [1, 0, 900, 0]
+        },
+        "row": null
+      }
+    },
+    {
+      "name": "orthographic projection: no perspective, no eye",
+      "frame": {
+        "zoom": 2,
+        "center": [10, 20],
+        "pitch": 0,
+        "cameraToCenterDistance": 900,
+        "projMatrix": [
+          0.0025,
+          0,
+          0,
+          0,
+          0,
+          -0.0033333333333333335,
+          0,
+          0,
+          0,
+          0,
+          1,
+          0,
+          -2.8444444444444446,
+          3.222733565029829,
+          0,
+          1
+        ]
+      },
+      "paint": {
+        "emitter-kind": "point",
+        "emitter-position": [12, 25],
+        "emitter-radius": 0,
+        "emitter-height": [0, 0],
+        "particle-space": "ground",
+        "particle-scale": 1,
+        "particle-count": 16384,
+        "particle-lifetime": [1, 2],
+        "particle-explosiveness": 0,
+        "particle-burst-interval": [0, 0],
+        "particle-burst-groups": 1,
+        "particle-seed": 0,
+        "particle-speed": [20, 40],
+        "particle-direction": [0, 90],
+        "particle-spread": [15, 0],
+        "particle-gravity": 0,
+        "particle-drag": 0,
+        "particle-wind": [0, 0],
+        "particle-wander": [0, 0.5],
+        "particle-spin": [0, 0],
+        "particle-shape": "glow",
+        "particle-size": [6, 10],
+        "particle-growth": 1,
+        "particle-size-clamp": [0.5, 128],
+        "particle-stretch": 0,
+        "particle-color": [1, 0.8999999761581421, 0.6000000238418579, 1],
+        "particle-color-end": [0, 0, 0, 0],
+        "particle-color-variation": [0, 0],
+        "particle-opacity": 1,
+        "particle-fade": [0.10000000149011612, 0.30000001192092896],
+        "particle-additive": [0, 0],
+        "particle-twinkle": [0, 2],
+        "emitter-center-thinning": 0,
+        "emitter-screen-tint": [0, 0, 0, 0],
+        "emitter-vignette": 0
+      },
+      "expected": {
+        "visible": true,
+        "poolSize": 16384,
+        "header": {
+          "pRel": [
+            [0.0024999999441206455, 0, 0, 0],
+            [0, -0.0033333334140479565, 0, 0],
+            [0, 0, 1, 0],
+            [0, 0, 0, 1]
+          ],
+          "ppmCam": 0.00005189252260606736,
+          "pitch": 0,
+          "eye": [0, 0, 17343540, 900],
+          "pool0": [
+            0.26419752836227417,
+            0.925755500793457,
+            0.00000004613248094642586,
+            1
+          ],
+          "pool1": [
+            0.5283950567245483,
+            0.8515109419822693,
+            0.00000009226496189285172,
+            0.5
+          ],
+          "weights": [1, 0, 900.0000610351562, 0]
+        },
+        "row": [
+          [28.44444465637207, -11.591364860534668, 1, 1],
+          [1, 0.8999999761581421, 0.6000000238418579, 1],
+          [1, 0.8999999761581421, 0.6000000238418579, 1],
+          [6, 10, 1, 0],
+          [0.5, 128, 0, 0],
+          [0.10000000149011612, 0.30000001192092896, 0, 0],
+          [0, 2, 0, 0],
+          [1, 2, 0, 0],
+          [16384, 0, 1, 1114112],
+          [20, 40, 0, 90],
+          [15, 0, 0, 0],
+          [0, 0, 0, 0.5],
+          [0, 0, 0, 0],
+          [0, 0, 0, 0],
+          [0, 0, 0, 0]
+        ]
+      }
+    }
+  ]
+}

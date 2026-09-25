@@ -1,0 +1,35 @@
+{
+  "id": "waterway-flow",
+  "type": "particle-features",
+  "source": "openmaptiles",
+  "source-layer": "waterway",
+  "minzoom": 13,
+  "filter": [
+    "all",
+    ["match", ["get", "class"], ["river", "canal", "stream"], true, false],
+    ["!=", ["get", "brunnel"], "tunnel"]
+  ],
+  "metadata": {
+    "maplibre-plugins:title": "Waterway flow",
+    "maplibre-plugins:camera": {
+      "center": [52.3702, 4.8952],
+      "zoom": 15,
+      "bearing": 0,
+      "pitch": 30
+    }
+  },
+  "paint": {
+    "particle-density": ["match", ["get", "class"], "river", 24, 16],
+    "particle-direction": [0, 0],
+    "particle-spread": [3, 1],
+    "particle-speed": [8, 12],
+    "particle-shape": "streak",
+    "particle-stretch": 1.2,
+    "particle-size": [2.5, 3.5],
+    "particle-color": "rgba(255,255,255,0.95)",
+    "particle-lifetime": [1.5, 2.5],
+    "particle-fade": [0.2, 0.3],
+    "particle-additive": [0.1, 0.1],
+    "particle-wander": [1, 0.5]
+  }
+}

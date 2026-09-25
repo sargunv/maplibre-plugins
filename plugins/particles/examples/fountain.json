@@ -1,0 +1,34 @@
+{
+  "id": "fountain",
+  "type": "particle-emitter",
+  "metadata": {
+    "maplibre-plugins:title": "Fountain",
+    "maplibre-plugins:camera": {
+      "center": [37.7707, -122.4687],
+      "zoom": 18.8,
+      "bearing": 0,
+      "pitch": 60
+    }
+  },
+  "paint": {
+    "emitter-kind": "point",
+    "emitter-position": [37.7707, -122.4687],
+    "particle-space": "world",
+    "particle-count": 1600,
+    "particle-lifetime": [2.8, 3.4],
+    "particle-direction": [0, 90],
+    "particle-spread": [10, 0],
+    "particle-speed": [13, 16],
+    "particle-gravity": 9.8,
+    "particle-drag": 0.1,
+    "particle-wind": [0.6, 0],
+    "particle-shape": "streak",
+    "particle-size": [0.3, 0.45],
+    "particle-size-clamp": [1.5, 6],
+    "particle-stretch": 0.12,
+    "particle-color": "rgba(80,150,230,0.9)",
+    "particle-color-end": "rgba(200,228,255,0.7)",
+    "particle-fade": [0.02, 0.12],
+    "particle-additive": [0.2, 0.2]
+  }
+}

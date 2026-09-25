@@ -1,0 +1,32 @@
+{
+  "id": "bubbles",
+  "type": "particle-emitter",
+  "metadata": {
+    "maplibre-plugins:title": "Bubbles",
+    "maplibre-plugins:camera": {
+      "center": [37.7708, -122.4942],
+      "zoom": 16.5,
+      "bearing": 0,
+      "pitch": 30
+    }
+  },
+  "paint": {
+    "emitter-kind": "circle",
+    "emitter-position": [37.7708, -122.4942],
+    "emitter-radius": 60,
+    "particle-count": 200,
+    "particle-lifetime": [3, 5],
+    "particle-direction": [0, 90],
+    "particle-spread": [12, 0],
+    "particle-speed": [12, 28],
+    "particle-gravity": -14,
+    "particle-drag": 0.9,
+    "particle-wander": [5, 0.9],
+    "particle-shape": "ring",
+    "particle-size": [5, 11],
+    "particle-growth": 1.35,
+    "particle-color": "rgba(240,250,255,0.95)",
+    "particle-fade": [0.12, 0.2],
+    "particle-additive": [0.2, 0.2]
+  }
+}

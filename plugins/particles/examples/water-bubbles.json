@@ -1,0 +1,30 @@
+{
+  "id": "water-bubbles",
+  "type": "particle-features",
+  "source": "openmaptiles",
+  "source-layer": "water",
+  "filter": ["!=", ["get", "brunnel"], "tunnel"],
+  "metadata": {
+    "maplibre-plugins:title": "Water ripples",
+    "maplibre-plugins:before": "landcover-ice-shelf",
+    "maplibre-plugins:camera": {
+      "center": [37.808, -122.42],
+      "zoom": 13.5,
+      "bearing": 0,
+      "pitch": 45
+    }
+  },
+  "paint": {
+    "particle-density": 6,
+    "particle-shape": "ripple",
+    "particle-size": [8, 16],
+    "particle-lifetime": [1.5, 3],
+    "particle-direction": [0, 0],
+    "particle-speed": [0, 2],
+    "particle-spread": [180, 1],
+    "particle-wander": [3, 0.6],
+    "particle-fade": [0.2, 0.4],
+    "particle-color": "rgba(255,255,255,0.85)",
+    "particle-additive": [0.1, 0.1]
+  }
+}

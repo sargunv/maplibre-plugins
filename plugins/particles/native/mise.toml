@@ -1,0 +1,66 @@
+[tools]
+"core:zig" = "{{vars.zig_version}}"
+
+[tasks.build]
+description = "Build the particles plugin shared library into zig-out/lib."
+run = "zig build"
+
+[tasks.test]
+description = "Run the plugin's Zig unit tests (no native library needed)."
+run = "zig build test"
+
+[tasks.shader-check]
+description = "Compile every shader source offline behind replica host preludes: GL ES 3.00 and Vulkan with glslangValidator, MSL 2.4 fast-math with the Metal compiler."
+run = '''
+set -eu
+command -v glslangValidator >/dev/null || { echo "glslangValidator not found (brew install glslang)" >&2; exit 1; }
+out="$(mktemp -d)"
+trap 'rm -rf "$out"' EXIT
+zig build dump-shaders -- "$out/src"
+failed=0
+checked=0
+for file in "$out"/src/*; do
+  case "$file" in
+    *.gles.vert) flags="-S vert" ;;
+    *.gles.frag) flags="-S frag" ;;
+    *.vulkan.vert) flags="-V -S vert -o /dev/null" ;;
+    *.vulkan.frag) flags="-V -S frag -o /dev/null" ;;
+    *.metal) continue ;;
+    *) echo "unknown shader file: $file" >&2; failed=1; continue ;;
+  esac
+  checked=$((checked + 1))
+  glslangValidator $flags "$file" >"$out/log" 2>&1 || { echo "FAILED $(basename "$file")"; cat "$out/log"; failed=1; }
+done
+echo "glslangValidator: $checked sources"
+# MSL: the Metal framework's runtime compiler with the host's options (what
+# MapLibre Native uses), else the offline Metal Toolchain, else skip.
+if [ "$(uname)" = Darwin ] && command -v swift >/dev/null; then
+  cat >"$out/msl-check.swift" <<'SWIFT'
+import Foundation
+import Metal
+guard let device = MTLCreateSystemDefaultDevice() else { print("no Metal device"); exit(2) }
+let options = MTLCompileOptions()
+options.fastMathEnabled = true
+options.languageVersion = .version2_4
+var failed = false
+for path in CommandLine.arguments.dropFirst() {
+    do {
+        _ = try device.makeLibrary(source: try String(contentsOfFile: path, encoding: .utf8), options: options)
+    } catch {
+        print("FAILED \((path as NSString).lastPathComponent)\n\(error)")
+        failed = true
+    }
+}
+print("Metal runtime compiler: \(CommandLine.arguments.count - 1) sources")
+exit(failed ? 1 : 0)
+SWIFT
+  swift "$out/msl-check.swift" "$out"/src/*.metal || failed=1
+elif xcrun metal --version >/dev/null 2>&1; then
+  for file in "$out"/src/*.metal; do
+    xcrun metal -std=metal2.4 -ffast-math -c "$file" -o /dev/null || { echo "FAILED $(basename "$file")"; failed=1; }
+  done
+else
+  echo "skipping MSL: no Metal compiler on this host; run shader-check on macOS to compile the Metal shaders"
+fi
+exit "$failed"
+'''

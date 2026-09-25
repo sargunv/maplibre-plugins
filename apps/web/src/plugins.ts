@@ -6,6 +6,7 @@ import type { Map as MaplibreMap } from "maplibre-gl";
 
 import { mountAnimatedIcon } from "./animated-icon.ts";
 import { mountLocationIndicator } from "./location-indicator.ts";
+import { mountParticles, particlesCamera } from "./particles.ts";
 import { mountWater } from "./water.ts";
 import {
   mountWeatherStations,
@@ -13,7 +14,11 @@ import {
 } from "./weather-stations.ts";
 
 export interface PluginView {
-  /** Style-layer JSON for the current state, as the native plugin would consume it. */
+  /**
+   * Style-layer JSON for the current state, as the native plugin would
+   * consume it (see nativePaint): colors as CSS strings, and properties at
+   * their default left out unless the example sets them.
+   */
   layerJson(): unknown;
   onChange(listener: () => void): void;
   hitTest(point: { x: number; y: number }): boolean;
@@ -77,5 +82,14 @@ export const plugins: PluginEntry[] = [
     attribution: weatherAttribution,
     camera: { center: [12, 28], zoom: 2.6, bearing: 0, pitch: 0 },
     mount: mountWeatherStations,
+  },
+  {
+    id: "particles",
+    title: "Particles",
+    layerType: "particle-emitter · particle-features",
+    description:
+      "Stateless GPU particles from one shader core: an emitter at a point, on a disc, or as weather around the camera, and particles from every point, line and polygon of a vector source layer. Pick a preset; every control is a paint property the native plugin also accepts.",
+    camera: particlesCamera,
+    mount: mountParticles,
   },
 ];

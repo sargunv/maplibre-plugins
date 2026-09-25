@@ -1,0 +1,42 @@
+{
+  "id": "fireworks",
+  "type": "particle-emitter",
+  "metadata": {
+    "maplibre-plugins:title": "Fireworks",
+    "maplibre-plugins:camera": {
+      "center": [37.8098, -122.4235],
+      "zoom": 16,
+      "bearing": 0,
+      "pitch": 50
+    }
+  },
+  "paint": {
+    "emitter-kind": "circle",
+    "emitter-position": [37.8078, -122.4235],
+    "emitter-radius": 160,
+    "emitter-height": [170, 250],
+    "particle-space": "world",
+    "particle-count": 3000,
+    "particle-burst-groups": 4,
+    "particle-explosiveness": 1,
+    "particle-burst-interval": [2.8, 0.9],
+    "particle-lifetime": [1.8, 2.6],
+    "particle-direction": [0, 0],
+    "particle-spread": [180, 0],
+    "particle-speed": [60, 78],
+    "particle-gravity": 6,
+    "particle-drag": 0.7,
+    "particle-shape": "spark",
+    "particle-size": [1.5, 2.2],
+    "particle-size-clamp": [2, 9],
+    "particle-stretch": 0.06,
+    "particle-color": "#ff4d6d",
+    "particle-color-end": "rgba(255,210,140,0.6)",
+    "particle-color-variation": [12, 180],
+    "particle-fade": [0, 0.4],
+    "particle-additive": [1, 1],
+    "particle-twinkle": [0.55, 11],
+    "emitter-screen-tint": "rgba(3,6,22,0.62)",
+    "emitter-vignette": 0.3
+  }
+}

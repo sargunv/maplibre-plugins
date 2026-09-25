@@ -250,10 +250,13 @@ export class PaintValue {
   }
 }
 
+const TRANSITION_SUFFIX = "-transition";
+
 /**
  * The paint properties of one layer: raw inputs, compiled values and their
  * transitions, keyed by property name. Layers wrap this with their typed
- * property names.
+ * property names. `spec` may describe more properties than `names`; only
+ * `names` belong to the layer.
  */
 export class PaintState<Name extends string> {
   private readonly values = new Map<Name, PaintValue>();
@@ -262,6 +265,12 @@ export class PaintState<Name extends string> {
   private readonly bound = new Map<Name, CompiledValue>();
   private generationCount = 0;
 
+  /**
+   * Throws on an invalid value, on a key that is neither one of `names` nor
+   * its `<name>-transition`, and on a `<name>-transition` (whatever its
+   * value) of a property that takes none: MapLibre Native rejects the whole
+   * layer for each. Undefined entries count as absent, as in JSON.
+   */
   constructor(
     private readonly spec: Readonly<Record<Name, PaintPropertySpec>>,
     private readonly names: readonly Name[],
@@ -279,20 +288,32 @@ export class PaintState<Name extends string> {
           compileValue(spec[name], name, value),
         ),
       );
-      // Like MapLibre Native, the `-transition` key of a property without
-      // transitions is an error whatever its value, as it is for set().
-      const transition = paint[`${name}-transition`];
-      if (transition !== undefined) {
-        if (!supportsTransitions(spec[name]))
-          throw new Error(`Paint property ${name} takes no transition`);
-        if (transition)
-          this.transitions.set(name, transition as TransitionOptions);
-      }
+    }
+    for (const [key, value] of Object.entries(paint)) {
+      if (value === undefined) continue;
+      const name = key.endsWith(TRANSITION_SUFFIX)
+        ? key.slice(0, -TRANSITION_SUFFIX.length)
+        : key;
+      if (!this.isName(name)) throw new Error(`Unknown paint property ${name}`);
+      if (name === key) continue;
+      this.checkTransition(name);
+      if (value) this.transitions.set(name, value as TransitionOptions);
     }
   }
 
+  /** Whether a name is one of the layer's properties. */
   isName(name: string): name is Name {
-    return Object.hasOwn(this.spec, name);
+    return this.values.has(name as Name);
+  }
+
+  /**
+   * Like MapLibre Native, the `-transition` key of a property without
+   * transitions is an error whatever its value (plugin_style_layer.cpp
+   * treats it as an unknown property).
+   */
+  private checkTransition(name: Name): void {
+    if (!supportsTransitions(this.spec[name]))
+      throw new Error(`Paint property ${name} takes no transition`);
   }
 
   get(name: Name): unknown {
@@ -329,12 +350,11 @@ export class PaintState<Name extends string> {
     now: number,
     transition?: TransitionOptions,
   ): void {
-    if (name.endsWith("-transition")) {
-      const property = name.slice(0, -"-transition".length);
+    if (name.endsWith(TRANSITION_SUFFIX)) {
+      const property = name.slice(0, -TRANSITION_SUFFIX.length);
       if (!this.isName(property))
         throw new Error(`Unknown paint property ${property}`);
-      if (!supportsTransitions(this.spec[property]))
-        throw new Error(`Paint property ${property} takes no transition`);
+      this.checkTransition(property);
       if (value === undefined || value === null)
         this.transitions.delete(property);
       else this.transitions.set(property, value as TransitionOptions);

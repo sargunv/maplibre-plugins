@@ -28,6 +28,7 @@ const plugins = [_]Plugin{
         .catalog_entry_point = "mln_animated_icon_register_catalog",
         .clock_symbol = "mln_animated_icon_clock_seconds",
     },
+    .{ .name = "particles", .dependency = "particles", .artifact = "maplibre-particles", .entry_point = "mln_particles_register" },
 };
 
 const BuildOptions = struct {

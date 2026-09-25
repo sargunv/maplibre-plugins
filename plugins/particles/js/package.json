@@ -1,0 +1,32 @@
+{
+  "name": "@maplibre-plugins/particles",
+  "version": "0.1.0",
+  "description": "GPU particle effects for maplibre-gl-js (emitters, weather, and particles from vector features), sharing its spec and shaders with the MapLibre Native plugin.",
+  "license": "BSD-2-Clause",
+  "sideEffects": false,
+  "type": "module",
+  "exports": {
+    ".": { "types": "./src/index.ts", "default": "./src/index.ts" }
+  },
+  "files": ["dist"],
+  "scripts": { "build": "vp pack", "test": "vp test run", "check": "vp check" },
+  "dependencies": {
+    "@mapbox/vector-tile": "^3.0.0",
+    "@maplibre-plugins/paint": "workspace:*",
+    "@maplibre/maplibre-gl-style-spec": "catalog:",
+    "pbf": "^5.1.2"
+  },
+  "devDependencies": {
+    "@types/geojson": "^7946.0.16",
+    "@types/node": "^24.0.0",
+    "maplibre-gl": "catalog:",
+    "typescript": "catalog:",
+    "vite-plus": "catalog:"
+  },
+  "peerDependencies": { "maplibre-gl": "^6.0.0" },
+  "publishConfig": {
+    "exports": {
+      ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" }
+    }
+  }
+}

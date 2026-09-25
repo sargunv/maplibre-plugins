@@ -11,6 +11,7 @@ import type { Map as MaplibreMap, MapMouseEvent } from "maplibre-gl";
 import exampleLayer from "../../../plugins/location-indicator/examples/layer.json";
 import sharedSpec from "../../../plugins/location-indicator/spec.json";
 import { colorRow, numberRow, section, sliderRange } from "./controls.ts";
+import { nativePaint } from "./layer-json.ts";
 import type { PluginView } from "./plugins.ts";
 
 type Docs = Record<string, { doc?: string }>;
@@ -165,14 +166,21 @@ export function mountLocationIndicator(
         name,
         doc,
         initial: layer.getPaintProperty(name),
-        onInput: (rgba) => set(name, rgba),
+        onInput: (color) => set(name, color),
       });
       colorControls.set(name, show);
     }
   }
 
   return {
-    layerJson: () => layer.toLayerJson(),
+    layerJson: () => {
+      const json = layer.toLayerJson();
+      const authored = (exampleLayer as LocationPuckLayerJson).paint;
+      return {
+        ...json,
+        paint: nativePaint(json.paint ?? {}, paintSpec, authored),
+      };
+    },
     onChange: (listener) => listeners.push(listener),
     hitTest: (point) => layer.hitTest(point),
     queryFeature: (point) => layer.queryFeature(point),

@@ -1,0 +1,38 @@
+{
+  "id": "smoke",
+  "type": "particle-emitter",
+  "metadata": {
+    "maplibre-plugins:title": "Smoke",
+    "maplibre-plugins:camera": {
+      "center": [37.763, -122.5107],
+      "zoom": 18.2,
+      "bearing": 0,
+      "pitch": 60
+    }
+  },
+  "paint": {
+    "emitter-kind": "circle",
+    "emitter-position": [37.763, -122.5107],
+    "emitter-radius": 1.5,
+    "emitter-height": [3, 5],
+    "particle-space": "world",
+    "particle-count": 90,
+    "particle-lifetime": [6, 9],
+    "particle-direction": [0, 90],
+    "particle-spread": [15, 0],
+    "particle-speed": [1.5, 3],
+    "particle-gravity": -1.2,
+    "particle-drag": 0.5,
+    "particle-wind": [3.5, 1.2],
+    "particle-wander": [3, 0.2],
+    "particle-spin": [-25, 25],
+    "particle-shape": "smoke",
+    "particle-size": [2.5, 4],
+    "particle-growth": 5,
+    "particle-size-clamp": [2, 480],
+    "particle-color": "rgba(100,100,108,0.32)",
+    "particle-color-end": "rgba(200,200,205,0.12)",
+    "particle-fade": [0.1, 0.6],
+    "particle-additive": [0, 0]
+  }
+}

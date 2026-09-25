@@ -11,11 +11,12 @@ Layer plugins for MapLibre, each implemented twice from one shared spec:
   with `mln_plugin_load_library`.
 - **Web**: a TypeScript custom layer for maplibre-gl-js.
 
-| Plugin                                           | Layer type      | Status                                 |
-| ------------------------------------------------ | --------------- | -------------------------------------- |
-| [location-indicator](plugins/location-indicator) | `location-puck` | native + web; needs FFI plugin patches |
-| [water](plugins/water)                           | `water-shore`   | native + web; needs FFI plugin patches |
-| [animated-icon](plugins/animated-icon)           | `animated-icon` | native + web; needs FFI plugin patches |
+| Plugin                                           | Layer type                              | Status                                 |
+| ------------------------------------------------ | --------------------------------------- | -------------------------------------- |
+| [location-indicator](plugins/location-indicator) | `location-puck`                         | native + web; needs FFI plugin patches |
+| [water](plugins/water)                           | `water-shore`                           | native + web; needs FFI plugin patches |
+| [animated-icon](plugins/animated-icon)           | `animated-icon`                         | native + web; needs FFI plugin patches |
+| [particles](plugins/particles)                   | `particle-emitter`, `particle-features` | native + web; needs FFI plugin patches |
 
 ## Try it
 
@@ -38,6 +39,10 @@ patches, which this repo vendors: a maplibre-native-ffi submodule plus
 mise run ffi:build
 mise run //apps/native-viewer:run location-indicator
 mise run //apps/native-viewer:run water -- --before landcover-ice-shelf
+mise run //apps/native-viewer:run particles
+mise run //apps/native-viewer:run particles -- \
+  --layer ../../plugins/particles/examples/poi-sparkles.json \
+  --center 37.788,-122.4075 --zoom 16.5 --bearing 0 --pitch 40
 mise run //apps/native-viewer:run animated-icon -- --center 37.788,-122.4075 --zoom 16
 mise run //apps/native-viewer:weather
 ```
@@ -48,6 +53,10 @@ loop out of sync. Add `-- --layer
 ../../plugins/animated-icon/examples/weather/play-once.layer.json` to rest every
 icon until you hover it, which plays it once (a click replays it). The gallery's
 "Weather stations" page shows the same stations on the web.
+
+The particles viewer opens on snow at the viewer's default camera; the
+[particles presets](plugins/particles/README.md#presets) table gives the flags
+that open each effect, snow included, at its own camera.
 
 See [AGENTS.md](AGENTS.md) for the repo layout and conventions.
 

@@ -181,6 +181,71 @@ describe("capabilities (rule 2, plugin_property.cpp convertPluginPropertyValue)"
     expect(() => compile(size, "p", ["get", "a"])).toThrow(rejected);
     expect(compile(size, "p", 3)(0)).toEqual([3]);
   });
+
+  it("takes only constants, folded ones included, on a property without capabilities (NONE)", () => {
+    const lifetime = {
+      type: "float2",
+      default: [1, 2],
+      expressions: "constant",
+    } as const satisfies PaintPropertySpec;
+    const kind = {
+      type: "enum",
+      values: ["point", "circle"],
+      default: "point",
+      expressions: "constant",
+    } as const satisfies PaintPropertySpec;
+    expect(uniform(compileValue(lifetime, "p", [3, 4])).at(0)).toEqual([3, 4]);
+    expect(
+      uniform(compileValue(lifetime, "p", ["literal", [3, 4]])).at(0),
+    ).toEqual([3, 4]);
+    expect(compile(kind, "p", ["concat", "cir", "cle"])(0)).toEqual([1]);
+    // A zoom expression needs CAMERA...
+    const ramp = ["interpolate", ["linear"], ["zoom"], 0, 1, 10, 2];
+    const seed = {
+      type: "float",
+      default: 0,
+      expressions: "constant",
+    } as const;
+    expect(() => compileValue(seed, "p", ramp)).toThrow(rejected);
+    expect(() => compile(seed, "p", ramp)).toThrow(rejected);
+    expect(() =>
+      compile(kind, "p", ["step", ["zoom"], "point", 10, "circle"]),
+    ).toThrow(rejected);
+    // ...and the host's conversion refuses a data expression before that.
+    for (const value of [
+      ["get", "a"],
+      ["interpolate", ["linear"], ["zoom"], 0, ["get", "a"], 10, 1],
+    ]) {
+      expect(() =>
+        compileValue({ ...size, expressions: "constant" }, "p", value),
+      ).toThrow("data expressions not supported");
+    }
+  });
+
+  it("rejects feature-state on a data-driven property without FEATURE_STATE", () => {
+    const density = { ...size, featureState: false } as const;
+    for (const value of [
+      ["number", ["feature-state", "s"], 1],
+      ["case", ["boolean", ["feature-state", "hover"], false], 2, ["get", "a"]],
+      [
+        "interpolate",
+        ["linear"],
+        ["zoom"],
+        0,
+        ["get", "a"],
+        10,
+        ["number", ["feature-state", "s"], 1],
+      ],
+    ]) {
+      expect(() => compileValue(density, "p", value)).toThrow(rejected);
+      expect(isFeatureValue(compileValue(size, "p", value))).toBe(true);
+    }
+    const byFeature = feature(
+      compileValue(density, "p", ["number", ["get", "a"], 2]),
+    );
+    expect(byFeature.stateDependent).toBe(false);
+    expect(byFeature.at(0, point({ a: 3 }))).toEqual([3]);
+  });
 });
 
 describe("constants (rule 3, plugin_property.cpp validateConstant)", () => {

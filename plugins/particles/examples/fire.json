@@ -1,0 +1,42 @@
+{
+  "id": "fire",
+  "type": "particle-emitter",
+  "metadata": {
+    "maplibre-plugins:title": "Fire",
+    "maplibre-plugins:camera": {
+      "center": [37.763, -122.5107],
+      "zoom": 20,
+      "bearing": 0,
+      "pitch": 60
+    }
+  },
+  "paint": {
+    "emitter-kind": "circle",
+    "emitter-position": [37.763, -122.5107],
+    "emitter-radius": 1.4,
+    "emitter-height": [0, 0.3],
+    "particle-space": "world",
+    "particle-count": 220,
+    "particle-lifetime": [0.6, 1.3],
+    "particle-direction": [0, 90],
+    "particle-spread": [15, 0],
+    "particle-speed": [1.5, 3],
+    "particle-gravity": -10,
+    "particle-drag": 1.2,
+    "particle-wind": [0.6, 0.2],
+    "particle-wander": [0.4, 2],
+    "particle-shape": "glow",
+    "particle-size": [0.8, 1.4],
+    "particle-growth": 0.4,
+    "particle-size-clamp": [2, 200],
+    "particle-color": "rgba(255,170,60,0.6)",
+    "particle-color-end": "rgba(220,40,10,0.7)",
+    "particle-color-variation": [10, 0],
+    "particle-fade": [0.1, 0.5],
+    "particle-additive": [1, 0.6],
+    "particle-twinkle": [0.3, 8],
+    "emitter-screen-tint": "rgba(12,8,28,0.5)",
+    "emitter-vignette": 0.6,
+    "particle-stretch": 0.12
+  }
+}

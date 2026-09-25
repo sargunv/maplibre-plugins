@@ -40,6 +40,11 @@ maplibre-gl-js implementation, plus apps to preview them live.
     plugins (water, animated-icon) get the source's features per tile through
     the layout callbacks, and the JS twin reads the same tiles from the map's
     tile manager.
+  - `plugins/particles/` registers two layer types from one library: the
+    source-free `particle-emitter` and the tile-driven `particle-features`. Its
+    `spec.json` has a canonical top-level `paint` table plus each type's list
+    under `layerTypes`, and `fixtures/` holds the fixtures its Zig and
+    TypeScript twins (layout, camera record, hash) are both tested against.
 - `packages/paint/` — `@maplibre-plugins/paint`: paint evaluation and
   MapLibre-style transitions shared by every JS plugin layer.
 - `apps/web/` — Vite gallery: the JS plugins on a live map with spec-driven

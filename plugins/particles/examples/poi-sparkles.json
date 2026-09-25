@@ -1,0 +1,85 @@
+{
+  "id": "poi-sparkles",
+  "type": "particle-features",
+  "source": "openmaptiles",
+  "source-layer": "poi",
+  "minzoom": 15,
+  "filter": [
+    "match",
+    ["get", "class"],
+    [
+      "shop",
+      "clothing_store",
+      "grocery",
+      "bakery",
+      "alcohol_shop",
+      "restaurant",
+      "fast_food",
+      "cafe",
+      "bar",
+      "beer",
+      "ice_cream",
+      "attraction",
+      "museum",
+      "art_gallery",
+      "theatre",
+      "cinema"
+    ],
+    true,
+    false
+  ],
+  "metadata": {
+    "maplibre-plugins:title": "POI sparkles",
+    "maplibre-plugins:camera": {
+      "center": [37.788, -122.4075],
+      "zoom": 16.5,
+      "bearing": 0,
+      "pitch": 40
+    }
+  },
+  "paint": {
+    "particle-density": [
+      "interpolate",
+      ["linear"],
+      ["get", "rank"],
+      1,
+      12,
+      40,
+      4
+    ],
+    "particle-color": [
+      "match",
+      ["get", "class"],
+      ["attraction", "museum", "art_gallery", "theatre", "cinema"],
+      "#b44dff",
+      ["restaurant", "fast_food", "cafe", "bar", "beer", "ice_cream"],
+      "#ff5a3c",
+      "#ffb400"
+    ],
+    "particle-shape": [
+      "match",
+      ["get", "class"],
+      ["restaurant", "fast_food", "cafe", "bar", "beer", "ice_cream"],
+      "glow",
+      "star"
+    ],
+    "particle-size": [
+      "match",
+      ["get", "class"],
+      ["attraction", "museum", "art_gallery", "theatre", "cinema"],
+      ["literal", [18, 28]],
+      ["restaurant", "fast_food", "cafe", "bar", "beer", "ice_cream"],
+      ["literal", [8, 12]],
+      ["literal", [12, 18]]
+    ],
+    "particle-lifetime": [0.8, 1.6],
+    "particle-speed": [4, 12],
+    "particle-direction": [0, 90],
+    "particle-spread": [70, 0],
+    "particle-gravity": 6,
+    "particle-wander": [3, 1],
+    "particle-fade": [0.1, 0.5],
+    "particle-additive": [0.2, 0.2],
+    "particle-twinkle": [0.5, 3]
+  }
+}

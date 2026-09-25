@@ -1,0 +1,450 @@
+{
+  "$comment": "Shared contract for the particle plugin: one native library registers two layer types that share one particle model and one shader core. Both native types and both JS layers are tested against this file. The top-level paint table is canonical; layerTypes.<type>.paint lists each type's properties in host definition order, a subsequence of the canonical order. A property listed by both types has exactly one definition; a type that does not list a property uses its default. `\"expressions\"` is \"constant\" (literals, and expressions that fold to one) or \"camera\" (also zoom expressions); absent means \"camera\". layerTypes.<type>.dataDriven lists the properties that type also takes feature and composite expressions for, never feature-state ones. `\"transition\"` says whether a `<name>-transition` key is accepted; absent means true.",
+  "id": "particles",
+  "native": {
+    "pluginId": "org.maplibre.plugins.particles",
+    "pluginVersion": "0.1.0",
+    "library": "maplibre-particles",
+    "entryPoint": "mln_particles_register"
+  },
+  "layerTypes": {
+    "particle-emitter": {
+      "sourceFree": true,
+      "doc": "One emitter per layer: a point, a disc, or weather around the camera.",
+      "paint": [
+        "emitter-kind",
+        "emitter-position",
+        "emitter-radius",
+        "emitter-height",
+        "particle-space",
+        "particle-scale",
+        "particle-count",
+        "particle-lifetime",
+        "particle-explosiveness",
+        "particle-burst-interval",
+        "particle-burst-groups",
+        "particle-seed",
+        "particle-speed",
+        "particle-direction",
+        "particle-spread",
+        "particle-gravity",
+        "particle-drag",
+        "particle-wind",
+        "particle-wander",
+        "particle-spin",
+        "particle-shape",
+        "particle-size",
+        "particle-growth",
+        "particle-size-clamp",
+        "particle-stretch",
+        "particle-color",
+        "particle-color-end",
+        "particle-color-variation",
+        "particle-opacity",
+        "particle-fade",
+        "particle-additive",
+        "particle-twinkle",
+        "emitter-center-thinning",
+        "emitter-screen-tint",
+        "emitter-vignette"
+      ]
+    },
+    "particle-features": {
+      "sourceFree": false,
+      "geometry": ["point", "linestring", "polygon"],
+      "doc": "Particles from every point, line and polygon of a vector source layer.",
+      "paint": [
+        "particle-density",
+        "particle-lifetime",
+        "particle-speed",
+        "particle-direction",
+        "particle-spread",
+        "particle-gravity",
+        "particle-wander",
+        "particle-shape",
+        "particle-size",
+        "particle-stretch",
+        "particle-color",
+        "particle-fade",
+        "particle-additive",
+        "particle-twinkle"
+      ],
+      "dataDriven": [
+        "particle-density",
+        "particle-shape",
+        "particle-size",
+        "particle-color"
+      ],
+      "layout": {
+        "pointSlots": 16,
+        "lineSlotSpacing": 32,
+        "polygonCell": 128,
+        "maxParticlesPerTile": 16383
+      }
+    }
+  },
+  "paint": {
+    "emitter-kind": {
+      "type": "enum",
+      "values": ["point", "circle", "weather"],
+      "default": "point",
+      "transition": false,
+      "expressions": "constant",
+      "group": "emitter",
+      "doc": "Where particles are born. point: at emitter-position (emitter-radius is ignored). circle: anywhere on a disc of emitter-radius around it; bursts pick their center on the disc. weather: in a box-sized volume around the camera, reaching mostly ahead of it, that stays fixed to the world as you pan and zoom (emitter-position, emitter-radius, emitter-height and particle-space are ignored)."
+    },
+    "emitter-position": {
+      "type": "double2",
+      "default": [0, 0],
+      "units": "[lat°, lon°]",
+      "group": "emitter",
+      "doc": "Emitter [latitude, longitude]. Moving it rebuilds nothing."
+    },
+    "emitter-radius": {
+      "type": "float",
+      "default": 0,
+      "minimum": 0,
+      "units": "space",
+      "group": "emitter",
+      "ui": { "range": [0, 500, 1] },
+      "doc": "Disc radius of a circle emitter, in space units (pixels, or meters in world space)."
+    },
+    "emitter-height": {
+      "type": "float2",
+      "default": [0, 0],
+      "units": "space",
+      "group": "emitter",
+      "components": [
+        { "name": "min", "clamp": [-10000, 10000], "ui": [0, 500, 1] },
+        { "name": "max", "clamp": [-10000, 10000], "ui": [0, 500, 1] }
+      ],
+      "doc": "Birth altitude range above the emitter, in space units. In ground space it lifts particles up the screen. Negative values start particles below the ground, where (outside screen space) a particle fades out over one size and then dies, so only particles that rise above it show."
+    },
+    "particle-space": {
+      "type": "enum",
+      "values": ["screen", "ground", "world"],
+      "default": "ground",
+      "transition": false,
+      "expressions": "constant",
+      "group": "emitter",
+      "doc": "How the effect sits on the map. screen: constant pixels in the screen plane, like an icon; north is depth and invisible. ground: east and north on the map plane in pixels, up is up the screen, and everything shrinks with distance under pitch. world: true 3D in meters, scaling with the map like a building. In ground and world space the map plane is the ground (invisible in ground space, where up is up the screen): a particle that sinks below it fades out over one size and then dies. Screen space has no ground."
+    },
+    "particle-scale": {
+      "type": "float",
+      "default": 1,
+      "minimum": 0,
+      "group": "emitter",
+      "ui": { "range": [0, 8, 0.05] },
+      "doc": "Multiplies every length and speed of the effect: size, radius, height, speed, gravity, wind and wander. Drive it with a zoom expression to grow a pixel-space effect with the map."
+    },
+    "particle-count": {
+      "type": "float",
+      "default": 256,
+      "minimum": 0,
+      "maximum": 16384,
+      "units": "particles",
+      "group": "emission",
+      "ui": { "range": [0, 8192, 1], "scale": "log" },
+      "doc": "Particle slots. Each is born once per period (the longest lifetime, or particle-burst-interval if that is longer) and lives a random lifetime, so about count × mean lifetime / period are alive at once: 75% with the default lifetime [1, 2]. Weather: slots in the camera volume, effective up to 8192. Changes fade particles in and out smoothly over a ramp an eighth of the count wide. The pool holds the whole ramp up to a count of 15420 (7710 for weather); above that it cuts the top of the ramp, so 16384 shows about 16128 particles (weather at 8192 about 8064)."
+    },
+    "particle-density": {
+      "type": "float",
+      "default": 8,
+      "minimum": 0,
+      "maximum": 100,
+      "group": "emission",
+      "ui": { "range": [0, 40, 0.5] },
+      "doc": "Particle slots per point feature (at most 16), per 100 px of line, or per 100×100 px of polygon; as with particle-count, about density × mean lifetime / period of them are alive at once. Lines hold at most 25 per 100 px and polygons 39 per 100×100 px across a whole zoom level: higher densities show in full only near an integer zoom (up to 50 and 156) and fall toward those ceilings as the zoom rises. Below the ceilings, screen density holds across zoom until a tile's pool saturates (beyond the source's max zoom)."
+    },
+    "particle-lifetime": {
+      "type": "float2",
+      "default": [1, 2],
+      "units": "s",
+      "transition": false,
+      "expressions": "constant",
+      "group": "emission",
+      "components": [
+        { "name": "min", "clamp": [0.05, 600], "ui": [0.05, 20, 0.05] },
+        { "name": "max", "clamp": [0.05, 600], "ui": [0.05, 20, 0.05] }
+      ],
+      "doc": "Lifetime range in seconds, random per particle. A change reshuffles every particle's timing; the host still eases it over the style transition (see README)."
+    },
+    "particle-explosiveness": {
+      "type": "float",
+      "default": 0,
+      "minimum": 0,
+      "maximum": 1,
+      "transition": false,
+      "expressions": "constant",
+      "group": "emission",
+      "ui": { "range": [0, 1, 0.01] },
+      "doc": "0 spreads births evenly over time; 1 releases each burst group all at once from one point."
+    },
+    "particle-burst-interval": {
+      "type": "float2",
+      "default": [0, 0],
+      "units": "[s, fraction]",
+      "transition": false,
+      "expressions": "constant",
+      "group": "emission",
+      "components": [
+        { "name": "seconds", "clamp": [0, 600], "ui": [0, 20, 0.1] },
+        { "name": "jitter", "clamp": [0, 1], "ui": [0, 1, 0.01] }
+      ],
+      "doc": "Seconds between a group's bursts, and how much each burst's start wanders inside the idle gap. The interval snaps to the nearest period that fits a whole number of times into 4096 s (where the particle clock wraps) and still holds the longest lifetime, so 0 or anything shorter than that lifetime means about one lifetime."
+    },
+    "particle-burst-groups": {
+      "type": "float",
+      "default": 1,
+      "minimum": 1,
+      "maximum": 16,
+      "transition": false,
+      "expressions": "constant",
+      "group": "emission",
+      "ui": { "range": [1, 16, 1] },
+      "doc": "Independent burst groups with staggered timing, each with its own center and hue: several fireworks at once."
+    },
+    "particle-seed": {
+      "type": "float",
+      "default": 0,
+      "minimum": 0,
+      "maximum": 65535,
+      "transition": false,
+      "expressions": "constant",
+      "group": "emission",
+      "ui": { "range": [0, 1000, 1] },
+      "doc": "Random seed: two layers with different seeds look different."
+    },
+    "particle-speed": {
+      "type": "float2",
+      "default": [20, 40],
+      "units": "space/s",
+      "group": "motion",
+      "components": [
+        { "name": "min", "clamp": [0, 100000], "ui": [0, 1500, 1] },
+        { "name": "max", "clamp": [0, 100000], "ui": [0, 1500, 1] }
+      ],
+      "doc": "Launch speed range, random per particle."
+    },
+    "particle-direction": {
+      "type": "float2",
+      "default": [0, 90],
+      "units": "deg",
+      "group": "motion",
+      "components": [
+        { "name": "azimuth", "ui": [-180, 180, 1] },
+        { "name": "elevation", "clamp": [-90, 90], "ui": [-90, 90, 1] }
+      ],
+      "doc": "Launch direction: azimuth clockwise from north (in screen space 90 is right), elevation above horizontal (90 up, -90 down). On lines the azimuth is measured from the line's drawing direction, so 0 flows along it. Azimuth transitions interpolate linearly."
+    },
+    "particle-spread": {
+      "type": "float2",
+      "default": [15, 0],
+      "group": "motion",
+      "components": [
+        { "name": "angle", "clamp": [0, 180], "ui": [0, 180, 1] },
+        { "name": "flatness", "clamp": [0, 1], "ui": [0, 1, 0.01] }
+      ],
+      "doc": "Launch directions fill a cone of this half-angle in degrees around particle-direction (180 is every direction); flatness squashes their vertical part (1 is horizontal only, for fireflies)."
+    },
+    "particle-gravity": {
+      "type": "float",
+      "default": 0,
+      "units": "space/s²",
+      "group": "motion",
+      "ui": { "range": [-500, 500, 1] },
+      "doc": "Downward acceleration; negative values rise (fire, smoke, bubbles). Outside screen space, particles that fall more than one size below the ground die (see particle-space)."
+    },
+    "particle-drag": {
+      "type": "float",
+      "default": 0,
+      "minimum": 0,
+      "maximum": 50,
+      "units": "1/s",
+      "group": "motion",
+      "ui": { "range": [0, 5, 0.01] },
+      "doc": "Air drag: launch speed decays by e^-drag per second, and particles settle at gravity / drag."
+    },
+    "particle-wind": {
+      "type": "float2",
+      "default": [0, 0],
+      "units": "space/s",
+      "group": "motion",
+      "components": [
+        { "name": "east", "ui": [-200, 200, 1] },
+        { "name": "north", "ui": [-200, 200, 1] }
+      ],
+      "doc": "Air velocity that carries every particle."
+    },
+    "particle-wander": {
+      "type": "float2",
+      "default": [0, 0.5],
+      "units": "[space, Hz]",
+      "group": "motion",
+      "components": [
+        { "name": "amplitude", "clamp": [0, 100000], "ui": [0, 50, 0.1] },
+        { "name": "frequency", "clamp": [0, 30], "ui": [0, 5, 0.05] }
+      ],
+      "doc": "Smooth turbulent drift, zero at birth."
+    },
+    "particle-spin": {
+      "type": "float2",
+      "default": [0, 0],
+      "units": "deg/s",
+      "group": "motion",
+      "components": [
+        { "name": "min", "clamp": [-3600, 3600], "ui": [-360, 360, 1] },
+        { "name": "max", "clamp": [-3600, 3600], "ui": [-360, 360, 1] }
+      ],
+      "doc": "Spin rate range of the sprite, random per particle."
+    },
+    "particle-shape": {
+      "type": "enum",
+      "values": [
+        "circle",
+        "glow",
+        "star",
+        "spark",
+        "streak",
+        "flake",
+        "ring",
+        "ripple",
+        "smoke",
+        "square"
+      ],
+      "default": "glow",
+      "transition": false,
+      "group": "look",
+      "doc": "Procedural sprite. spark and streak stretch along the motion; ripple lies flat on the ground; smoke is a soft noisy blob."
+    },
+    "particle-size": {
+      "type": "float2",
+      "default": [6, 10],
+      "units": "space",
+      "group": "look",
+      "components": [
+        { "name": "min", "clamp": [0, 10000], "ui": [0, 64, 0.1] },
+        { "name": "max", "clamp": [0, 10000], "ui": [0, 64, 0.1] }
+      ],
+      "doc": "Sprite diameter range at birth, in space units (pixels as seen at the map center's distance, or meters in world space)."
+    },
+    "particle-growth": {
+      "type": "float",
+      "default": 1,
+      "minimum": 0,
+      "maximum": 16,
+      "group": "look",
+      "ui": { "range": [0, 6, 0.05] },
+      "doc": "Size multiplier reached at the end of life."
+    },
+    "particle-size-clamp": {
+      "type": "float2",
+      "default": [0.5, 128],
+      "units": "px",
+      "group": "look",
+      "components": [
+        { "name": "min", "clamp": [0, 4096], "ui": [0, 16, 0.1] },
+        { "name": "max", "clamp": [0, 4096], "ui": [1, 512, 1] }
+      ],
+      "doc": "On-screen diameter limits in pixels, so world-sized particles stay visible far away and near-camera weather stays small."
+    },
+    "particle-stretch": {
+      "type": "float",
+      "default": 0,
+      "minimum": 0,
+      "maximum": 2,
+      "units": "s",
+      "group": "look",
+      "ui": { "range": [0, 0.5, 0.005] },
+      "doc": "Streak length in seconds of travel: a straight streak from where the particle was this long ago to where it is now. On a curved path that is the chord, so keep it short where paths bend. spark and streak shapes always stretch at least 1/30 s."
+    },
+    "particle-color": {
+      "type": "color",
+      "default": [1, 0.9, 0.6, 1],
+      "group": "color",
+      "doc": "Color at birth."
+    },
+    "particle-color-end": {
+      "type": "color",
+      "default": [0, 0, 0, 0],
+      "group": "color",
+      "doc": "Color painted over particle-color by the end of life: fully opaque means exactly this color, transparent (the default) keeps particle-color."
+    },
+    "particle-color-variation": {
+      "type": "float2",
+      "default": [0, 0],
+      "units": "deg",
+      "group": "color",
+      "components": [
+        { "name": "particle", "clamp": [0, 180], "ui": [0, 180, 1] },
+        { "name": "burst", "clamp": [0, 180], "ui": [0, 180, 1] }
+      ],
+      "doc": "Random hue shift in degrees, per particle and per burst group."
+    },
+    "particle-opacity": {
+      "type": "float",
+      "default": 1,
+      "minimum": 0,
+      "maximum": 1,
+      "group": "color",
+      "ui": { "range": [0, 1, 0.01] },
+      "doc": "Opacity of every particle."
+    },
+    "particle-fade": {
+      "type": "float2",
+      "default": [0.1, 0.3],
+      "units": "fraction of life",
+      "group": "color",
+      "components": [
+        { "name": "in", "clamp": [0, 1], "ui": [0, 1, 0.01] },
+        { "name": "out", "clamp": [0, 1], "ui": [0, 1, 0.01] }
+      ],
+      "doc": "Share of the life spent fading in and fading out."
+    },
+    "particle-additive": {
+      "type": "float2",
+      "default": [0, 0],
+      "group": "color",
+      "components": [
+        { "name": "start", "clamp": [0, 1], "ui": [0, 1, 0.01] },
+        { "name": "end", "clamp": [0, 1], "ui": [0, 1, 0.01] }
+      ],
+      "doc": "Blend over life: 0 paints over the map, 1 adds light (glow). Fire runs from 1 to about 0.5."
+    },
+    "particle-twinkle": {
+      "type": "float2",
+      "default": [0, 2],
+      "units": "[fraction, Hz]",
+      "group": "color",
+      "components": [
+        { "name": "amount", "clamp": [0, 1], "ui": [0, 1, 0.01] },
+        { "name": "frequency", "clamp": [0, 60], "ui": [0, 20, 0.1] }
+      ],
+      "doc": "Brightness flicker; amounts near 1 turn it into sharp flashes."
+    },
+    "emitter-center-thinning": {
+      "type": "float",
+      "default": 0,
+      "minimum": 0,
+      "maximum": 1,
+      "group": "mood",
+      "ui": { "range": [0, 1, 0.01] },
+      "doc": "Weather only: thins particles near the vanishing point of particle-direction, such as the screen center when particles launch straight down at a camera looking down. Wind, gravity, drag, spread and wander are ignored, and nothing thins while that point is not in front of the camera (particle-direction pointing up, or horizontally at pitch 0)."
+    },
+    "emitter-screen-tint": {
+      "type": "color",
+      "default": [0, 0, 0, 0],
+      "group": "mood",
+      "doc": "Color laid over the whole screen under this layer's particles: rain gloom, dusk for fireflies."
+    },
+    "emitter-vignette": {
+      "type": "float",
+      "default": 0,
+      "minimum": 0,
+      "maximum": 1,
+      "group": "mood",
+      "ui": { "range": [0, 1, 0.01] },
+      "doc": "0 lays emitter-screen-tint evenly; 1 lays it only toward the screen edges."
+    }
+  }
+}

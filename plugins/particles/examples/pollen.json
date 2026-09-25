@@ -1,0 +1,30 @@
+{
+  "id": "pollen",
+  "type": "particle-emitter",
+  "metadata": {
+    "maplibre-plugins:title": "Pollen",
+    "maplibre-plugins:camera": {
+      "center": [37.7694, -122.4862],
+      "zoom": 15,
+      "bearing": 0,
+      "pitch": 45
+    }
+  },
+  "paint": {
+    "emitter-kind": "weather",
+    "particle-count": 6000,
+    "particle-lifetime": [6, 12],
+    "particle-direction": [70, 5],
+    "particle-spread": [50, 0],
+    "particle-speed": [6, 16],
+    "particle-wind": [14, 4],
+    "particle-wander": [22, 0.18],
+    "particle-shape": "glow",
+    "particle-size": [3.5, 6.5],
+    "particle-size-clamp": [2, 12],
+    "particle-color": "rgba(250,205,40,1)",
+    "particle-fade": [0.35, 0.35],
+    "particle-additive": [0.2, 0.2],
+    "particle-twinkle": [0.25, 0.7]
+  }
+}

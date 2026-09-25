@@ -1,0 +1,38 @@
+{
+  "id": "sparks",
+  "type": "particle-emitter",
+  "metadata": {
+    "maplibre-plugins:title": "Sparks",
+    "maplibre-plugins:camera": {
+      "center": [37.763, -122.5107],
+      "zoom": 19.5,
+      "bearing": 0,
+      "pitch": 55
+    }
+  },
+  "paint": {
+    "emitter-kind": "point",
+    "emitter-position": [37.763, -122.5107],
+    "emitter-height": [0.5, 1],
+    "particle-space": "world",
+    "particle-count": 400,
+    "particle-lifetime": [1.2, 2.2],
+    "particle-direction": [0, 80],
+    "particle-spread": [28, 0],
+    "particle-speed": [9, 15],
+    "particle-gravity": 9.8,
+    "particle-drag": 0.3,
+    "particle-wander": [0.3, 3],
+    "particle-shape": "spark",
+    "particle-size": [0.12, 0.2],
+    "particle-size-clamp": [2, 5],
+    "particle-stretch": 0.1,
+    "particle-color": "#fff0a0",
+    "particle-color-end": "rgba(255,70,0,1)",
+    "particle-fade": [0, 0.35],
+    "particle-additive": [0.8, 0.3],
+    "particle-twinkle": [0.6, 15],
+    "emitter-screen-tint": "rgba(12,8,28,0.5)",
+    "emitter-vignette": 0.6
+  }
+}

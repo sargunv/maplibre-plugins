@@ -8,12 +8,14 @@
     "dev": "vp dev",
     "build": "vp build",
     "preview": "vp preview",
+    "test": "vp test run",
     "check": "vp check"
   },
   "dependencies": {
     "@maplibre-plugins/animated-icon": "workspace:*",
     "@maplibre-plugins/location-indicator": "workspace:*",
     "@maplibre-plugins/paint": "workspace:*",
+    "@maplibre-plugins/particles": "workspace:*",
     "@maplibre-plugins/water": "workspace:*",
     "maplibre-gl": "catalog:"
   },

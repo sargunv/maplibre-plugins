@@ -18,6 +18,7 @@ import {
   selectRow,
   sliderRange,
 } from "./controls.ts";
+import { nativePaint } from "./layer-json.ts";
 import type { PluginView } from "./plugins.ts";
 
 type Docs = Record<string, { doc?: string }>;
@@ -122,7 +123,7 @@ export function mountAnimatedIcon(
         name,
         doc,
         initial: raw,
-        onInput: (rgba) => set(name, rgba),
+        onInput: (color) => set(name, color),
       });
       setters.set(name, show);
     } else if (property.type === "float2") {
@@ -218,7 +219,13 @@ export function mountAnimatedIcon(
   parents.Icon.append(actions);
 
   return {
-    layerJson: () => layer.toLayerJson(),
+    layerJson: () => {
+      const json = layer.toLayerJson();
+      return {
+        ...json,
+        paint: nativePaint(json.paint ?? {}, spec, example.paint),
+      };
+    },
     onChange: (listener) => listeners.push(listener),
     hitTest: (point) => layer.hitTest(point),
     queryFeature: (point) => layer.queryFeature(point),

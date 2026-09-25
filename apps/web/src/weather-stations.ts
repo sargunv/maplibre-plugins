@@ -11,6 +11,7 @@ import {
   clockSeconds,
   loadCatalog,
   type PaintInput,
+  paintSpecFor,
 } from "@maplibre-plugins/animated-icon";
 import {
   type ExpressionSpecification,
@@ -30,6 +31,7 @@ import layerJson from "../../../plugins/animated-icon/examples/weather/layer.jso
 import playOnceJson from "../../../plugins/animated-icon/examples/weather/play-once.layer.json";
 import stationsUrl from "../../../plugins/animated-icon/examples/weather/stations.geojson?url";
 import { numberRow, section, selectRow } from "./controls.ts";
+import { nativePaint } from "./layer-json.ts";
 import type { PluginView } from "./plugins.ts";
 
 /** Credits for the icons, places and weather, added to the map's attribution. */
@@ -443,7 +445,18 @@ export function mountWeatherStations(
   });
 
   return {
-    layerJson: () => layer?.toLayerJson() ?? null,
+    layerJson: () => {
+      if (!layer) return null;
+      const json = layer.toLayerJson();
+      return {
+        ...json,
+        paint: nativePaint(
+          json.paint ?? {},
+          paintSpecFor(layer.catalog),
+          stationsLayer.paint,
+        ),
+      };
+    },
     onChange: (listener) => listeners.push(listener),
     hitTest: (point) => layer?.hitTest(point) ?? false,
     queryFeature: (point) => layer?.queryFeature(point) ?? null,

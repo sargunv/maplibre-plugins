@@ -262,3 +262,150 @@ pre#json {
 .weather-popup .temperature {
   font-size: 15px;
 }
+
+/* Spec-driven controls (renderSpecControls) and the particle presets. */
+
+#panel.wide {
+  width: 360px;
+}
+
+#panel.wide .row {
+  grid-template-columns: 152px 1fr 52px;
+}
+
+#panel.wide .row.wide {
+  grid-template-columns: 152px 1fr;
+}
+
+#panel h3 {
+  margin: 8px 0 4px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--panel-muted);
+}
+
+.presets button {
+  padding: 3px 8px;
+}
+
+.presets button:disabled {
+  opacity: 0.45;
+  cursor: default;
+  border-color: var(--panel-border);
+}
+
+.presets p.hint {
+  margin: 10px 0 4px;
+}
+
+code.command {
+  display: block;
+  margin: 0 0 8px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: rgb(127 127 127 / 0.12);
+  color: var(--panel-muted);
+  font-size: 11px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+
+details.group {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--panel-border);
+}
+
+details.group > summary {
+  margin-bottom: 4px;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--panel-muted);
+}
+
+details.group > summary .count {
+  margin-left: 6px;
+  font-weight: 400;
+  letter-spacing: 0;
+}
+
+.row.pair,
+#panel.wide .row.pair {
+  grid-template-columns: 1fr 1fr;
+  column-gap: 14px;
+  row-gap: 0;
+  margin: 6px 0;
+}
+
+.row.pair > label {
+  grid-column: 1 / -1;
+}
+
+.row.pair .component {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: baseline;
+  column-gap: 6px;
+  min-width: 0;
+}
+
+.row.pair .component span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  color: var(--panel-muted);
+}
+
+.row.pair .component input {
+  grid-column: 1 / -1;
+}
+
+.row.double2 .component {
+  grid-template-columns: auto 1fr;
+  align-items: center;
+}
+
+.row.double2 .component input {
+  grid-column: auto;
+}
+
+.property.expr input,
+.property.expr select,
+.property.expr output {
+  opacity: 0.4;
+}
+
+.property.invalid label {
+  color: #d64545;
+}
+
+.badge {
+  display: inline-block;
+  margin-right: 5px;
+  padding: 0 4px;
+  border-radius: 3px;
+  background: var(--accent);
+  color: white;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 15px;
+  vertical-align: 1px;
+}
+
+.badge[role="button"] {
+  cursor: pointer;
+}
+
+.badge[role="button"]:hover {
+  filter: brightness(1.15);
+}
+
+.badge[role="button"]:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}

@@ -395,3 +395,45 @@ describe("data-driven values in PaintState", () => {
     ).toThrow(/takes no transition/);
   });
 });
+
+describe("PaintState over a larger spec", () => {
+  const create = (paint: Record<string, unknown>) =>
+    new PaintState(spec, ["width", "color"], DEFAULT_TRANSITION, paint);
+
+  it("only knows the names it was given", () => {
+    const state = create({ width: 10 });
+    expect(state.isName("color")).toBe(true);
+    expect(state.isName("heading")).toBe(false);
+    expect(() => state.set("heading", 90, 0)).toThrow(/Unknown/);
+    expect(() => state.set("heading-transition", {}, 0)).toThrow(/Unknown/);
+    expect(state.toJson()).toEqual({ width: 10, color: [1, 1, 1, 1] });
+    expect(Object.keys(state.evaluate(0, 0))).toEqual(["width", "color"]);
+  });
+
+  // plugin_style_layer.cpp: setPluginProperty fails for a name the layer
+  // type does not define, and the style parser drops the whole layer.
+  it("rejects paint keys outside its names, as the host rejects the layer", () => {
+    // A property of the spec that is not one of the layer's...
+    expect(() => create({ heading: 90 })).toThrow(
+      "Unknown paint property heading",
+    );
+    // ...its transition, even a null one...
+    for (const transition of [{ duration: 1 }, null]) {
+      expect(() => create({ "heading-transition": transition })).toThrow(
+        "Unknown paint property heading",
+      );
+    }
+    // ...and names the spec does not have at all.
+    expect(() => create({ colour: "red" })).toThrow(
+      "Unknown paint property colour",
+    );
+    expect(() => create({ "width-transition-transition": {} })).toThrow(
+      "Unknown paint property width-transition",
+    );
+    // Undefined entries are absent, as they would be in JSON.
+    expect(create({ heading: undefined }).toJson()).toEqual({
+      width: 4,
+      color: [1, 1, 1, 1],
+    });
+  });
+});

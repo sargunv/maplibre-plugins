@@ -26,10 +26,11 @@ export type PaintType =
 
 /**
  * The expressions a property accepts, as the native expression capabilities
- * say: "camera" takes constants and zoom expressions, and "data-driven" also
+ * say: "constant" (NONE) takes only constants, including expressions that
+ * fold to one; "camera" also takes zoom expressions; and "data-driven" also
  * takes feature, composite and feature-state expressions.
  */
-export type ExpressionSupport = "camera" | "data-driven";
+export type ExpressionSupport = "constant" | "camera" | "data-driven";
 
 /** A float, a rotation, a pair of floats or doubles, or a color. */
 export interface NumericPaintPropertySpec {
@@ -39,6 +40,11 @@ export interface NumericPaintPropertySpec {
   readonly maximum?: number;
   /** Defaults to "camera". */
   readonly expressions?: ExpressionSupport;
+  /**
+   * Whether a data-driven value may read feature-state (the host's
+   * FEATURE_STATE capability). Defaults to true.
+   */
+  readonly featureState?: boolean;
   /** Whether a `<name>-transition` key is accepted. Defaults to true. */
   readonly transition?: boolean;
 }
@@ -54,6 +60,11 @@ export interface EnumPaintPropertySpec {
   readonly default: string;
   /** Defaults to "camera". */
   readonly expressions?: ExpressionSupport;
+  /**
+   * Whether a data-driven value may read feature-state (the host's
+   * FEATURE_STATE capability). Defaults to true.
+   */
+  readonly featureState?: boolean;
   /** Whether a `<name>-transition` key is accepted. Defaults to false. */
   readonly transition?: boolean;
 }
@@ -591,13 +602,22 @@ function foldedConstant(
   return uniform(vector);
 }
 
+/** The host's error for an expression the property's capabilities do not cover. */
+function unsupported(name: string): Error {
+  return new Error(
+    `expression dependencies are not supported for plugin property '${name}'`,
+  );
+}
+
 /**
  * Compiles a raw paint value (a literal, a CSS color, or a style expression)
  * for one property, like MapLibre Native's convertPluginPropertyValue. Throws
  * on values the style spec rejects, on an unlisted enum constant or a float
  * or rotation constant outside the bounds (validateConstant), and on an
- * expression the property's `expressions` does not allow (the host's
- * "expression dependencies are not supported" error). Constants and camera
+ * expression the property's `expressions` or `featureState` does not allow
+ * (the host's "expression dependencies are not supported" error, or "data
+ * expressions not supported" for a data expression on a "constant"
+ * property, which the host's conversion rejects first). Constants and camera
  * expressions compile to a UniformValue, feature and composite expressions to
  * a FeatureValue. Expression outputs are never range-checked. `null` and
  * `undefined` compile the default. `name` only labels errors.
@@ -635,40 +655,51 @@ export function compileValue(
     return uniform([raw]);
   }
 
+  const expressions = spec.expressions ?? "camera";
   const expression = parseExpression(spec, name, raw);
   switch (expression.kind) {
     case "constant":
       return foldedConstant(spec, name, expression, fallback);
     case "camera": {
+      // A zoom expression needs CAMERA, which only NONE lacks.
+      if (expressions === "constant") throw unsupported(name);
       const evaluate = evaluator(spec, expression, fallback);
       return { kind: "uniform", at: (zoom) => evaluate(zoom) };
     }
     default:
+      // A property with no capabilities converts without data expressions
+      // (plugin_property.cpp convertTyped, property_value.cpp).
+      if (expressions === "constant") {
+        throw new Error(
+          `Invalid value for ${name}: data expressions not supported`,
+        );
+      }
       // plugin_property.cpp convertPluginPropertyValue: a feature (source)
       // expression needs FEATURE, a composite one COMPOSITE, and either
       // needs FEATURE_STATE when it reads feature-state. A data-driven
-      // property declares all of them; a camera property none.
-      if ((spec.expressions ?? "camera") !== "data-driven") {
-        throw new Error(
-          `expression dependencies are not supported for plugin property '${name}'`,
-        );
-      }
+      // property declares all of them, less FEATURE_STATE when
+      // `featureState` is false; a camera property none.
+      if (expressions !== "data-driven") throw unsupported(name);
+      if (expression.isStateDependent && spec.featureState === false)
+        throw unsupported(name);
       return new ExpressionFeatureValue(spec, expression, fallback);
   }
 }
 
 /**
  * Compiles a raw paint value for a camera-only use: constants and zoom
- * expressions, whatever the spec's `expressions` says. Data expressions
- * throw. `name` only labels errors.
+ * expressions, or only constants for a "constant" property. Data
+ * expressions throw, whatever the spec's `expressions` says. `name` only
+ * labels errors.
  */
 export function compile(
   spec: PaintPropertySpec,
   name: string,
   value: unknown,
 ): Compiled {
+  const expressions = spec.expressions === "constant" ? "constant" : "camera";
   const compiled = compileValue(
-    { ...spec, expressions: "camera" } as PaintPropertySpec,
+    { ...spec, expressions } as PaintPropertySpec,
     name,
     value,
   ) as UniformValue;

@@ -1,0 +1,41 @@
+{
+  "id": "rain",
+  "type": "particle-emitter",
+  "metadata": {
+    "maplibre-plugins:title": "Rain",
+    "maplibre-plugins:camera": {
+      "center": [37.7897, -122.4],
+      "zoom": 15.5,
+      "bearing": 0,
+      "pitch": 60
+    }
+  },
+  "paint": {
+    "emitter-kind": "weather",
+    "particle-count": 8000,
+    "particle-lifetime": [0.5, 0.8],
+    "particle-direction": [20, -82],
+    "particle-spread": [2, 0],
+    "particle-speed": [950, 1150],
+    "particle-wind": [40, 0],
+    "particle-shape": "streak",
+    "particle-size": [1.1, 1.6],
+    "particle-size-clamp": [0.6, 3],
+    "particle-stretch": 0.035,
+    "particle-color": "rgba(215,225,240,0.6)",
+    "particle-opacity": ["interpolate", ["linear"], ["zoom"], 10, 0, 12, 1],
+    "particle-fade": [0.15, 0.15],
+    "particle-additive": [0.2, 0.2],
+    "emitter-center-thinning": 0.7,
+    "emitter-screen-tint": [
+      "interpolate",
+      ["linear"],
+      ["zoom"],
+      10,
+      "rgba(25,35,55,0)",
+      12,
+      "rgba(25,35,55,0.4)"
+    ],
+    "emitter-vignette": 0.5
+  }
+}

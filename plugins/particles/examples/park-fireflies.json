@@ -1,0 +1,37 @@
+{
+  "id": "park-fireflies",
+  "type": "particle-features",
+  "source": "openmaptiles",
+  "source-layer": "landcover",
+  "filter": ["match", ["get", "subclass"], ["park", "garden"], true, false],
+  "minzoom": 13,
+  "metadata": {
+    "maplibre-plugins:title": "Park fireflies",
+    "maplibre-plugins:camera": {
+      "center": [37.7694, -122.4862],
+      "zoom": 15,
+      "bearing": 0,
+      "pitch": 45
+    }
+  },
+  "paint": {
+    "particle-density": 10,
+    "particle-color": [
+      "match",
+      ["get", "subclass"],
+      "garden",
+      "#ff8a00",
+      "#ffc400"
+    ],
+    "particle-shape": "glow",
+    "particle-size": [12, 18],
+    "particle-lifetime": [3, 7],
+    "particle-direction": [0, 0],
+    "particle-spread": [180, 1],
+    "particle-speed": [0, 5],
+    "particle-wander": [9, 0.3],
+    "particle-fade": [0.3, 0.3],
+    "particle-additive": [0.25, 0.25],
+    "particle-twinkle": [0.6, 0.5]
+  }
+}

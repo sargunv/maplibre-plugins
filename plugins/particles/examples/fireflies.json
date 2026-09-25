@@ -1,0 +1,35 @@
+{
+  "id": "fireflies",
+  "type": "particle-emitter",
+  "metadata": {
+    "maplibre-plugins:title": "Fireflies",
+    "maplibre-plugins:camera": {
+      "center": [37.7684, -122.4861],
+      "zoom": 16.4,
+      "bearing": 0,
+      "pitch": 50
+    }
+  },
+  "paint": {
+    "emitter-kind": "circle",
+    "emitter-position": [37.7684, -122.4861],
+    "emitter-radius": 180,
+    "emitter-height": [0.5, 5],
+    "particle-space": "world",
+    "particle-count": 500,
+    "particle-lifetime": [4, 9],
+    "particle-direction": [0, 0],
+    "particle-spread": [180, 1],
+    "particle-speed": [0, 0.8],
+    "particle-wander": [6, 0.2],
+    "particle-shape": "glow",
+    "particle-size": [5, 8],
+    "particle-size-clamp": [6, 16],
+    "particle-color": "#e4ff6a",
+    "particle-fade": [0.3, 0.35],
+    "particle-additive": [1, 1],
+    "particle-twinkle": [0.85, 0.45],
+    "emitter-screen-tint": "rgba(2,8,30,0.74)",
+    "emitter-vignette": 0.35
+  }
+}
