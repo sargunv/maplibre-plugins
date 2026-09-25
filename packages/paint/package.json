@@ -2,6 +2,7 @@
   "name": "@maplibre-plugins/paint",
   "version": "0.1.0",
   "description": "Paint property evaluation and transitions shared by the maplibre-gl-js plugin layers: style-spec expressions, CSS colors, and MapLibre Native style transitions.",
+  "license": "BSD-2-Clause",
   "sideEffects": false,
   "type": "module",
   "exports": {

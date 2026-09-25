@@ -2,6 +2,7 @@
   "name": "@maplibre-plugins/location-indicator",
   "version": "0.1.0",
   "description": "Procedural location indicator layer for maplibre-gl-js, sharing its spec and shader with the MapLibre Native plugin.",
+  "license": "BSD-2-Clause",
   "sideEffects": false,
   "type": "module",
   "exports": {

@@ -1,6 +1,7 @@
 {
   "name": "maplibre-plugins",
   "private": true,
+  "license": "BSD-2-Clause",
   "type": "module",
   "scripts": {
     "build": "pnpm -r --if-present build",

@@ -2,6 +2,7 @@
   "name": "@maplibre-plugins/water",
   "version": "0.1.0",
   "description": "Animated shoreline layer for maplibre-gl-js, sharing its spec and shader with the MapLibre Native plugin.",
+  "license": "BSD-2-Clause",
   "sideEffects": false,
   "type": "module",
   "exports": {

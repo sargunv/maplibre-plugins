@@ -40,3 +40,7 @@ mise run //apps/native-viewer:run water -- --before landcover-ice-shelf
 ```
 
 See [AGENTS.md](AGENTS.md) for the repo layout and conventions.
+
+## License
+
+BSD 2-Clause; see [LICENSE](LICENSE).

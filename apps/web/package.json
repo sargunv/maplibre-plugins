@@ -2,6 +2,7 @@
   "name": "@maplibre-plugins/web",
   "version": "0.0.0",
   "private": true,
+  "license": "BSD-2-Clause",
   "type": "module",
   "scripts": {
     "dev": "vp dev",
