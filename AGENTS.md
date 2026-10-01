@@ -57,10 +57,10 @@ maplibre-gl-js implementation, plus apps to preview them live.
 - `third_party/mln-plugin-api/` — vendored plugin ABI header so plugins build
   and unit-test without the FFI build (see its README).
 - `patches/maplibre-native-ffi/` — extensions carried here until the Native pin
-  includes them: an animation backport and plugin ABI extensions
-  (`0001`–`0004`), an OpenGL uniform block fix (`0005`), static data textures
-  for plugin shaders (`0006`), and plugin vertex attributes matched by name on
-  OpenGL (`0007`).
+  includes them: source-free layers, rotation properties and frame queries
+  (`0001`–`0003`), an OpenGL uniform block fix (`0004`), static data textures
+  for plugin shaders (`0005`), and plugin vertex attributes matched by name on
+  OpenGL (`0006`).
 - `scripts/` — repo maintenance scripts (`sync-ffi`, `sync-shaders.mjs`).
 
 ## Dev tool commands

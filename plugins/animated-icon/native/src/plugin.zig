@@ -327,7 +327,7 @@ fn section(comptime name: []const u8, comptime body: []const u8) []const u8 {
 
 /// The attribute declarations, each paint attribute guarded so it only
 /// exists for data-driven properties. The explicit locations are what Vulkan
-/// needs; OpenGL matches attributes by name (patch 0007), so the same text
+/// needs; OpenGL matches attributes by name (patch 0006), so the same text
 /// serves both.
 const glsl_attributes = blk: {
     @setEvalBranchQuota(100_000);
@@ -1089,7 +1089,7 @@ fn finishLayout(instance: ?*anyopaque, bucket: [*c]c.mln_plugin_bucket_v1) callc
     }
     const vertices = geometry.vertices.items;
     tile.stream = .{ .struct_size = @sizeOf(c.mln_plugin_vertex_stream_v1), .stream_id = 0, .data = @ptrCast(vertices.ptr), .data_size = vertices.len * @sizeOf(layout.Vertex), .vertex_count = @intCast(vertices.len), .stride = @sizeOf(layout.Vertex) };
-    tile.drawable = .{ .struct_size = @sizeOf(c.mln_plugin_drawable_descriptor_v1), .drawable_key = 1, .shader_id = str("icon"), .attributes = &attribute_bindings, .attribute_count = attribute_bindings.len, .segments = tile.segments.items.ptr, .segment_count = tile.segments.items.len };
+    tile.drawable = .{ .struct_size = @sizeOf(c.mln_plugin_drawable_descriptor_v1), .depth_mode = c.MLN_PLUGIN_DRAWABLE_DEPTH_READ_ONLY, .drawable_key = 1, .shader_id = str("icon"), .attributes = &attribute_bindings, .attribute_count = attribute_bindings.len, .segments = tile.segments.items.ptr, .segment_count = tile.segments.items.len };
     const empty = vertices.len == 0;
     // get_query_radius replaces this once the host has paint values.
     const query_radius: f32 = if (active.load(.acquire)) |current| current.max_entry_radius else 0;

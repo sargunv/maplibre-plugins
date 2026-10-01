@@ -76,16 +76,17 @@ and what each needs from the plugin API:
    with max blending and composite once. Correct and cheap, but the plugin ABI
    gives layers no render targets or textures, so it is web-only today.
 2. **Draw-once via depth or stencil** (as fill-extrusion opacity does with a
-   depth pre-pass): each pixel keeps its first fragment. Plugin drawables get
-   read-only depth and no stencil, so this too is web-only.
+   depth pre-pass): each pixel keeps its first fragment. Native now exposes
+   per-drawable stencil overlap suppression and depth writes. A stencil path
+   needs to discard zero-coverage fragments and accept first-fragment shading
+   where strips meet; enabling it alone can turn overlap streaks into gaps.
 3. **A true inward offset of the water polygon** (a Clipper-style buffer or
    straight skeleton), which turns the band into a partition with an exact
    distance field. Needs nothing from the host; it is a substantial,
    robustness-sensitive algorithm to carry in both Zig and TypeScript.
 
-Options 1 and 2 are the ones worth raising upstream: a render-target or stencil
-hook in the plugin ABI would let tile-driven plugins draw translucent effects
-the way built-in layers can.
+Native's stencil control makes option 2 possible. Offscreen accumulation still
+needs render targets and blending controls from the host.
 
 ## Paint properties
 
@@ -112,19 +113,11 @@ add-layer call. Rendered-feature queries hit the water polygons themselves.
 The plugin builds against the plugin ABI header alone and has no link dependency
 on the host.
 
-### Required native patches
+### Native host
 
-The tile-driven layout path is upstream MapLibre Native; from
-`patches/maplibre-native-ffi/` this plugin needs:
-
-| Patch                         | Used for                                                                 |
-| ----------------------------- | ------------------------------------------------------------------------ |
-| `0001` plugin animated layers | `should_animate` keeps the map repainting while `wave-speed` is non-zero |
-
-Default colors use the upstream host's premultiplied-color conversion.
-
-It does not need the source-free layer, rotation property, or frame query
-patches.
+Tile layout, animation and default-color premultiplication are upstream Native
+features. Build against the plugin ABI header of the host that loads the
+library, as the native viewer does.
 
 ## Web
 

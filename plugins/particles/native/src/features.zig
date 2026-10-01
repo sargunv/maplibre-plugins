@@ -91,7 +91,7 @@ pub fn finishLayout(instance: ?*anyopaque, bucket: [*c]c.mln_plugin_bucket_v1) c
     const quads = geometry.quads();
     tile.segment = .{ .struct_size = @sizeOf(c.mln_plugin_segment_v1), .vertex_offset = 0, .index_offset = 0, .vertex_length = 4 * quads, .index_length = 6 * quads };
     tile.stream = .{ .struct_size = @sizeOf(c.mln_plugin_vertex_stream_v1), .stream_id = 0, .data = @ptrCast(vertices.ptr), .data_size = vertices.len * @sizeOf(layout.Vertex), .vertex_count = 4 * quads, .stride = @sizeOf(layout.Vertex) };
-    tile.drawable = .{ .struct_size = @sizeOf(c.mln_plugin_drawable_descriptor_v1), .drawable_key = 1, .shader_id = str(shaders.features_shader_id), .attributes = &shaders.features_vertex_bindings, .attribute_count = shaders.features_vertex_bindings.len, .segments = &tile.segment, .segment_count = 1 };
+    tile.drawable = .{ .struct_size = @sizeOf(c.mln_plugin_drawable_descriptor_v1), .depth_mode = c.MLN_PLUGIN_DRAWABLE_DEPTH_READ_ONLY, .drawable_key = 1, .shader_id = str(shaders.features_shader_id), .attributes = &shaders.features_vertex_bindings, .attribute_count = shaders.features_vertex_bindings.len, .segments = &tile.segment, .segment_count = 1 };
     // An empty tile reports nothing: the host rejects a stream without
     // vertices and drops a drawable without indices.
     properties.clearBucket(out);

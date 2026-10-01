@@ -5,29 +5,24 @@ the pinned upstream commit, as commits (`git am`). Each patch carries a focused
 MapLibre Native change into the FFI's `patches/maplibre-native/` and its
 `sync-submodules` list. Drop a patch when the Native pin includes its change.
 
-The FFI pin is `f46ed3e464821c388335c40c849687cb5cc804d6`, with Native pinned to
-`d695deef12fc64ee075a892c2d913c45fe8c7b42`.
+The FFI pin is `19a00da6e0e410f6b345b3e6dfa46d8934be78d9`, with Native pinned to
+`b2c5c0aff4d645c04cd37cdde33fc992d955f06b`.
 
-Native `main` additionally includes
-[per-drawable depth, stencil and culling (#4692)](https://github.com/maplibre/maplibre-native/pull/4692),
-merged 2026-09-29 as `302960b`. That API is beyond the FFI's Native pin and
-replaces none of this repo's carried extensions.
+| Patch                                            | Native patch | Purpose                                                           |
+| ------------------------------------------------ | ------------ | ----------------------------------------------------------------- |
+| `0001` source-free plugin layers (`build_frame`) | `0030`       | per-frame geometry without a style source                         |
+| `0002` plugin rotation properties                | `0031`       | shortest-arc rotation transitions                                 |
+| `0003` plugin frame queries                      | `0032`       | hit envelopes for source-free rendered features                   |
+| `0004` OpenGL uniform blocks of 8 KiB and larger | `0033`       | large `animated-icon` catalog headers                             |
+| `0005` plugin static textures (RGBA32F)          | `0034`       | `animated-icon` catalog data                                      |
+| `0006` plugin OpenGL attributes by name          | `0035`       | data-driven attributes in `animated-icon` and `particle-features` |
 
-| Patch                                            | Native patch | Upstream / purpose                                                                                                                 |
-| ------------------------------------------------ | ------------ | ---------------------------------------------------------------------------------------------------------------------------------- |
-| `0001` plugin animated layers (`should_animate`) | `0027`       | [Native #4654](https://github.com/maplibre/maplibre-native/pull/4654), merged 2026-09-24 as `3db2ced`; still beyond the Native pin |
-| `0002` source-free plugin layers (`build_frame`) | `0028`       | not yet proposed                                                                                                                   |
-| `0003` plugin rotation properties                | `0029`       | not yet proposed                                                                                                                   |
-| `0004` plugin frame queries (hit envelopes)      | `0030`       | not yet proposed                                                                                                                   |
-| `0005` OpenGL uniform blocks of 8 KiB and larger | `0031`       | fixes an upstream crash; needed by large `animated-icon` catalogs                                                                  |
-| `0006` plugin static textures (RGBA32F)          | `0032`       | needed by `animated-icon`                                                                                                          |
-| `0007` plugin OpenGL attributes by name          | `0033`       | fixes data-driven plugin attributes; needed by `animated-icon` and `particle-features`                                             |
-
-The animation backport matches the merged upstream change, including its field
-order after `enable_stencil_overlap_dedup` and `enable_near_clipped_matrix`. The
-plugins leave both flags off to retain their tile rendering behavior. Rebuild
-plugin libraries against the refreshed vendored header: the descriptor layout
-has changed.
+Animation, default-color premultiplication, near-clipped tile matrices and
+[per-drawable depth, stencil and culling](https://github.com/maplibre/maplibre-native/pull/4692)
+are upstream. Tile-driven drawables explicitly select read-only depth to retain
+their previous behavior; the new descriptor's zero depth mode disables depth
+testing. The source-free path retains read-only depth and no stencil or culling.
+Plugin libraries must be rebuilt against the refreshed vendored header.
 
 To change a patch: edit and commit inside `third_party/maplibre-native-ffi` (one
 commit per patch), then run `scripts/sync-ffi export`. To move the pin: check

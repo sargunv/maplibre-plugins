@@ -378,25 +378,24 @@ From `patches/maplibre-native-ffi/` this plugin needs:
 
 | Patch                                | Used for                                                                                   |
 | ------------------------------------ | ------------------------------------------------------------------------------------------ |
-| `0001` plugin animated layers        | `should_animate` keeps the map repainting while the layer plays                            |
-| `0003` plugin rotation properties    | `icon-rotate` transitions along the shortest arc                                           |
-| `0004` plugin frame queries          | the bucket's layout only (see below)                                                       |
-| `0005` OpenGL uniform blocks ≥ 8 KiB | catalogs of more than 254 animations on OpenGL, whose header block outgrows the 8 KiB page |
-| `0006` plugin static textures        | the catalog texture that holds every frame, so each icon picks its own animation and phase |
-| `0007` plugin OpenGL attributes      | data-driven paint attributes land in the right shader inputs on OpenGL                     |
+| `0002` plugin rotation properties    | `icon-rotate` transitions along the shortest arc                                           |
+| `0003` plugin frame queries          | the bucket's layout only (see below)                                                       |
+| `0004` OpenGL uniform blocks ≥ 8 KiB | catalogs of more than 254 animations on OpenGL, whose header block outgrows the 8 KiB page |
+| `0005` plugin static textures        | the catalog texture that holds every frame, so each icon picks its own animation and phase |
+| `0006` plugin OpenGL attributes      | data-driven paint attributes land in the right shader inputs on OpenGL                     |
 
-`0005` matters only for OpenGL and OpenGL ES builds, and only for catalogs whose
-header block exceeds 8 KiB; Metal and Vulkan draw such blocks without it. `0006`
-is required on every backend. `0007` is required on OpenGL whenever a layer
+`0004` matters only for OpenGL and OpenGL ES builds, and only for catalogs whose
+header block exceeds 8 KiB; Metal and Vulkan draw such blocks without it. `0005`
+is required on every backend. `0006` is required on OpenGL whenever a layer
 mixes data-driven and constant properties: without it the host matches
 attributes by position, not name, and data-driven values reach the wrong inputs.
-The plugin uses no feature of `0002` (source-free layers): the extra
+The plugin uses no feature of `0001` (source-free layers): the extra
 `source_free` and `build_frame` fields it zeroes are ignored by a host without
-them. It uses no feature of `0004` either and returns no frame features, but the
-vendored header's `mln_plugin_bucket_v1` ends with `0004`'s `frame_features`, so
+them. It uses no feature of `0003` either and returns no frame features, but the
+vendored header's `mln_plugin_bucket_v1` ends with `0003`'s `frame_features`, so
 `finish_layout` rejects a host's smaller bucket. Default-color premultiplication
-is upstream. The patches form one stacked series, so a host carries `0001` to
-`0007`.
+is upstream, as is `should_animate`. The patches form one stacked series, so a
+host carries `0001` to `0006`.
 
 ## Weather demo
 
@@ -439,7 +438,7 @@ context and uniform-only bindings are planned for M2.
    a feature-state change timestamp available to shaders.
 3. **The catalog must fit one texture.** Every frame of every animation stays
    resident: at most 4,194,304 texels (a 2048 × 2048 RGBA32F texture, 64 MiB),
-   510 animations (254 on OpenGL without `0005`), 64 ops per frame and 256
+   510 animations (254 on OpenGL without `0004`), 64 ops per frame and 256
    curves per band. Bake at `--fps 30` to halve a catalog. Fix: fp16 curves or
    dynamic textures that stream frames.
 4. **The plugin keeps its own clock.** Frames come from the plugin's monotonic
@@ -480,9 +479,10 @@ context and uniform-only bindings are planned for M2.
    order, so where icons from two tiles overlap the two can differ. Fix:
    layout-evaluated plugin properties and a per-frame draw order.
 10. **Icons can double while tiles load.** A parent tile and its loading
-    children may both draw, and both answer queries, with no stencil or
-    cross-tile identity to drop the duplicates. Fix: a stencil or depth hook for
-    plugin layers.
+    children may both draw, and both answer queries. Native's stencil overlap
+    control suppresses every overlapping fragment, including distinct icons and
+    transparent parts of their quads. Correct deduplication still needs
+    cross-tile identity and query filtering.
 11. **Every visible icon costs every frame.** With no render targets, a resting
     icon cannot be cached as an image. Band lists and the median ray split keep
     each pixel's work to the curves near it, but nothing has been timed on this

@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
-From: Sargun Vohra <sargunv@users.noreply.github.com>
-Date: Wed, 30 Sep 2026 18:52:39 -0700
-Subject: [PATCH 3/7] Carry plugin rotation properties
+From: maplibre-plugins <sync@localhost>
+Date: Wed, 30 Sep 2026 19:14:29 -0700
+Subject: [PATCH 2/6] Carry plugin rotation properties
 
 Adds MLN_PLUGIN_VALUE_ROTATION to the plugin layer ABI: degrees in
 float_value whose transitions follow the shortest arc, like the built-in
@@ -10,31 +10,31 @@ rotation properties. Not yet proposed upstream.
 Carried by maplibre-plugins until it lands upstream.
 ---
  .mise/bin/sync-submodules                     |   1 +
- .../0029-plugin-rotation-properties.patch     | 161 ++++++++++++++++++
+ .../0031-plugin-rotation-properties.patch     | 161 ++++++++++++++++++
  patches/maplibre-native/README.md             |   4 +
  3 files changed, 166 insertions(+)
- create mode 100644 patches/maplibre-native/0029-plugin-rotation-properties.patch
+ create mode 100644 patches/maplibre-native/0031-plugin-rotation-properties.patch
 
 diff --git a/.mise/bin/sync-submodules b/.mise/bin/sync-submodules
-index 6206e66..ec17a54 100755
+index 8677fa1..aa42134 100755
 --- a/.mise/bin/sync-submodules
 +++ b/.mise/bin/sync-submodules
-@@ -73,6 +73,7 @@ mln_patches=(
-   "$repo_root/patches/maplibre-native/0026-empty-symbol-placement.patch"
-   "$repo_root/patches/maplibre-native/0027-plugin-animated-layers.patch"
-   "$repo_root/patches/maplibre-native/0028-source-free-plugin-layers.patch"
-+  "$repo_root/patches/maplibre-native/0029-plugin-rotation-properties.patch"
+@@ -74,6 +74,7 @@ mln_patches=(
+   "$repo_root/patches/maplibre-native/0028-hit-test-camera-zoom.patch"
+   "$repo_root/patches/maplibre-native/0029-query-filter-overscaled-zoom.patch"
+   "$repo_root/patches/maplibre-native/0030-source-free-plugin-layers.patch"
++  "$repo_root/patches/maplibre-native/0031-plugin-rotation-properties.patch"
  )
  
  # The patches overlap, so no single patch reverses cleanly on its own once the
-diff --git a/patches/maplibre-native/0029-plugin-rotation-properties.patch b/patches/maplibre-native/0029-plugin-rotation-properties.patch
+diff --git a/patches/maplibre-native/0031-plugin-rotation-properties.patch b/patches/maplibre-native/0031-plugin-rotation-properties.patch
 new file mode 100644
-index 0000000..9d46659
+index 0000000..a0e6ac9
 --- /dev/null
-+++ b/patches/maplibre-native/0029-plugin-rotation-properties.patch
++++ b/patches/maplibre-native/0031-plugin-rotation-properties.patch
 @@ -0,0 +1,161 @@
 +diff --git a/include/mln/plugin/plugin_api.h b/include/mln/plugin/plugin_api.h
-+index 410a574bd7a3015dfb6e7e3d683e9917b2601368..fca40b3b83abc5641747236fde4c6a7d1c80420b 100644
++index 2a4ecac20f74e694be21335377dd1b7d8150dfcb..060130e05f08be4bcc1143f71ba3576d1e1d8b1d 100644
 +--- a/include/mln/plugin/plugin_api.h
 ++++ b/include/mln/plugin/plugin_api.h
 +@@ -67,6 +67,8 @@ typedef enum mln_plugin_value_type {
@@ -111,7 +111,7 @@ index 0000000..9d46659
 +             return numeric();
 +         case MLN_PLUGIN_VALUE_STRING:
 +diff --git a/src/mln/renderer/buckets/plugin_bucket.cpp b/src/mln/renderer/buckets/plugin_bucket.cpp
-+index f94d455fdc9f27f0d0ae1328583c53ced8b2b2f4..b11152f16675456c94dc85a48c797e35c591c1a5 100644
++index 60ef5ad4fbc2956f04376b53e9f037c4f5f9bb3e..b970c75a4ad1dddc307ae0e1285f1bc8880d4121 100644
 +--- a/src/mln/renderer/buckets/plugin_bucket.cpp
 ++++ b/src/mln/renderer/buckets/plugin_bucket.cpp
 +@@ -72,6 +72,7 @@ mln_plugin_value decodedValue(const std::array<float, 4>& input, const plugin::P
@@ -195,17 +195,17 @@ index 0000000..9d46659
 +                                     Transitioning<PropertyValue<std::array<double, 2>>>,
 +                                     Transitioning<PropertyValue<Color>>,
 diff --git a/patches/maplibre-native/README.md b/patches/maplibre-native/README.md
-index a4f5691..68b610a 100644
+index ba61e14..ad93192 100644
 --- a/patches/maplibre-native/README.md
 +++ b/patches/maplibre-native/README.md
-@@ -157,6 +157,10 @@ camera-to-center distance, a mercator world projection, and a ground-offset
+@@ -161,6 +161,10 @@ camera-to-center distance, a mercator world projection, and a ground-offset
  destination helper. This patch is local-only: it is not upstreamed, and no
  upstream PR exists.
  
-+`0029-plugin-rotation-properties.patch` adds a rotation property type to the
++`0031-plugin-rotation-properties.patch` adds a rotation property type to the
 +plugin ABI. Rotation transitions follow the shortest arc. This patch is
 +local-only: it is not upstreamed, and no upstream PR exists.
 +
- Each patch is the squashed diff of its upstream branch, applied on top of the
- patches before it, so a patch that adds a test next to an earlier patch's test
- carries that placement rather than the branch's own context.
+ Each patch is a squashed diff applied on top of the patches before it. Patch
+ context and test placement follow the pinned source and earlier patches. The
+ publication patch includes the transition setters for our bearing-accuracy

@@ -65,15 +65,14 @@ From `patches/maplibre-native-ffi/` this plugin uses:
 
 | Patch                             | Used for                                                     |
 | --------------------------------- | ------------------------------------------------------------ |
-| `0002` source-free plugin layers  | `build_frame` supplies the geometry; the layer has no source |
-| `0003` plugin rotation properties | `bearing` transitions along the shortest arc                 |
-| `0004` plugin frame queries       | rendered-feature hit envelopes for the puck and arrow        |
+| `0001` source-free plugin layers  | `build_frame` supplies the geometry; the layer has no source |
+| `0002` plugin rotation properties | `bearing` transitions along the shortest arc                 |
+| `0003` plugin frame queries       | rendered-feature hit envelopes for the puck and arrow        |
 
 Default colors use the upstream host's premultiplied-color conversion.
 
-It does not use `0001` (animated layers): the puck has no animation of its own,
-and paint transitions repaint through the host. The source-free patch is stacked
-on it in the series, so a host still carries both.
+The puck has no animation of its own; paint transitions repaint through the
+host.
 
 ## Web
 

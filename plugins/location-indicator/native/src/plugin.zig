@@ -260,7 +260,7 @@ const Frame = struct {
     fn output(self: *Frame, bucket: *c.mln_plugin_bucket_v1) void {
         self.segment = .{ .struct_size = @sizeOf(c.mln_plugin_segment_v1), .vertex_length = self.vertex_count, .index_length = self.index_count };
         self.stream = .{ .struct_size = @sizeOf(c.mln_plugin_vertex_stream_v1), .data = @ptrCast(&self.vertices), .data_size = self.vertex_count * @sizeOf(Vertex), .vertex_count = self.vertex_count, .stride = @sizeOf(Vertex) };
-        self.drawable = .{ .struct_size = @sizeOf(c.mln_plugin_drawable_descriptor_v1), .drawable_key = 1, .shader_id = str("puck"), .attributes = &bindings, .attribute_count = bindings.len, .segments = &self.segment, .segment_count = 1 };
+        self.drawable = .{ .struct_size = @sizeOf(c.mln_plugin_drawable_descriptor_v1), .depth_mode = c.MLN_PLUGIN_DRAWABLE_DEPTH_READ_ONLY, .drawable_key = 1, .shader_id = str("puck"), .attributes = &bindings, .attribute_count = bindings.len, .segments = &self.segment, .segment_count = 1 };
         self.feature = .{ .struct_size = @sizeOf(c.mln_plugin_frame_feature_v1), .geojson = .{ .data = &self.feature_json, .size = self.feature_json_size }, .polygons = &self.query_polygons, .polygon_count = self.query_count };
         bucket.* = .{ .struct_size = @sizeOf(c.mln_plugin_bucket_v1), .vertex_streams = &self.stream, .vertex_stream_count = 1, .indices = &self.indices, .index_count = self.index_count, .drawables = &self.drawable, .drawable_count = if (self.vertex_count == 0) 0 else 1, .frame_features = &self.feature, .frame_feature_count = if (self.query_count == 0) 0 else 1 };
     }

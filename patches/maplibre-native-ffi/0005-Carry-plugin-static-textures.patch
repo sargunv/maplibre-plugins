@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
-From: Sargun Vohra <sargunv@users.noreply.github.com>
-Date: Wed, 30 Sep 2026 18:52:39 -0700
-Subject: [PATCH 6/7] Carry plugin static textures
+From: maplibre-plugins <sync@localhost>
+Date: Wed, 30 Sep 2026 19:14:29 -0700
+Subject: [PATCH 5/6] Carry plugin static textures
 
 Lets a plugin shader declare up to three static RGBA32F data textures that
 its fragment stage reads by exact texel. Registration validates and copies
@@ -14,31 +14,31 @@ block read by both shader stages. Not yet proposed upstream.
 Carried by maplibre-plugins until it lands upstream.
 ---
  .mise/bin/sync-submodules                     |    1 +
- .../0032-plugin-static-textures.patch         | 1075 +++++++++++++++++
+ .../0034-plugin-static-textures.patch         | 1075 +++++++++++++++++
  patches/maplibre-native/README.md             |   15 +
  3 files changed, 1091 insertions(+)
- create mode 100644 patches/maplibre-native/0032-plugin-static-textures.patch
+ create mode 100644 patches/maplibre-native/0034-plugin-static-textures.patch
 
 diff --git a/.mise/bin/sync-submodules b/.mise/bin/sync-submodules
-index dc5ae05..5700797 100755
+index 78aeb6a..d81d67a 100755
 --- a/.mise/bin/sync-submodules
 +++ b/.mise/bin/sync-submodules
-@@ -76,6 +76,7 @@ mln_patches=(
-   "$repo_root/patches/maplibre-native/0029-plugin-rotation-properties.patch"
-   "$repo_root/patches/maplibre-native/0030-plugin-frame-queries.patch"
-   "$repo_root/patches/maplibre-native/0031-opengl-large-uniform-blocks.patch"
-+  "$repo_root/patches/maplibre-native/0032-plugin-static-textures.patch"
+@@ -77,6 +77,7 @@ mln_patches=(
+   "$repo_root/patches/maplibre-native/0031-plugin-rotation-properties.patch"
+   "$repo_root/patches/maplibre-native/0032-plugin-frame-queries.patch"
+   "$repo_root/patches/maplibre-native/0033-opengl-large-uniform-blocks.patch"
++  "$repo_root/patches/maplibre-native/0034-plugin-static-textures.patch"
  )
  
  # The patches overlap, so no single patch reverses cleanly on its own once the
-diff --git a/patches/maplibre-native/0032-plugin-static-textures.patch b/patches/maplibre-native/0032-plugin-static-textures.patch
+diff --git a/patches/maplibre-native/0034-plugin-static-textures.patch b/patches/maplibre-native/0034-plugin-static-textures.patch
 new file mode 100644
-index 0000000..1bfc3b0
+index 0000000..65e17b0
 --- /dev/null
-+++ b/patches/maplibre-native/0032-plugin-static-textures.patch
++++ b/patches/maplibre-native/0034-plugin-static-textures.patch
 @@ -0,0 +1,1075 @@
 +diff --git a/include/mln/plugin/plugin_api.h b/include/mln/plugin/plugin_api.h
-+index da175391b4cd3e4cf86e5922ba3fd4fee089a895..dcbbc8baca533dadcafc3d1cfc9bbcee9ff8c524 100644
++index 615691a933c19387fa7658184f68c2a55b53abb2..f1d66d1bd06d4a84f44ad2419a2a6dbf6a2f2cac 100644
 +--- a/include/mln/plugin/plugin_api.h
 ++++ b/include/mln/plugin/plugin_api.h
 +@@ -257,6 +257,56 @@ typedef struct mln_plugin_shader_property_binding_v1 {
@@ -374,10 +374,10 @@ index 0000000..1bfc3b0
 + } // namespace plugin
 + } // namespace mln
 +diff --git a/src/mln/renderer/layers/render_plugin_style_layer.cpp b/src/mln/renderer/layers/render_plugin_style_layer.cpp
-+index fc4a24903812d191671cd9a5b5502b89031eecb4..5eb9e5609403ec0fbca4b7332c3401851cca896c 100644
++index e505234ade924f68c5395be1f7b654eed807449a..3f739eec552ff8cc0501b9a2a6652136a391759b 100644
 +--- a/src/mln/renderer/layers/render_plugin_style_layer.cpp
 ++++ b/src/mln/renderer/layers/render_plugin_style_layer.cpp
-+@@ -345,6 +345,10 @@ void RenderPluginStyleLayer::update(gfx::ShaderRegistry& shaders,
++@@ -359,6 +359,10 @@ void RenderPluginStyleLayer::update(gfx::ShaderRegistry& shaders,
 +             builder->setRawVertices({}, vertexCount, firstType);
 +             builder->setSegments(
 +                 gfx::Triangles(), bucket.indices, definition.segments.data(), definition.segments.size());
@@ -388,7 +388,7 @@ index 0000000..1bfc3b0
 +             builder->flush(context);
 +             for (auto& drawable : builder->clearDrawables()) {
 +                 drawable->setTileID(tileID);
-+@@ -513,6 +517,9 @@ void RenderPluginStyleLayer::updateFrame(gfx::ShaderRegistry& shaders,
++@@ -527,6 +531,9 @@ void RenderPluginStyleLayer::updateFrame(gfx::ShaderRegistry& shaders,
 +         builder->setRawVertices({}, vertexCount, firstType);
 +         builder->setSegments(
 +             gfx::Triangles(), frameBucket->indices, definition.segments.data(), definition.segments.size());
@@ -600,7 +600,7 @@ index 0000000..1bfc3b0
 +     style::conversion::Error parsingError;
 +     EXPECT_FALSE(style::conversion::convertJSON<std::unique_ptr<style::Layer>>(
 +diff --git a/test/plugin/rendering.test.cpp b/test/plugin/rendering.test.cpp
-+index 964f72c5400e3b349ced1b899ca1a8e2dabd1283..2d08356792be93cb529761012818d98749705617 100644
++index 0e586966cf6a6018ce74dfb2fe9538b698f1b7fe..b6c3a0871964c17308ed7ea102bf08ffc0a8d23e 100644
 +--- a/test/plugin/rendering.test.cpp
 ++++ b/test/plugin/rendering.test.cpp
 +@@ -13,6 +13,9 @@
@@ -613,7 +613,7 @@ index 0000000..1bfc3b0
 + 
 + using namespace mln;
 + 
-+@@ -492,4 +495,498 @@ TEST(PluginRendering, LayerUniformBlocksAroundTheOpenGLPageSize) {
++@@ -502,4 +505,498 @@ TEST(PluginRendering, LayerUniformBlocksAroundTheOpenGLPageSize) {
 +     }
 + }
 + 
@@ -1113,14 +1113,14 @@ index 0000000..1bfc3b0
 ++
 + } // namespace
 diff --git a/patches/maplibre-native/README.md b/patches/maplibre-native/README.md
-index ab67599..9512675 100644
+index 8c70bcc..a4b4018 100644
 --- a/patches/maplibre-native/README.md
 +++ b/patches/maplibre-native/README.md
-@@ -177,6 +177,21 @@ includes a plugin rendering regression that reads back fragment-indexed layer
+@@ -181,6 +181,21 @@ includes a plugin rendering regression that reads back fragment-indexed layer
  blocks of 8176, 8192, 8208, and 16384 bytes across content changes. This patch
  is not yet proposed upstream.
  
-+`0032-plugin-static-textures.patch` adds static data textures to plugin
++`0034-plugin-static-textures.patch` adds static data textures to plugin
 +shaders. A shader descriptor lists up to three RGBA32F textures of at most
 +2048 texels a side; registration validates and copies their bytes, and
 +re-registering different bytes conflicts. Each renderer uploads a texture once,
@@ -1135,6 +1135,6 @@ index ab67599..9512675 100644
 +variants, a source-free layer, and a layer uniform block read by both shader
 +stages. This patch is not yet proposed upstream.
 +
- Each patch is the squashed diff of its upstream branch, applied on top of the
- patches before it, so a patch that adds a test next to an earlier patch's test
- carries that placement rather than the branch's own context.
+ Each patch is a squashed diff applied on top of the patches before it. Patch
+ context and test placement follow the pinned source and earlier patches. The
+ publication patch includes the transition setters for our bearing-accuracy

@@ -4,12 +4,12 @@
 compile against. It is copied from the patched MapLibre Native tree that
 [maplibre-native-ffi](https://github.com/maplibre/maplibre-native-ffi) builds.
 
-Source: FFI `f46ed3e464821c388335c40c849687cb5cc804d6`, Native
-`d695deef12fc64ee075a892c2d913c45fe8c7b42`, plus the seven patches in
+Source: FFI `19a00da6e0e410f6b345b3e6dfa46d8934be78d9`, Native
+`b2c5c0aff4d645c04cd37cdde33fc992d955f06b`, plus the six patches in
 [`patches/maplibre-native-ffi/`](../../patches/maplibre-native-ffi/README.md)
-(Native patch numbers `0027`–`0033`). Default-color premultiplication, stencil
-overlap deduplication and near-clipped tile matrices are upstream. Animation
-is a backport of merged Native #4654; the other extensions remain carried here.
+(Native patch numbers `0030`–`0035`). Animation, default-color premultiplication,
+stencil overlap deduplication, near-clipped tile matrices and per-drawable
+depth/stencil/culling are upstream.
 
 Vendoring the header means a plugin builds and unit-tests with no native
 library present; only the apps that load a plugin into a map need a real

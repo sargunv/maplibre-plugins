@@ -454,7 +454,7 @@ fn finishLayout(instance: ?*anyopaque, bucket: [*c]c.mln_plugin_bucket_v1) callc
     }
     const vertices = geometry.vertices.items;
     tile.stream = .{ .struct_size = @sizeOf(c.mln_plugin_vertex_stream_v1), .stream_id = 0, .data = @ptrCast(vertices.ptr), .data_size = vertices.len * @sizeOf(Vertex), .vertex_count = @intCast(vertices.len), .stride = @sizeOf(Vertex) };
-    tile.drawable = .{ .struct_size = @sizeOf(c.mln_plugin_drawable_descriptor_v1), .drawable_key = 1, .shader_id = str("shore"), .attributes = &attribute_bindings, .attribute_count = attribute_bindings.len, .segments = tile.segments.items.ptr, .segment_count = tile.segments.items.len };
+    tile.drawable = .{ .struct_size = @sizeOf(c.mln_plugin_drawable_descriptor_v1), .depth_mode = c.MLN_PLUGIN_DRAWABLE_DEPTH_READ_ONLY, .drawable_key = 1, .shader_id = str("shore"), .attributes = &attribute_bindings, .attribute_count = attribute_bindings.len, .segments = tile.segments.items.ptr, .segment_count = tile.segments.items.len };
     const empty = vertices.len == 0 or tile.segments.items.len == 0;
     bucket.* = .{
         .struct_size = @sizeOf(c.mln_plugin_bucket_v1),

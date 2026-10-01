@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
-From: Sargun Vohra <sargunv@users.noreply.github.com>
-Date: Wed, 30 Sep 2026 18:52:39 -0700
-Subject: [PATCH 2/7] Carry source-free plugin layers
+From: maplibre-plugins <sync@localhost>
+Date: Wed, 30 Sep 2026 19:14:29 -0700
+Subject: [PATCH 1/6] Carry source-free plugin layers
 
 Adds the source_free flag and build_frame callback to the plugin layer
 ABI: a layer with no style source receives its geometry from a per-frame
@@ -12,31 +12,31 @@ proposed upstream.
 Carried by maplibre-plugins until it lands upstream.
 ---
  .mise/bin/sync-submodules                     |   1 +
- .../0028-source-free-plugin-layers.patch      | 963 ++++++++++++++++++
+ .../0030-source-free-plugin-layers.patch      | 980 ++++++++++++++++++
  patches/maplibre-native/README.md             |  10 +
- 3 files changed, 974 insertions(+)
- create mode 100644 patches/maplibre-native/0028-source-free-plugin-layers.patch
+ 3 files changed, 991 insertions(+)
+ create mode 100644 patches/maplibre-native/0030-source-free-plugin-layers.patch
 
 diff --git a/.mise/bin/sync-submodules b/.mise/bin/sync-submodules
-index bc0cd02..6206e66 100755
+index a6b81d8..8677fa1 100755
 --- a/.mise/bin/sync-submodules
 +++ b/.mise/bin/sync-submodules
-@@ -72,6 +72,7 @@ mln_patches=(
-   "$repo_root/patches/maplibre-native/0025-vertex-buffer-upload-timestamps.patch"
-   "$repo_root/patches/maplibre-native/0026-empty-symbol-placement.patch"
-   "$repo_root/patches/maplibre-native/0027-plugin-animated-layers.patch"
-+  "$repo_root/patches/maplibre-native/0028-source-free-plugin-layers.patch"
+@@ -73,6 +73,7 @@ mln_patches=(
+   "$repo_root/patches/maplibre-native/0027-line-hit-test-endpoint-offset.patch"
+   "$repo_root/patches/maplibre-native/0028-hit-test-camera-zoom.patch"
+   "$repo_root/patches/maplibre-native/0029-query-filter-overscaled-zoom.patch"
++  "$repo_root/patches/maplibre-native/0030-source-free-plugin-layers.patch"
  )
  
  # The patches overlap, so no single patch reverses cleanly on its own once the
-diff --git a/patches/maplibre-native/0028-source-free-plugin-layers.patch b/patches/maplibre-native/0028-source-free-plugin-layers.patch
+diff --git a/patches/maplibre-native/0030-source-free-plugin-layers.patch b/patches/maplibre-native/0030-source-free-plugin-layers.patch
 new file mode 100644
-index 0000000..b49fd3a
+index 0000000..53cbb79
 --- /dev/null
-+++ b/patches/maplibre-native/0028-source-free-plugin-layers.patch
-@@ -0,0 +1,963 @@
++++ b/patches/maplibre-native/0030-source-free-plugin-layers.patch
+@@ -0,0 +1,980 @@
 +diff --git a/include/mln/plugin/plugin_api.h b/include/mln/plugin/plugin_api.h
-+index 1af44a33a8137b9a0659d94d0ec553e6595a4e07..410a574bd7a3015dfb6e7e3d683e9917b2601368 100644
++index 83d15636a56c787d3c20b27644b78bc5e42ed307..2a4ecac20f74e694be21335377dd1b7d8150dfcb 100644
 +--- a/include/mln/plugin/plugin_api.h
 ++++ b/include/mln/plugin/plugin_api.h
 +@@ -65,6 +65,8 @@ typedef enum mln_plugin_value_type {
@@ -68,7 +68,7 @@ index 0000000..b49fd3a
 +     mln_plugin_color color_value;
 +     mln_plugin_string string_value;
 + } mln_plugin_value_data;
-+@@ -436,6 +444,71 @@ typedef float (*mln_plugin_query_radius_fn)(const mln_plugin_property_statistics
++@@ -448,6 +456,71 @@ typedef float (*mln_plugin_query_radius_fn)(const mln_plugin_property_statistics
 +  * maps. */
 + typedef uint8_t (*mln_plugin_should_animate_fn)(const mln_plugin_property_value_v1* properties, size_t property_count);
 + 
@@ -140,7 +140,7 @@ index 0000000..b49fd3a
 + typedef struct mln_plugin_layer_type_v1 {
 +     uint32_t struct_size;
 +     mln_plugin_string layer_type;
-+@@ -471,6 +544,16 @@ typedef struct mln_plugin_layer_type_v1 {
++@@ -483,6 +556,16 @@ typedef struct mln_plugin_layer_type_v1 {
 +      */
 +     uint8_t enable_near_clipped_matrix;
 +     mln_plugin_should_animate_fn should_animate;
@@ -158,10 +158,10 @@ index 0000000..b49fd3a
 + 
 + typedef struct mln_plugin_descriptor_v1 {
 +diff --git a/src/mln/layout/plugin_layout.cpp b/src/mln/layout/plugin_layout.cpp
-+index 70e72b640d4f8bf650722928669c9ad67abde3fa..2f83eac130d8f228709a782bf21077fef2c0fbee 100644
++index d2a522cd2ffb8dcd529c1173da4e8499db3a7f5c..2f83eac130d8f228709a782bf21077fef2c0fbee 100644
 +--- a/src/mln/layout/plugin_layout.cpp
 ++++ b/src/mln/layout/plugin_layout.cpp
-+@@ -79,101 +79,7 @@ void PluginLayout::createBucket(const ImagePositions&,
++@@ -79,113 +79,7 @@ void PluginLayout::createBucket(const ImagePositions&,
 +     }
 + 
 +     auto bucket = std::make_shared<PluginBucket>(registration);
@@ -200,12 +200,24 @@ index 0000000..b49fd3a
 +-        if (!valid) break;
 +-        drawable.key = input.drawable_key;
 +-        drawable.shaderID.assign(input.shader_id.data, input.shader_id.size);
++-        drawable.depthMode = static_cast<PluginDrawableDepthMode>(input.depth_mode);
++-        drawable.enableStencilOverlap = input.enable_stencil_overlap != 0;
++-        drawable.cullBackFaces = input.cull_back_faces != 0;
 +-        const auto shaderIt = std::find_if(registration->shaders.begin(),
 +-                                           registration->shaders.end(),
 +-                                           [&](const auto& shader) { return shader.id == drawable.shaderID; });
 +-        std::set<uint32_t> hostAttributeIDs;
 +-        if (shaderIt != registration->shaders.end()) {
++-            const auto referencesShaderAttribute = [&](uint32_t attributeID) {
++-                return std::any_of(shaderIt->attributes.begin(),
++-                                   shaderIt->attributes.end(),
++-                                   [&](const auto& attribute) { return attribute.id == attributeID; });
++-            };
 +-            for (const auto& binding : shaderIt->propertyBindings) {
++-                if (!referencesShaderAttribute(binding.minimumAttributeID) &&
++-                    !referencesShaderAttribute(binding.maximumAttributeID)) {
++-                    continue;
++-                }
 +-                hostAttributeIDs.emplace(binding.minimumAttributeID);
 +-                hostAttributeIDs.emplace(binding.maximumAttributeID);
 +-            }
@@ -399,7 +411,7 @@ index 0000000..b49fd3a
 + 
 + std::unique_ptr<RenderLayer> PluginStyleLayerFactory::createRenderLayer(Immutable<style::Layer::Impl> impl) noexcept {
 +diff --git a/src/mln/renderer/buckets/plugin_bucket.cpp b/src/mln/renderer/buckets/plugin_bucket.cpp
-+index f8a9d131482419c359763d6ae6c9af0ed90bbbdb..f94d455fdc9f27f0d0ae1328583c53ced8b2b2f4 100644
++index f8a9d131482419c359763d6ae6c9af0ed90bbbdb..60ef5ad4fbc2956f04376b53e9f037c4f5f9bb3e 100644
 +--- a/src/mln/renderer/buckets/plugin_bucket.cpp
 ++++ b/src/mln/renderer/buckets/plugin_bucket.cpp
 +@@ -1,6 +1,7 @@
@@ -410,7 +422,7 @@ index 0000000..b49fd3a
 + #include <mln/renderer/render_layer.hpp>
 + #include <mln/style/plugin_property.hpp>
 + #include <mln/tile/geometry_tile_data.hpp>
-+@@ -510,4 +511,130 @@ PluginPaintPropertyBinders* PluginBucket::paintBinders(const std::string& layerI
++@@ -510,4 +511,135 @@ PluginPaintPropertyBinders* PluginBucket::paintBinders(const std::string& layerI
 +     return drawable == layer->second.end() ? nullptr : &drawable->second;
 + }
 + 
@@ -450,6 +462,9 @@ index 0000000..b49fd3a
 ++        if (!valid) break;
 ++        drawable.key = input.drawable_key;
 ++        drawable.shaderID.assign(input.shader_id.data, input.shader_id.size);
+++        drawable.depthMode = static_cast<PluginDrawableDepthMode>(input.depth_mode);
+++        drawable.enableStencilOverlap = input.enable_stencil_overlap != 0;
+++        drawable.cullBackFaces = input.cull_back_faces != 0;
 ++        const auto shaderIt = std::find_if(registration->shaders.begin(),
 ++                                           registration->shaders.end(),
 ++                                           [&](const auto& shader) { return shader.id == drawable.shaderID; });
@@ -529,6 +544,8 @@ index 0000000..b49fd3a
 ++        const auto& a = drawables[i];
 ++        const auto& b = other.drawables[i];
 ++        if (a.key != b.key || a.shaderID != b.shaderID || a.attributes != b.attributes ||
+++            a.depthMode != b.depthMode || a.enableStencilOverlap != b.enableStencilOverlap ||
+++            a.cullBackFaces != b.cullBackFaces ||
 ++            a.vertexCount != b.vertexCount || a.segments.size() != b.segments.size()) return false;
 ++        for (std::size_t j = 0; j < a.segments.size(); ++j) {
 ++            const auto& x = a.segments[j];
@@ -542,7 +559,7 @@ index 0000000..b49fd3a
 ++
 + } // namespace mln
 +diff --git a/src/mln/renderer/buckets/plugin_bucket.hpp b/src/mln/renderer/buckets/plugin_bucket.hpp
-+index b93ad20033dcf6c265146e06e061232a7397f139..c95e062ec5046c80eacfa8e41149af580692e288 100644
++index b256d7e376864e1a85038c6fa80346a6477b5b94..c75271bbdf4e339848a857e8a99b0b8f444f308c 100644
 +--- a/src/mln/renderer/buckets/plugin_bucket.hpp
 ++++ b/src/mln/renderer/buckets/plugin_bucket.hpp
 +@@ -170,6 +170,7 @@ struct PluginAttributeBinding {
@@ -552,8 +569,8 @@ index 0000000..b49fd3a
 ++    bool operator==(const PluginAttributeBinding&) const = default;
 + };
 + 
-+ struct PluginDrawableDefinition {
-+@@ -186,6 +187,10 @@ public:
++ enum class PluginDrawableDepthMode : uint8_t {
++@@ -195,6 +196,10 @@ public:
 +         : registration(std::move(registration_)) {}
 +     ~PluginBucket() override = default;
 + 
@@ -565,7 +582,7 @@ index 0000000..b49fd3a
 +     bool hasData() const override { return indices && !indices->empty() && !drawables.empty(); }
 +     float getQueryRadius(const RenderLayer&) const override;
 +diff --git a/src/mln/renderer/layers/render_plugin_style_layer.cpp b/src/mln/renderer/layers/render_plugin_style_layer.cpp
-+index f4860bc2315b692277be484211f9c749a4caca45..7fc579685a3ba4e8e01fba7239b382bc62cae42c 100644
++index 377d9a6a31a47a83209d755c10fe11c263f5c384..5752e102e8d3b273d345e6deb9bca595a0730b5c 100644
 +--- a/src/mln/renderer/layers/render_plugin_style_layer.cpp
 ++++ b/src/mln/renderer/layers/render_plugin_style_layer.cpp
 +@@ -16,13 +16,20 @@
@@ -655,7 +672,7 @@ index 0000000..b49fd3a
 +     if (!renderTiles || renderTiles->empty()) {
 +         removeAllDrawables();
 +         return;
-+@@ -271,6 +319,168 @@ void RenderPluginStyleLayer::update(gfx::ShaderRegistry& shaders,
++@@ -285,6 +333,168 @@ void RenderPluginStyleLayer::update(gfx::ShaderRegistry& shaders,
 +     }
 + }
 + 
@@ -824,7 +841,7 @@ index 0000000..b49fd3a
 + bool RenderPluginStyleLayer::queryIntersectsFeature(const GeometryCoordinates& queryGeometry,
 +                                                     const GeometryTileFeature& feature,
 +                                                     float zoom,
-+@@ -279,7 +489,9 @@ bool RenderPluginStyleLayer::queryIntersectsFeature(const GeometryCoordinates& q
++@@ -293,7 +503,9 @@ bool RenderPluginStyleLayer::queryIntersectsFeature(const GeometryCoordinates& q
 +                                                     const mat4& tileMatrix,
 +                                                     const FeatureState& featureState) const {
 +     const auto& registration = pluginImpl(baseImpl).registration;
@@ -999,14 +1016,14 @@ index 0000000..b49fd3a
 +                                     Transitioning<PropertyValue<std::string>>>;
 +     TypedValue value;
 diff --git a/patches/maplibre-native/README.md b/patches/maplibre-native/README.md
-index f27fc57..a4f5691 100644
+index 68267b7..ba61e14 100644
 --- a/patches/maplibre-native/README.md
 +++ b/patches/maplibre-native/README.md
-@@ -147,6 +147,16 @@ every rendered frame while the animation is on. Upstream:
- merged as `3db2ced57652d0329fe2703148bc10dc5eb32f8d` on 2026-09-24. Drop
- this backport when the Native pin includes that commit.
+@@ -151,6 +151,16 @@ The Native regression covers symbols and circles at fractional and overzoomed
+ camera zooms. Upstream:
+ [maplibre-native#4704](https://github.com/maplibre/maplibre-native/pull/4704).
  
-+`0028-source-free-plugin-layers.patch` adds an optional `source_free` flag and a
++`0030-source-free-plugin-layers.patch` adds an optional `source_free` flag and a
 +`build_frame` callback to the plugin layer ABI. A source-free layer takes no
 +source in the style, skips tile layout, and instead receives its geometry from
 +the callback on every rendered frame, drawing through the same shaders and
@@ -1016,6 +1033,6 @@ index f27fc57..a4f5691 100644
 +destination helper. This patch is local-only: it is not upstreamed, and no
 +upstream PR exists.
 +
- Each patch is the squashed diff of its upstream branch, applied on top of the
- patches before it, so a patch that adds a test next to an earlier patch's test
- carries that placement rather than the branch's own context.
+ Each patch is a squashed diff applied on top of the patches before it. Patch
+ context and test placement follow the pinned source and earlier patches. The
+ publication patch includes the transition setters for our bearing-accuracy

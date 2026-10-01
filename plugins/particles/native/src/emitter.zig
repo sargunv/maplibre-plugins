@@ -226,7 +226,7 @@ const Pool = struct {
             segment_count += 1;
         }
         pool.stream = .{ .struct_size = @sizeOf(c.mln_plugin_vertex_stream_v1), .stream_id = 0, .data = @ptrCast(vertices.ptr), .data_size = @as(usize, vertex_count) * @sizeOf([2]f32), .vertex_count = vertex_count, .stride = @sizeOf([2]f32) };
-        pool.drawable = .{ .struct_size = @sizeOf(c.mln_plugin_drawable_descriptor_v1), .drawable_key = 1, .shader_id = str(shaders.emitter_shader_id), .attributes = &shaders.emitter_vertex_bindings, .attribute_count = shaders.emitter_vertex_bindings.len, .segments = &pool.segments, .segment_count = segment_count };
+        pool.drawable = .{ .struct_size = @sizeOf(c.mln_plugin_drawable_descriptor_v1), .depth_mode = c.MLN_PLUGIN_DRAWABLE_DEPTH_READ_ONLY, .drawable_key = 1, .shader_id = str(shaders.emitter_shader_id), .attributes = &shaders.emitter_vertex_bindings, .attribute_count = shaders.emitter_vertex_bindings.len, .segments = &pool.segments, .segment_count = segment_count };
         const indexed_quads: u32 = @min(quads, properties.segment_quads);
         properties.clearBucket(bucket);
         bucket.vertex_streams = &pool.stream;
