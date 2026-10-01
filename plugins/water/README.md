@@ -117,10 +117,11 @@ on the host.
 The tile-driven layout path is upstream MapLibre Native; from
 `patches/maplibre-native-ffi/` this plugin needs:
 
-| Patch                                      | Used for                                                                  |
-| ------------------------------------------ | ------------------------------------------------------------------------- |
-| `0001` plugin animated layers              | `should_animate` keeps the map repainting while `wave-speed` is non-zero  |
-| `0003` premultiplied plugin default colors | `shore-color` and `foam-color` defaults and bindings arrive premultiplied |
+| Patch                         | Used for                                                                 |
+| ----------------------------- | ------------------------------------------------------------------------ |
+| `0001` plugin animated layers | `should_animate` keeps the map repainting while `wave-speed` is non-zero |
+
+Default colors use the upstream host's premultiplied-color conversion.
 
 It does not need the source-free layer, rotation property, or frame query
 patches.

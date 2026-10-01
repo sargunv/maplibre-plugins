@@ -527,8 +527,7 @@ pub const FeatureBinding = struct {
 };
 
 /// Binding k is the features type's k-th property. The four data-driven
-/// properties take the lowest locations (1-5) so the GL location ladder
-/// (shaders.zig) only has to count those.
+/// properties use locations 1-5 across all native backends.
 pub const feature_bindings = [_]FeatureBinding{
     .{ .name = "particle-density", .field = "density", .attribute = 4 },
     .{ .name = "particle-lifetime", .field = "lifetime", .attribute = 6 },

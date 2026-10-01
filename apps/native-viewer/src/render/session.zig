@@ -19,13 +19,13 @@ pub const Session = struct {
         };
     }
 
-    pub fn renderUpdate(self: *Session) !bool {
-        const handle = &(self.handle orelse return false);
+    pub fn renderUpdate(self: *Session) !maplibre.RenderResult {
+        const handle = &(self.handle orelse return .no_update);
         const update = handle.renderUpdate() catch |err| {
             diagnostics.logError("surface render failed", err, null);
             return types.AppError.SurfaceRenderFailed;
         };
-        return update.result == .rendered;
+        return update.result;
     }
 
     pub fn surfaceHandle(self: *Session) !*maplibre.RenderSessionHandle {

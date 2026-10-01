@@ -408,6 +408,8 @@ const layer_type = c.mln_plugin_layer_type_v1{
     .query_feature = null,
     .update_uniform_block = null,
     .get_query_radius = null,
+    .enable_stencil_overlap_dedup = 0,
+    .enable_near_clipped_matrix = 0,
     // No animation of its own: paint transitions repaint through the host.
     .should_animate = null,
     .source_free = 1,

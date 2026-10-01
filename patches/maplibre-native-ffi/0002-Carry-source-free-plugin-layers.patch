@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Sargun Vohra <sargunv@users.noreply.github.com>
-Date: Tue, 22 Sep 2026 23:26:38 -0700
-Subject: [PATCH 2/8] Carry source-free plugin layers
+Date: Wed, 30 Sep 2026 18:52:39 -0700
+Subject: [PATCH 2/7] Carry source-free plugin layers
 
 Adds the source_free flag and build_frame callback to the plugin layer
 ABI: a layer with no style source receives its geometry from a per-frame
@@ -9,34 +9,34 @@ callback with camera-evaluated paint values, the projection matrix, the
 camera-to-center distance, and mercator and destination helpers. Not yet
 proposed upstream.
 
-Carried by maplibre-plugins from maplibre-native-ffi PR #731 until it lands
-upstream.
+Carried by maplibre-plugins until it lands upstream.
 ---
- .mise/bin/sync-submodules                     |    1 +
- .../0023-source-free-plugin-layers.patch      | 1010 +++++++++++++++++
- patches/maplibre-native/README.md             |   10 +
- 3 files changed, 1021 insertions(+)
- create mode 100644 patches/maplibre-native/0023-source-free-plugin-layers.patch
+ .mise/bin/sync-submodules                     |   1 +
+ .../0028-source-free-plugin-layers.patch      | 963 ++++++++++++++++++
+ patches/maplibre-native/README.md             |  10 +
+ 3 files changed, 974 insertions(+)
+ create mode 100644 patches/maplibre-native/0028-source-free-plugin-layers.patch
 
 diff --git a/.mise/bin/sync-submodules b/.mise/bin/sync-submodules
-index 60b3069..8b79168 100755
+index bc0cd02..6206e66 100755
 --- a/.mise/bin/sync-submodules
 +++ b/.mise/bin/sync-submodules
-@@ -70,6 +70,7 @@ mln_patches=(
-   "$repo_root/patches/maplibre-native/0017-location-indicator-top-image-hit-testing.patch"
-   "$repo_root/patches/maplibre-native/0021-location-indicator-bearing-accuracy.patch"
-   "$repo_root/patches/maplibre-native/0022-plugin-animated-layers.patch"
-+  "$repo_root/patches/maplibre-native/0023-source-free-plugin-layers.patch"
+@@ -72,6 +72,7 @@ mln_patches=(
+   "$repo_root/patches/maplibre-native/0025-vertex-buffer-upload-timestamps.patch"
+   "$repo_root/patches/maplibre-native/0026-empty-symbol-placement.patch"
+   "$repo_root/patches/maplibre-native/0027-plugin-animated-layers.patch"
++  "$repo_root/patches/maplibre-native/0028-source-free-plugin-layers.patch"
  )
  
  # The patches overlap, so no single patch reverses cleanly on its own once the
-diff --git a/patches/maplibre-native/0023-source-free-plugin-layers.patch b/patches/maplibre-native/0023-source-free-plugin-layers.patch
+diff --git a/patches/maplibre-native/0028-source-free-plugin-layers.patch b/patches/maplibre-native/0028-source-free-plugin-layers.patch
 new file mode 100644
-index 0000000..3ee4eb5
+index 0000000..b49fd3a
 --- /dev/null
-+++ b/patches/maplibre-native/0023-source-free-plugin-layers.patch
-@@ -0,0 +1,1010 @@
++++ b/patches/maplibre-native/0028-source-free-plugin-layers.patch
+@@ -0,0 +1,963 @@
 +diff --git a/include/mln/plugin/plugin_api.h b/include/mln/plugin/plugin_api.h
++index 1af44a33a8137b9a0659d94d0ec553e6595a4e07..410a574bd7a3015dfb6e7e3d683e9917b2601368 100644
 +--- a/include/mln/plugin/plugin_api.h
 ++++ b/include/mln/plugin/plugin_api.h
 +@@ -65,6 +65,8 @@ typedef enum mln_plugin_value_type {
@@ -57,10 +57,10 @@ index 0000000..3ee4eb5
 ++    double y;
 ++} mln_plugin_double2;
 ++
-+ typedef struct mln_plugin_color {
-+     float r;
-+     float g;
-+@@ -104,6 +111,7 @@ typedef struct mln_plugin_color {
++ /* Registration defaults use straight-alpha colors. The host premultiplies
++  * them when it adopts them into the style system; evaluated paint values
++  * passed to callbacks use premultiplied colors. */
++@@ -107,6 +114,7 @@ typedef struct mln_plugin_color {
 + typedef union mln_plugin_value_data {
 +     float float_value;
 +     mln_plugin_float2 float2_value;
@@ -68,7 +68,7 @@ index 0000000..3ee4eb5
 +     mln_plugin_color color_value;
 +     mln_plugin_string string_value;
 + } mln_plugin_value_data;
-+@@ -433,6 +441,71 @@ typedef float (*mln_plugin_query_radius_fn)(const mln_plugin_property_statistics
++@@ -436,6 +444,71 @@ typedef float (*mln_plugin_query_radius_fn)(const mln_plugin_property_statistics
 +  * maps. */
 + typedef uint8_t (*mln_plugin_should_animate_fn)(const mln_plugin_property_value_v1* properties, size_t property_count);
 + 
@@ -140,9 +140,9 @@ index 0000000..3ee4eb5
 + typedef struct mln_plugin_layer_type_v1 {
 +     uint32_t struct_size;
 +     mln_plugin_string layer_type;
-+@@ -450,6 +523,16 @@ typedef struct mln_plugin_layer_type_v1 {
-+     mln_plugin_update_uniform_block_fn update_uniform_block;
-+     mln_plugin_query_radius_fn get_query_radius;
++@@ -471,6 +544,16 @@ typedef struct mln_plugin_layer_type_v1 {
++      */
++     uint8_t enable_near_clipped_matrix;
 +     mln_plugin_should_animate_fn should_animate;
 ++    /* Optional; introduced after should_animate. source_free must be 0 or 1,
 ++     * and zero-initialization leaves a layer source-requiring. A layer with
@@ -158,6 +158,7 @@ index 0000000..3ee4eb5
 + 
 + typedef struct mln_plugin_descriptor_v1 {
 +diff --git a/src/mln/layout/plugin_layout.cpp b/src/mln/layout/plugin_layout.cpp
++index 70e72b640d4f8bf650722928669c9ad67abde3fa..2f83eac130d8f228709a782bf21077fef2c0fbee 100644
 +--- a/src/mln/layout/plugin_layout.cpp
 ++++ b/src/mln/layout/plugin_layout.cpp
 +@@ -79,101 +79,7 @@ void PluginLayout::createBucket(const ImagePositions&,
@@ -264,6 +265,7 @@ index 0000000..3ee4eb5
 +     std::map<uint64_t, std::size_t> drawableVertexCounts;
 +     for (const auto& drawable : bucket->drawables) drawableVertexCounts.emplace(drawable.key, drawable.vertexCount);
 +diff --git a/src/mln/plugin/plugin_registry.cpp b/src/mln/plugin/plugin_registry.cpp
++index 6dec93fb5a967e6046654ad53ebeae91a7e27db6..301ec3b83476a7fb311c780a05276fe9a74d2ae7 100644
 +--- a/src/mln/plugin/plugin_registry.cpp
 ++++ b/src/mln/plugin/plugin_registry.cpp
 +@@ -25,6 +25,8 @@ Value copyValue(const mln_plugin_value& value) {
@@ -314,16 +316,16 @@ index 0000000..3ee4eb5
 +         const auto type = copyString(layerType.layer_type);
 +         if (!layerTypeKeys.emplace(type).second) {
 +             error = "plugin descriptor contains duplicate layer types";
-+@@ -460,6 +476,8 @@ mln_plugin_status PluginRegistry::registerPlugin(const mln_plugin_descriptor_v1&
-+         copiedLayerType.queryRadius = layerType.get_query_radius;
-+         copiedLayerType.updateUniformBlock = layerType.update_uniform_block;
++@@ -462,6 +478,8 @@ mln_plugin_status PluginRegistry::registerPlugin(const mln_plugin_descriptor_v1&
++         copiedLayerType.enableStencilOverlapDedup = layerType.enable_stencil_overlap_dedup != 0;
++         copiedLayerType.enableNearClippedMatrix = layerType.enable_near_clipped_matrix != 0;
 +         copiedLayerType.shouldAnimate = layerType.should_animate;
 ++        copiedLayerType.requiresSource = layerType.source_free == 0;
 ++        copiedLayerType.buildFrame = layerType.build_frame;
 +         if (!appendShaders(pluginID,
 +                            layerType.shaders,
 +                            layerType.shader_count,
-+@@ -501,6 +519,10 @@ mln_plugin_status PluginRegistry::registerPlugin(const mln_plugin_descriptor_v1&
++@@ -503,6 +521,10 @@ mln_plugin_status PluginRegistry::registerPlugin(const mln_plugin_descriptor_v1&
 +         for (const auto& property : copiedLayerType.properties) {
 +             const auto dataDependencies = MLN_PLUGIN_EXPRESSION_FEATURE | MLN_PLUGIN_EXPRESSION_COMPOSITE |
 +                                           MLN_PLUGIN_EXPRESSION_FEATURE_STATE;
@@ -334,7 +336,7 @@ index 0000000..3ee4eb5
 +             if ((property.expressionCapabilities & dataDependencies) == 0) continue;
 +             const bool bound = std::any_of(
 +                 copiedLayerType.shaders.begin(), copiedLayerType.shaders.end(), [&](const auto& shader) {
-+@@ -577,9 +599,10 @@ bool PluginRegistry::valueMatches(mln_plugin_value_type type, const Value& value
++@@ -579,9 +601,10 @@ bool PluginRegistry::valueMatches(mln_plugin_value_type type, const Value& value
 +         case MLN_PLUGIN_VALUE_STRING:
 +             return value.getString() != nullptr;
 +         case MLN_PLUGIN_VALUE_FLOAT2:
@@ -347,18 +349,19 @@ index 0000000..3ee4eb5
 +                        return item.getDouble() || item.getInt() || item.getUint();
 +                    });
 +diff --git a/src/mln/plugin/plugin_registry.hpp b/src/mln/plugin/plugin_registry.hpp
++index 8ef294fca1e4b5c4af905bcd4169b6f56629f431..c070ed98407ad1f1092b5b28caa77115fa1faf97 100644
 +--- a/src/mln/plugin/plugin_registry.hpp
 ++++ b/src/mln/plugin/plugin_registry.hpp
-+@@ -90,6 +90,8 @@ struct LayerType {
-+     mln_plugin_query_radius_fn queryRadius = nullptr;
-+     mln_plugin_update_uniform_block_fn updateUniformBlock = nullptr;
++@@ -92,6 +92,8 @@ struct LayerType {
++     bool enableStencilOverlapDedup = false;
++     bool enableNearClippedMatrix = false;
 +     mln_plugin_should_animate_fn shouldAnimate = nullptr;
 ++    bool requiresSource = true;
 ++    mln_plugin_build_frame_fn buildFrame = nullptr;
 +     bool operator==(const LayerType&) const = default;
 + 
 +     const PropertyDefinition* findProperty(const std::string& name) const;
-+@@ -101,12 +103,13 @@ struct RegisteredLayer final : LayerType {
++@@ -103,12 +105,13 @@ struct RegisteredLayer final : LayerType {
 +     explicit RegisteredLayer(LayerType definition)
 +         : LayerType(std::move(definition)),
 +           info{type.c_str(),
@@ -376,6 +379,7 @@ index 0000000..3ee4eb5
 +     RegisteredLayer(const RegisteredLayer&) = delete;
 +     RegisteredLayer& operator=(const RegisteredLayer&) = delete;
 +diff --git a/src/mln/plugin/plugin_style_layer_factory.cpp b/src/mln/plugin/plugin_style_layer_factory.cpp
++index b04ffd4adbfce0da8d94449591f22c017aa7c512..07691347a1293c84b3f77cb4254b95b562f4c984 100644
 +--- a/src/mln/plugin/plugin_style_layer_factory.cpp
 ++++ b/src/mln/plugin/plugin_style_layer_factory.cpp
 +@@ -11,9 +11,12 @@ const style::LayerTypeInfo* PluginStyleLayerFactory::getTypeInfo() const noexcep
@@ -395,6 +399,7 @@ index 0000000..3ee4eb5
 + 
 + std::unique_ptr<RenderLayer> PluginStyleLayerFactory::createRenderLayer(Immutable<style::Layer::Impl> impl) noexcept {
 +diff --git a/src/mln/renderer/buckets/plugin_bucket.cpp b/src/mln/renderer/buckets/plugin_bucket.cpp
++index f8a9d131482419c359763d6ae6c9af0ed90bbbdb..f94d455fdc9f27f0d0ae1328583c53ced8b2b2f4 100644
 +--- a/src/mln/renderer/buckets/plugin_bucket.cpp
 ++++ b/src/mln/renderer/buckets/plugin_bucket.cpp
 +@@ -1,6 +1,7 @@
@@ -537,6 +542,7 @@ index 0000000..3ee4eb5
 ++
 + } // namespace mln
 +diff --git a/src/mln/renderer/buckets/plugin_bucket.hpp b/src/mln/renderer/buckets/plugin_bucket.hpp
++index b93ad20033dcf6c265146e06e061232a7397f139..c95e062ec5046c80eacfa8e41149af580692e288 100644
 +--- a/src/mln/renderer/buckets/plugin_bucket.hpp
 ++++ b/src/mln/renderer/buckets/plugin_bucket.hpp
 +@@ -170,6 +170,7 @@ struct PluginAttributeBinding {
@@ -559,6 +565,7 @@ index 0000000..3ee4eb5
 +     bool hasData() const override { return indices && !indices->empty() && !drawables.empty(); }
 +     float getQueryRadius(const RenderLayer&) const override;
 +diff --git a/src/mln/renderer/layers/render_plugin_style_layer.cpp b/src/mln/renderer/layers/render_plugin_style_layer.cpp
++index f4860bc2315b692277be484211f9c749a4caca45..7fc579685a3ba4e8e01fba7239b382bc62cae42c 100644
 +--- a/src/mln/renderer/layers/render_plugin_style_layer.cpp
 ++++ b/src/mln/renderer/layers/render_plugin_style_layer.cpp
 +@@ -16,13 +16,20 @@
@@ -648,7 +655,7 @@ index 0000000..3ee4eb5
 +     if (!renderTiles || renderTiles->empty()) {
 +         removeAllDrawables();
 +         return;
-+@@ -259,6 +307,168 @@ void RenderPluginStyleLayer::update(gfx::ShaderRegistry& shaders,
++@@ -271,6 +319,168 @@ void RenderPluginStyleLayer::update(gfx::ShaderRegistry& shaders,
 +     }
 + }
 + 
@@ -817,7 +824,7 @@ index 0000000..3ee4eb5
 + bool RenderPluginStyleLayer::queryIntersectsFeature(const GeometryCoordinates& queryGeometry,
 +                                                     const GeometryTileFeature& feature,
 +                                                     float zoom,
-+@@ -267,7 +477,9 @@ bool RenderPluginStyleLayer::queryIntersectsFeature(const GeometryCoordinates& q
++@@ -279,7 +489,9 @@ bool RenderPluginStyleLayer::queryIntersectsFeature(const GeometryCoordinates& q
 +                                                     const mat4& tileMatrix,
 +                                                     const FeatureState& featureState) const {
 +     const auto& registration = pluginImpl(baseImpl).registration;
@@ -829,6 +836,7 @@ index 0000000..3ee4eb5
 +     std::vector<mln_plugin_tile_point_v1> query;
 +     query.reserve(queryGeometry.size());
 +diff --git a/src/mln/renderer/layers/render_plugin_style_layer.hpp b/src/mln/renderer/layers/render_plugin_style_layer.hpp
++index 52d79447b6ee08d2fed719c06528e545bc9d44b1..4da778bb5e4b89cbe2154bdad38a590740a2cb9e 100644
 +--- a/src/mln/renderer/layers/render_plugin_style_layer.hpp
 ++++ b/src/mln/renderer/layers/render_plugin_style_layer.hpp
 +@@ -4,13 +4,19 @@
@@ -877,69 +885,8 @@ index 0000000..3ee4eb5
 + };
 + 
 + } // namespace mln
-+diff --git a/src/mln/renderer/render_orchestrator.cpp b/src/mln/renderer/render_orchestrator.cpp
-+--- a/src/mln/renderer/render_orchestrator.cpp
-++++ b/src/mln/renderer/render_orchestrator.cpp
-+@@ -401,33 +401,39 @@ std::unique_ptr<RenderTree> RenderOrchestrator::createRenderTree(
-+                 continue;
-+             }
-+ 
-+-            // Handle layers without source.
-+-            if (layerIsVisible && zoomFitsLayer && sourceImpl.get() == sourceImpls->at(0).get()) {
-+-                if (backgroundLayerAsColor && layer.baseImpl == layerImpls->front()) {
-+-                    const auto& solidBackground = layer.getSolidBackground();
-+-                    if (solidBackground) {
-+-                        renderTreeParameters->backgroundColor = *solidBackground;
-+-                        continue; // This layer is shown with background color,
-+-                                  // and it shall not be added to render items.
-+-                    }
-+-                }
-+-                renderItemsEmplaceHint = layerRenderItems.emplace_hint(
-+-                    renderItemsEmplaceHint, layer, nullptr, static_cast<uint32_t>(index));
-+-                updateList[index] = true;
-+-            }
-+         }
-+         tileParameters.isUpdateSynchronous = sourceImpl->isUpdateSynchronous();
-+         source->update(sourceImpl, filteredLayersForSource, sourceNeedsRendering, sourceNeedsRelayout, tileParameters);
-+         filteredLayersForSource.clear();
-+ 
-+-        // Update all layers with their new renderability status, if it changed.
-+-        for (size_t i = 0; i < updateList.size(); i++) {
-+-            if (orderedLayers[i].get().isLayerRenderable() != updateList[i]) {
-+-                orderedLayers[i].get().markLayerRenderable(updateList[i], changes);
-++    }
-++
-++    // Source-free layers also render when the style has no sources.
-++    for (std::size_t index = 0; index < orderedLayers.size(); ++index) {
-++        RenderLayer& layer = orderedLayers[index];
-++        const auto* layerInfo = layer.baseImpl->getTypeInfo();
-++        renderTreeParameters->has3D |= (layerInfo->pass3d == LayerTypeInfo::Pass3D::Required);
-++        if (layerInfo->source != LayerTypeInfo::Source::NotRequired ||
-++            layer.baseImpl->visibility == style::VisibilityType::None ||
-++            !layer.supportsZoom(zoomHistory.lastZoom)) {
-++            continue;
-++        }
-++        if (backgroundLayerAsColor && layer.baseImpl == layerImpls->front()) {
-++            if (const auto& solidBackground = layer.getSolidBackground()) {
-++                renderTreeParameters->backgroundColor = *solidBackground;
-++                continue;
-+             }
-+         }
-+-        addChanges(changes);
-++        renderItemsEmplaceHint = layerRenderItems.emplace_hint(
-++            renderItemsEmplaceHint, layer, nullptr, static_cast<uint32_t>(index));
-++        updateList[index] = true;
-+     }
-++    for (size_t i = 0; i < updateList.size(); i++) {
-++        if (orderedLayers[i].get().isLayerRenderable() != updateList[i]) {
-++            orderedLayers[i].get().markLayerRenderable(updateList[i], changes);
-++        }
-++    }
-++    addChanges(changes);
-+ 
-+     renderTreeParameters->loaded = updateParameters->styleLoaded && isLoaded();
-+     if (!isMapModeContinuous && !renderTreeParameters->loaded) {
 +diff --git a/src/mln/style/conversion/constant.cpp b/src/mln/style/conversion/constant.cpp
++index 880b0d15c37681c2eda7935d62c71e430c6d9c53..752712b340305a365e40416e87c36ff8f76ccced 100644
 +--- a/src/mln/style/conversion/constant.cpp
 ++++ b/src/mln/style/conversion/constant.cpp
 +@@ -229,6 +229,8 @@ std::optional<std::array<float, N>> Converter<std::array<float, N>>::operator()(
@@ -952,6 +899,7 @@ index 0000000..3ee4eb5
 +                                                                                          Error&) const;
 + template std::optional<std::array<float, 3>> Converter<std::array<float, 3>>::operator()(const Convertible&,
 +diff --git a/src/mln/style/conversion/function.cpp b/src/mln/style/conversion/function.cpp
++index faaf2f928ca85f6969400e18cc8828e9aab1128c..8bf31713857a3c895ca6acf9a838dc88d5eb65e4 100644
 +--- a/src/mln/style/conversion/function.cpp
 ++++ b/src/mln/style/conversion/function.cpp
 +@@ -142,6 +142,8 @@ template std::optional<PropertyExpression<Position>> convertFunctionToExpression
@@ -964,6 +912,7 @@ index 0000000..3ee4eb5
 +     const Convertible&, Error&, bool);
 + template std::optional<PropertyExpression<std::array<float, 4>>> convertFunctionToExpression<std::array<float, 4>>(
 +diff --git a/src/mln/style/conversion/property_value.cpp b/src/mln/style/conversion/property_value.cpp
++index b145e360813d6cafcaf9253298832e15e75b6025..2d457cd340348d9e3cc55ddf9aabe0866f7a8c95 100644
 +--- a/src/mln/style/conversion/property_value.cpp
 ++++ b/src/mln/style/conversion/property_value.cpp
 +@@ -71,6 +71,8 @@ template std::optional<PropertyValue<float>> Converter<PropertyValue<float>>::op
@@ -976,6 +925,7 @@ index 0000000..3ee4eb5
 +     conversion::Convertible const&, conversion::Error&, bool, bool) const;
 + template std::optional<PropertyValue<std::vector<float>>> Converter<PropertyValue<std::vector<float>>>::operator()(
 +diff --git a/src/mln/style/expression/value.cpp b/src/mln/style/expression/value.cpp
++index 644235ae1788a065196a3a97fa19b597bf5f56b8..fd1d348456c26845f22ddacf0e814cce2fe698b6 100644
 +--- a/src/mln/style/expression/value.cpp
 ++++ b/src/mln/style/expression/value.cpp
 +@@ -367,6 +367,10 @@ template type::Type valueTypeToExpressionType<Rotation>();
@@ -990,6 +940,7 @@ index 0000000..3ee4eb5
 + template struct ValueConverter<std::array<float, 4>>;
 + 
 +diff --git a/src/mln/style/plugin_property.cpp b/src/mln/style/plugin_property.cpp
++index 6fbb451aa9d79f2e5fb9959c4ef46e80594f14f2..4d6031022a6693086290dd1d85c76581df8df492 100644
 +--- a/src/mln/style/plugin_property.cpp
 ++++ b/src/mln/style/plugin_property.cpp
 +@@ -69,6 +69,15 @@ std::array<float, 2> defaultValue<std::array<float, 2>>(const plugin::PropertyDe
@@ -1028,6 +979,7 @@ index 0000000..3ee4eb5
 +         result.type = MLN_PLUGIN_VALUE_COLOR;
 +         result.data.color_value = {value.r, value.g, value.b, value.a};
 +diff --git a/src/mln/style/plugin_property.hpp b/src/mln/style/plugin_property.hpp
++index 7c11ee74405a77892c37c97aff8f16d984a45662..ebeca5e849c3508fd9f0cc82a48d2a83952304fa 100644
 +--- a/src/mln/style/plugin_property.hpp
 ++++ b/src/mln/style/plugin_property.hpp
 +@@ -29,6 +29,7 @@ class PluginPropertyValue {
@@ -1047,14 +999,14 @@ index 0000000..3ee4eb5
 +                                     Transitioning<PropertyValue<std::string>>>;
 +     TypedValue value;
 diff --git a/patches/maplibre-native/README.md b/patches/maplibre-native/README.md
-index 82b9f03..6f8867c 100644
+index f27fc57..a4f5691 100644
 --- a/patches/maplibre-native/README.md
 +++ b/patches/maplibre-native/README.md
-@@ -125,6 +125,16 @@ animating during evaluation, so continuous-mode maps report needs-repaint on
- every rendered frame while the animation is on. Upstream:
- [maplibre-native#4654](https://github.com/maplibre/maplibre-native/pull/4654).
+@@ -147,6 +147,16 @@ every rendered frame while the animation is on. Upstream:
+ merged as `3db2ced57652d0329fe2703148bc10dc5eb32f8d` on 2026-09-24. Drop
+ this backport when the Native pin includes that commit.
  
-+`0023-source-free-plugin-layers.patch` adds an optional `source_free` flag and a
++`0028-source-free-plugin-layers.patch` adds an optional `source_free` flag and a
 +`build_frame` callback to the plugin layer ABI. A source-free layer takes no
 +source in the style, skips tile layout, and instead receives its geometry from
 +the callback on every rendered frame, drawing through the same shaders and

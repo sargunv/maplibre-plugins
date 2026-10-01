@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Sargun Vohra <sargunv@users.noreply.github.com>
-Date: Thu, 24 Sep 2026 04:16:14 -0700
-Subject: [PATCH 7/8] Carry plugin static textures
+Date: Wed, 30 Sep 2026 18:52:39 -0700
+Subject: [PATCH 6/7] Carry plugin static textures
 
 Lets a plugin shader declare up to three static RGBA32F data textures that
 its fragment stage reads by exact texel. Registration validates and copies
@@ -14,33 +14,34 @@ block read by both shader stages. Not yet proposed upstream.
 Carried by maplibre-plugins until it lands upstream.
 ---
  .mise/bin/sync-submodules                     |    1 +
- .../0028-plugin-static-textures.patch         | 1066 +++++++++++++++++
+ .../0032-plugin-static-textures.patch         | 1075 +++++++++++++++++
  patches/maplibre-native/README.md             |   15 +
- 3 files changed, 1082 insertions(+)
- create mode 100644 patches/maplibre-native/0028-plugin-static-textures.patch
+ 3 files changed, 1091 insertions(+)
+ create mode 100644 patches/maplibre-native/0032-plugin-static-textures.patch
 
 diff --git a/.mise/bin/sync-submodules b/.mise/bin/sync-submodules
-index 4aafaf1..920dd44 100755
+index dc5ae05..5700797 100755
 --- a/.mise/bin/sync-submodules
 +++ b/.mise/bin/sync-submodules
-@@ -75,6 +75,7 @@ mln_patches=(
-   "$repo_root/patches/maplibre-native/0025-plugin-rotation-properties.patch"
-   "$repo_root/patches/maplibre-native/0026-plugin-frame-queries.patch"
-   "$repo_root/patches/maplibre-native/0027-opengl-large-uniform-blocks.patch"
-+  "$repo_root/patches/maplibre-native/0028-plugin-static-textures.patch"
+@@ -76,6 +76,7 @@ mln_patches=(
+   "$repo_root/patches/maplibre-native/0029-plugin-rotation-properties.patch"
+   "$repo_root/patches/maplibre-native/0030-plugin-frame-queries.patch"
+   "$repo_root/patches/maplibre-native/0031-opengl-large-uniform-blocks.patch"
++  "$repo_root/patches/maplibre-native/0032-plugin-static-textures.patch"
  )
  
  # The patches overlap, so no single patch reverses cleanly on its own once the
-diff --git a/patches/maplibre-native/0028-plugin-static-textures.patch b/patches/maplibre-native/0028-plugin-static-textures.patch
+diff --git a/patches/maplibre-native/0032-plugin-static-textures.patch b/patches/maplibre-native/0032-plugin-static-textures.patch
 new file mode 100644
-index 0000000..b206ea4
+index 0000000..1bfc3b0
 --- /dev/null
-+++ b/patches/maplibre-native/0028-plugin-static-textures.patch
-@@ -0,0 +1,1066 @@
++++ b/patches/maplibre-native/0032-plugin-static-textures.patch
+@@ -0,0 +1,1075 @@
 +diff --git a/include/mln/plugin/plugin_api.h b/include/mln/plugin/plugin_api.h
++index da175391b4cd3e4cf86e5922ba3fd4fee089a895..dcbbc8baca533dadcafc3d1cfc9bbcee9ff8c524 100644
 +--- a/include/mln/plugin/plugin_api.h
 ++++ b/include/mln/plugin/plugin_api.h
-+@@ -256,6 +256,56 @@ typedef struct mln_plugin_shader_property_binding_v1 {
++@@ -257,6 +257,56 @@ typedef struct mln_plugin_shader_property_binding_v1 {
 +     uint32_t interpolation_uniform_byte_offset;
 + } mln_plugin_shader_property_binding_v1;
 + 
@@ -97,7 +98,7 @@ index 0000000..b206ea4
 + typedef struct mln_plugin_shader_descriptor_v1 {
 +     uint32_t struct_size;
 +     mln_plugin_string shader_id;
-+@@ -267,6 +317,10 @@ typedef struct mln_plugin_shader_descriptor_v1 {
++@@ -268,6 +318,10 @@ typedef struct mln_plugin_shader_descriptor_v1 {
 +     size_t uniform_block_count;
 +     const mln_plugin_shader_property_binding_v1* property_bindings;
 +     size_t property_binding_count;
@@ -109,6 +110,7 @@ index 0000000..b206ea4
 + 
 + /* Borrowed render-thread inputs for a host-owned plugin uniform block. */
 +diff --git a/src/mln/plugin/plugin_registry.cpp b/src/mln/plugin/plugin_registry.cpp
++index 3e86f22ce5c23ab2f687836049f5e5b31f2e1722..0653a17ce120d58327a8ad06316ffa67a244acdc 100644
 +--- a/src/mln/plugin/plugin_registry.cpp
 ++++ b/src/mln/plugin/plugin_registry.cpp
 +@@ -47,6 +47,9 @@ bool validOptionalString(const mln_plugin_string& value) {
@@ -181,6 +183,7 @@ index 0000000..b206ea4
 +     }
 +     return true;
 +diff --git a/src/mln/plugin/plugin_registry.hpp b/src/mln/plugin/plugin_registry.hpp
++index c070ed98407ad1f1092b5b28caa77115fa1faf97..908c8afc417fe89ccb7cd9815e348e4ef4c10661 100644
 +--- a/src/mln/plugin/plugin_registry.hpp
 ++++ b/src/mln/plugin/plugin_registry.hpp
 +@@ -65,6 +65,18 @@ struct ShaderPropertyBindingDefinition {
@@ -211,6 +214,7 @@ index 0000000..b206ea4
 + };
 + 
 +diff --git a/src/mln/plugin/plugin_shader.cpp b/src/mln/plugin/plugin_shader.cpp
++index 0829d4616862c01e56d45dcbfab409bc2ee26c4e..b87676f6391ce7da0823ed64038d99ab55ed97a1 100644
 +--- a/src/mln/plugin/plugin_shader.cpp
 ++++ b/src/mln/plugin/plugin_shader.cpp
 +@@ -2,9 +2,12 @@
@@ -339,6 +343,7 @@ index 0000000..b206ea4
 +                                 const ProgramParameters& parameters,
 +                                 const RegisteredLayerPtr& layerType) {
 +diff --git a/src/mln/plugin/plugin_shader.hpp b/src/mln/plugin/plugin_shader.hpp
++index 70d7ea890bf95e32a402f60f4c421038f0e12c9b..79fc1ad837e5e966c80275598e56d34b2718cdd9 100644
 +--- a/src/mln/plugin/plugin_shader.hpp
 ++++ b/src/mln/plugin/plugin_shader.hpp
 +@@ -6,8 +6,12 @@
@@ -369,9 +374,10 @@ index 0000000..b206ea4
 + } // namespace plugin
 + } // namespace mln
 +diff --git a/src/mln/renderer/layers/render_plugin_style_layer.cpp b/src/mln/renderer/layers/render_plugin_style_layer.cpp
++index fc4a24903812d191671cd9a5b5502b89031eecb4..5eb9e5609403ec0fbca4b7332c3401851cca896c 100644
 +--- a/src/mln/renderer/layers/render_plugin_style_layer.cpp
 ++++ b/src/mln/renderer/layers/render_plugin_style_layer.cpp
-+@@ -333,6 +333,10 @@ void RenderPluginStyleLayer::update(gfx::ShaderRegistry& shaders,
++@@ -345,6 +345,10 @@ void RenderPluginStyleLayer::update(gfx::ShaderRegistry& shaders,
 +             builder->setRawVertices({}, vertexCount, firstType);
 +             builder->setSegments(
 +                 gfx::Triangles(), bucket.indices, definition.segments.data(), definition.segments.size());
@@ -382,7 +388,7 @@ index 0000000..b206ea4
 +             builder->flush(context);
 +             for (auto& drawable : builder->clearDrawables()) {
 +                 drawable->setTileID(tileID);
-+@@ -501,6 +505,9 @@ void RenderPluginStyleLayer::updateFrame(gfx::ShaderRegistry& shaders,
++@@ -513,6 +517,9 @@ void RenderPluginStyleLayer::updateFrame(gfx::ShaderRegistry& shaders,
 +         builder->setRawVertices({}, vertexCount, firstType);
 +         builder->setSegments(
 +             gfx::Triangles(), frameBucket->indices, definition.segments.data(), definition.segments.size());
@@ -393,6 +399,7 @@ index 0000000..b206ea4
 +         for (auto& drawable : builder->clearDrawables()) {
 +             drawable->setLayerTweaker(layerTweaker);
 +diff --git a/test/plugin/api.test.cpp b/test/plugin/api.test.cpp
++index 1a8fd206f1fe79073718bb04a8e59e84ee901436..e1c445367e4c3041c6d1ad3cb63a00f4a5ecbb32 100644
 +--- a/test/plugin/api.test.cpp
 ++++ b/test/plugin/api.test.cpp
 +@@ -129,6 +129,11 @@ TEST(PluginApi, RejectsTruncatedDescriptorsBeforeReadingPayload) {
@@ -408,6 +415,7 @@ index 0000000..b206ea4
 + 
 + TEST(PluginApi, RejectsMissingArraysAndStringData) {
 +diff --git a/test/plugin/registry.test.cpp b/test/plugin/registry.test.cpp
++index dc7ff6509232923f459ca1b10642825bd479e907..ca897213610e950c37c675d37a5ccadd82b5440f 100644
 +--- a/test/plugin/registry.test.cpp
 ++++ b/test/plugin/registry.test.cpp
 +@@ -1,4 +1,5 @@
@@ -592,6 +600,7 @@ index 0000000..b206ea4
 +     style::conversion::Error parsingError;
 +     EXPECT_FALSE(style::conversion::convertJSON<std::unique_ptr<style::Layer>>(
 +diff --git a/test/plugin/rendering.test.cpp b/test/plugin/rendering.test.cpp
++index 964f72c5400e3b349ced1b899ca1a8e2dabd1283..2d08356792be93cb529761012818d98749705617 100644
 +--- a/test/plugin/rendering.test.cpp
 ++++ b/test/plugin/rendering.test.cpp
 +@@ -13,6 +13,9 @@
@@ -604,7 +613,7 @@ index 0000000..b206ea4
 + 
 + using namespace mln;
 + 
-+@@ -478,4 +481,498 @@ TEST(PluginRendering, LayerUniformBlocksAroundTheOpenGLPageSize) {
++@@ -492,4 +495,498 @@ TEST(PluginRendering, LayerUniformBlocksAroundTheOpenGLPageSize) {
 +     }
 + }
 + 
@@ -1104,14 +1113,14 @@ index 0000000..b206ea4
 ++
 + } // namespace
 diff --git a/patches/maplibre-native/README.md b/patches/maplibre-native/README.md
-index d632bc7..0b3c586 100644
+index ab67599..9512675 100644
 --- a/patches/maplibre-native/README.md
 +++ b/patches/maplibre-native/README.md
-@@ -161,6 +161,21 @@ includes a plugin rendering regression that reads back fragment-indexed layer
+@@ -177,6 +177,21 @@ includes a plugin rendering regression that reads back fragment-indexed layer
  blocks of 8176, 8192, 8208, and 16384 bytes across content changes. This patch
  is not yet proposed upstream.
  
-+`0028-plugin-static-textures.patch` adds static data textures to plugin
++`0032-plugin-static-textures.patch` adds static data textures to plugin
 +shaders. A shader descriptor lists up to three RGBA32F textures of at most
 +2048 texels a side; registration validates and copies their bytes, and
 +re-registering different bytes conflicts. Each renderer uploads a texture once,

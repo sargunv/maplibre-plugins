@@ -1,40 +1,40 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Sargun Vohra <sargunv@users.noreply.github.com>
-Date: Tue, 22 Sep 2026 23:26:39 -0700
-Subject: [PATCH 4/8] Carry plugin rotation properties
+Date: Wed, 30 Sep 2026 18:52:39 -0700
+Subject: [PATCH 3/7] Carry plugin rotation properties
 
 Adds MLN_PLUGIN_VALUE_ROTATION to the plugin layer ABI: degrees in
 float_value whose transitions follow the shortest arc, like the built-in
 rotation properties. Not yet proposed upstream.
 
-Carried by maplibre-plugins from maplibre-native-ffi PR #731 until it lands
-upstream.
+Carried by maplibre-plugins until it lands upstream.
 ---
  .mise/bin/sync-submodules                     |   1 +
- .../0025-plugin-rotation-properties.patch     | 156 ++++++++++++++++++
+ .../0029-plugin-rotation-properties.patch     | 161 ++++++++++++++++++
  patches/maplibre-native/README.md             |   4 +
- 3 files changed, 161 insertions(+)
- create mode 100644 patches/maplibre-native/0025-plugin-rotation-properties.patch
+ 3 files changed, 166 insertions(+)
+ create mode 100644 patches/maplibre-native/0029-plugin-rotation-properties.patch
 
 diff --git a/.mise/bin/sync-submodules b/.mise/bin/sync-submodules
-index 31c8860..d341709 100755
+index 6206e66..ec17a54 100755
 --- a/.mise/bin/sync-submodules
 +++ b/.mise/bin/sync-submodules
-@@ -72,6 +72,7 @@ mln_patches=(
-   "$repo_root/patches/maplibre-native/0022-plugin-animated-layers.patch"
-   "$repo_root/patches/maplibre-native/0023-source-free-plugin-layers.patch"
-   "$repo_root/patches/maplibre-native/0024-premultiply-plugin-default-colors.patch"
-+  "$repo_root/patches/maplibre-native/0025-plugin-rotation-properties.patch"
+@@ -73,6 +73,7 @@ mln_patches=(
+   "$repo_root/patches/maplibre-native/0026-empty-symbol-placement.patch"
+   "$repo_root/patches/maplibre-native/0027-plugin-animated-layers.patch"
+   "$repo_root/patches/maplibre-native/0028-source-free-plugin-layers.patch"
++  "$repo_root/patches/maplibre-native/0029-plugin-rotation-properties.patch"
  )
  
  # The patches overlap, so no single patch reverses cleanly on its own once the
-diff --git a/patches/maplibre-native/0025-plugin-rotation-properties.patch b/patches/maplibre-native/0025-plugin-rotation-properties.patch
+diff --git a/patches/maplibre-native/0029-plugin-rotation-properties.patch b/patches/maplibre-native/0029-plugin-rotation-properties.patch
 new file mode 100644
-index 0000000..ba82211
+index 0000000..9d46659
 --- /dev/null
-+++ b/patches/maplibre-native/0025-plugin-rotation-properties.patch
-@@ -0,0 +1,156 @@
++++ b/patches/maplibre-native/0029-plugin-rotation-properties.patch
+@@ -0,0 +1,161 @@
 +diff --git a/include/mln/plugin/plugin_api.h b/include/mln/plugin/plugin_api.h
++index 410a574bd7a3015dfb6e7e3d683e9917b2601368..fca40b3b83abc5641747236fde4c6a7d1c80420b 100644
 +--- a/include/mln/plugin/plugin_api.h
 ++++ b/include/mln/plugin/plugin_api.h
 +@@ -67,6 +67,8 @@ typedef enum mln_plugin_value_type {
@@ -47,6 +47,7 @@ index 0000000..ba82211
 + 
 + /* Expression dependencies accepted by a plugin property. */
 +diff --git a/src/mln/plugin/plugin_registry.cpp b/src/mln/plugin/plugin_registry.cpp
++index 301ec3b83476a7fb311c780a05276fe9a74d2ae7..3e86f22ce5c23ab2f687836049f5e5b31f2e1722 100644
 +--- a/src/mln/plugin/plugin_registry.cpp
 ++++ b/src/mln/plugin/plugin_registry.cpp
 +@@ -20,6 +20,7 @@ std::string copyString(const mln_plugin_string& value) {
@@ -74,7 +75,7 @@ index 0000000..ba82211
 +             const auto value = numericValue<double>(defaultValue);
 +             if (!value || !inRange(*value)) {
 +                 error = "plugin property default is outside its numeric range";
-+@@ -500,16 +502,16 @@ mln_plugin_status PluginRegistry::registerPlugin(const mln_plugin_descriptor_v1&
++@@ -502,16 +504,16 @@ mln_plugin_status PluginRegistry::registerPlugin(const mln_plugin_descriptor_v1&
 +         for (const auto& shader : copiedLayerType.shaders) {
 +             for (const auto& binding : shader.propertyBindings) {
 +                 const auto* property = copiedLayerType.findProperty(binding.propertyName);
@@ -101,7 +102,7 @@ index 0000000..ba82211
 +                 if (property == nullptr || !encodingMatches) {
 +                     error = "plugin shader property binding references an incompatible paint property";
 +                     return MLN_PLUGIN_STATUS_INVALID_ARGUMENT;
-+@@ -594,6 +596,7 @@ bool PluginRegistry::valueMatches(mln_plugin_value_type type, const Value& value
++@@ -596,6 +598,7 @@ bool PluginRegistry::valueMatches(mln_plugin_value_type type, const Value& value
 +         return value.getDouble() || value.getInt() || value.getUint();
 +     };
 +     switch (type) {
@@ -110,6 +111,7 @@ index 0000000..ba82211
 +             return numeric();
 +         case MLN_PLUGIN_VALUE_STRING:
 +diff --git a/src/mln/renderer/buckets/plugin_bucket.cpp b/src/mln/renderer/buckets/plugin_bucket.cpp
++index f94d455fdc9f27f0d0ae1328583c53ced8b2b2f4..b11152f16675456c94dc85a48c797e35c591c1a5 100644
 +--- a/src/mln/renderer/buckets/plugin_bucket.cpp
 ++++ b/src/mln/renderer/buckets/plugin_bucket.cpp
 +@@ -72,6 +72,7 @@ mln_plugin_value decodedValue(const std::array<float, 4>& input, const plugin::P
@@ -121,6 +123,7 @@ index 0000000..ba82211
 +             value.data.float_value = input[0];
 +             break;
 +diff --git a/src/mln/style/plugin_property.cpp b/src/mln/style/plugin_property.cpp
++index 4d6031022a6693086290dd1d85c76581df8df492..8370364039e47e27ac00c31adce9907219f8c063 100644
 +--- a/src/mln/style/plugin_property.cpp
 ++++ b/src/mln/style/plugin_property.cpp
 +@@ -55,6 +55,11 @@ float interpolationFactor(const PropertyValue<T>& value, float bucketZoom, float
@@ -135,7 +138,7 @@ index 0000000..ba82211
 + template <>
 + float defaultValue<float>(const plugin::PropertyDefinition& definition) {
 +     return numericValue<float>(definition.defaultValue).value_or(0.0f);
-+@@ -100,6 +105,8 @@ auto withPropertyType(mln_plugin_value_type type, Fn&& fn) {
++@@ -99,6 +104,8 @@ auto withPropertyType(mln_plugin_value_type type, Fn&& fn) {
 +     switch (type) {
 +         case MLN_PLUGIN_VALUE_FLOAT:
 +             return fn.template operator()<float>();
@@ -144,7 +147,7 @@ index 0000000..ba82211
 +         case MLN_PLUGIN_VALUE_FLOAT2:
 +             return fn.template operator()<std::array<float, 2>>();
 +         case MLN_PLUGIN_VALUE_DOUBLE2:
-+@@ -129,6 +136,9 @@ mln_plugin_value toPluginValue(const T& value, PluginPropertyValue::EvaluationSt
++@@ -128,6 +135,9 @@ mln_plugin_value toPluginValue(const T& value, PluginPropertyValue::EvaluationSt
 +     if constexpr (std::is_same_v<T, float>) {
 +         result.type = MLN_PLUGIN_VALUE_FLOAT;
 +         result.data.float_value = value;
@@ -154,7 +157,7 @@ index 0000000..ba82211
 +     } else if constexpr (std::is_same_v<T, std::array<float, 2>>) {
 +         result.type = MLN_PLUGIN_VALUE_FLOAT2;
 +         result.data.float2_value = {value[0], value[1]};
-+@@ -176,7 +186,7 @@ bool validateConstant(const plugin::PropertyDefinition& definition,
++@@ -175,7 +185,7 @@ bool validateConstant(const plugin::PropertyDefinition& definition,
 +         return (!definition.minimum || number >= *definition.minimum) &&
 +                (!definition.maximum || number <= *definition.maximum);
 +     };
@@ -164,6 +167,7 @@ index 0000000..ba82211
 +         if (!number || !inRange(*number)) {
 +             error.message = "value is outside the allowed range for plugin property '" + definition.name + "'";
 +diff --git a/src/mln/style/plugin_property.hpp b/src/mln/style/plugin_property.hpp
++index ebeca5e849c3508fd9f0cc82a48d2a83952304fa..1d8476f77ead11d30f5df2a9fa6638ab02bac681 100644
 +--- a/src/mln/style/plugin_property.hpp
 ++++ b/src/mln/style/plugin_property.hpp
 +@@ -3,6 +3,7 @@
@@ -191,14 +195,14 @@ index 0000000..ba82211
 +                                     Transitioning<PropertyValue<std::array<double, 2>>>,
 +                                     Transitioning<PropertyValue<Color>>,
 diff --git a/patches/maplibre-native/README.md b/patches/maplibre-native/README.md
-index 94824a9..81a7f57 100644
+index a4f5691..68b610a 100644
 --- a/patches/maplibre-native/README.md
 +++ b/patches/maplibre-native/README.md
-@@ -141,6 +141,10 @@ premultiplied-alpha `Color` invariant that style-parsed colors already honor.
- Upstream:
- [maplibre-native#4663](https://github.com/maplibre/maplibre-native/pull/4663).
+@@ -157,6 +157,10 @@ camera-to-center distance, a mercator world projection, and a ground-offset
+ destination helper. This patch is local-only: it is not upstreamed, and no
+ upstream PR exists.
  
-+`0025-plugin-rotation-properties.patch` adds a rotation property type to the
++`0029-plugin-rotation-properties.patch` adds a rotation property type to the
 +plugin ABI. Rotation transitions follow the shortest arc. This patch is
 +local-only: it is not upstreamed, and no upstream PR exists.
 +

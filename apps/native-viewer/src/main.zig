@@ -377,6 +377,10 @@ fn renderLoop(
                     map_channel.wakeRuntimeLoop();
                     render_request.set();
                 },
+                c.SDL_EVENT_WINDOW_EXPOSED => {
+                    commands.push(.request_repaint);
+                    map_channel.wakeRuntimeLoop();
+                },
                 else => {
                     const result = controller.handleEvent(&event, commands, current_viewport.*);
                     if (result.handled) map_channel.wakeRuntimeLoop();
@@ -409,7 +413,12 @@ fn renderLoop(
         // Consume before rendering, so a request published during the render
         // call is not discarded.
         if (render_request.consume()) {
-            if (try target.renderUpdate()) script.frameRendered(io) else render_request.set();
+            switch (try target.renderUpdate()) {
+                .rendered => script.frameRendered(io),
+                .target_not_ready => render_request.set(),
+                .no_update, .size_pending => {},
+                .unknown => return types.AppError.SurfaceRenderFailed,
+            }
         }
         // Stand-in for a display-refresh subscription.
         try io.sleep(.fromMilliseconds(8), .awake);

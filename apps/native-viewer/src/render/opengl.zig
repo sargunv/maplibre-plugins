@@ -84,7 +84,7 @@ pub const OpenGLRenderTarget = struct {
         }
     }
 
-    pub fn renderUpdate(self: *OpenGLRenderTarget) !bool {
+    pub fn renderUpdate(self: *OpenGLRenderTarget) !maplibre.RenderResult {
         return self.session.renderUpdate();
     }
 

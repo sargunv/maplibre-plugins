@@ -63,7 +63,7 @@ pub const VulkanRenderTarget = struct {
 
     pub fn finishFrame(_: *VulkanRenderTarget) !void {}
 
-    pub fn renderUpdate(self: *VulkanRenderTarget) !bool {
+    pub fn renderUpdate(self: *VulkanRenderTarget) !maplibre.RenderResult {
         return self.session.renderUpdate();
     }
 

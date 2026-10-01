@@ -44,7 +44,6 @@ pub const MapState = struct {
 
         map.setEventMask(.{
             .map_render_update_available = true,
-            .map_render_frame_finished = true,
             .map_style_loaded = true,
         }) catch |err| {
             diagnostics.logError("event mask select failed", err, diagnostic_store);
@@ -95,6 +94,7 @@ pub const MapState = struct {
         const map = &self.map;
         const store = self.diagnostic_store;
         switch (command) {
+            .request_repaint => try expect(map.requestRepaint(), "map repaint failed", store),
             .cancel_transitions => try expect(map.cancelTransitions(), "cancel camera transitions failed", store),
             .set_gesture_in_progress => |g| try expect(map.setGestureInProgress(g.in_progress), "set gesture failed", store),
             .move_by => |m| try expect(map.moveBy(m.dx, m.dy), "camera pan failed", store),
@@ -229,10 +229,6 @@ pub const MapState = struct {
                     render_update_available = true;
                 },
                 .map_render_update_available => render_update_available = true,
-                .map_render_frame_finished => switch (event.payload) {
-                    .render_frame => |frame| render_update_available = render_update_available or frame.needs_repaint,
-                    else => {},
-                },
                 else => {},
             }
         }

@@ -8,6 +8,7 @@ const maplibre = @import("maplibre_native_ffi");
 /// Camera commands carry deltas rather than absolute targets, because reading
 /// the camera and writing the new one has to happen together on that thread.
 pub const Command = union(enum) {
+    request_repaint,
     cancel_transitions,
     set_gesture_in_progress: struct { in_progress: bool },
     move_by: struct { dx: f64, dy: f64 },

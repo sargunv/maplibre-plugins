@@ -1,43 +1,43 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Sargun Vohra <sargunv@users.noreply.github.com>
-Date: Tue, 22 Sep 2026 23:26:39 -0700
-Subject: [PATCH 5/8] Carry plugin frame queries
+Date: Wed, 30 Sep 2026 18:52:39 -0700
+Subject: [PATCH 4/7] Carry plugin frame queries
 
 Lets a source-free plugin layer return GeoJSON features with world-pixel
 hit envelopes each frame, indexed through the native dynamic feature index
 so rendered-feature queries hit them. Not yet proposed upstream.
 
-Carried by maplibre-plugins from maplibre-native-ffi PR #731 until it lands
-upstream.
+Carried by maplibre-plugins until it lands upstream.
 ---
  .mise/bin/sync-submodules                     |   1 +
- .../0026-plugin-frame-queries.patch           | 173 ++++++++++++++++++
+ .../0030-plugin-frame-queries.patch           | 176 ++++++++++++++++++
  patches/maplibre-native/README.md             |   5 +
- 3 files changed, 179 insertions(+)
- create mode 100644 patches/maplibre-native/0026-plugin-frame-queries.patch
+ 3 files changed, 182 insertions(+)
+ create mode 100644 patches/maplibre-native/0030-plugin-frame-queries.patch
 
 diff --git a/.mise/bin/sync-submodules b/.mise/bin/sync-submodules
-index d341709..6085fa6 100755
+index ec17a54..2b69ab1 100755
 --- a/.mise/bin/sync-submodules
 +++ b/.mise/bin/sync-submodules
-@@ -73,6 +73,7 @@ mln_patches=(
-   "$repo_root/patches/maplibre-native/0023-source-free-plugin-layers.patch"
-   "$repo_root/patches/maplibre-native/0024-premultiply-plugin-default-colors.patch"
-   "$repo_root/patches/maplibre-native/0025-plugin-rotation-properties.patch"
-+  "$repo_root/patches/maplibre-native/0026-plugin-frame-queries.patch"
+@@ -74,6 +74,7 @@ mln_patches=(
+   "$repo_root/patches/maplibre-native/0027-plugin-animated-layers.patch"
+   "$repo_root/patches/maplibre-native/0028-source-free-plugin-layers.patch"
+   "$repo_root/patches/maplibre-native/0029-plugin-rotation-properties.patch"
++  "$repo_root/patches/maplibre-native/0030-plugin-frame-queries.patch"
  )
  
  # The patches overlap, so no single patch reverses cleanly on its own once the
-diff --git a/patches/maplibre-native/0026-plugin-frame-queries.patch b/patches/maplibre-native/0026-plugin-frame-queries.patch
+diff --git a/patches/maplibre-native/0030-plugin-frame-queries.patch b/patches/maplibre-native/0030-plugin-frame-queries.patch
 new file mode 100644
-index 0000000..6188ac3
+index 0000000..7eadee5
 --- /dev/null
-+++ b/patches/maplibre-native/0026-plugin-frame-queries.patch
-@@ -0,0 +1,173 @@
++++ b/patches/maplibre-native/0030-plugin-frame-queries.patch
+@@ -0,0 +1,176 @@
 +diff --git a/include/mln/plugin/plugin_api.h b/include/mln/plugin/plugin_api.h
++index fca40b3b83abc5641747236fde4c6a7d1c80420b..da175391b4cd3e4cf86e5922ba3fd4fee089a895 100644
 +--- a/include/mln/plugin/plugin_api.h
 ++++ b/include/mln/plugin/plugin_api.h
-+@@ -359,6 +359,22 @@ typedef struct mln_plugin_feature_vertex_range_v1 {
++@@ -362,6 +362,22 @@ typedef struct mln_plugin_feature_vertex_range_v1 {
 +     uint32_t vertex_count;
 + } mln_plugin_feature_vertex_range_v1;
 + 
@@ -60,7 +60,7 @@ index 0000000..6188ac3
 + /* The bucket struct is host-owned. All views written into it, including nested
 +  * drawable strings/arrays, indices, vertex bytes and feature ranges, remain
 +  * plugin-owned and valid until destroy_layout. On success the host copies them
-+@@ -376,6 +392,9 @@ typedef struct mln_plugin_bucket_v1 {
++@@ -379,6 +395,9 @@ typedef struct mln_plugin_bucket_v1 {
 +     float query_radius;
 +     const mln_plugin_feature_vertex_range_v1* feature_vertex_ranges;
 +     size_t feature_vertex_range_count;
@@ -71,6 +71,7 @@ index 0000000..6188ac3
 + 
 + /*
 +diff --git a/src/mln/renderer/layers/render_plugin_style_layer.cpp b/src/mln/renderer/layers/render_plugin_style_layer.cpp
++index 7fc579685a3ba4e8e01fba7239b382bc62cae42c..fc4a24903812d191671cd9a5b5502b89031eecb4 100644
 +--- a/src/mln/renderer/layers/render_plugin_style_layer.cpp
 ++++ b/src/mln/renderer/layers/render_plugin_style_layer.cpp
 +@@ -1,5 +1,6 @@
@@ -140,7 +141,7 @@ index 0000000..6188ac3
 + RenderPluginStyleLayer::RenderPluginStyleLayer(Immutable<style::PluginStyleLayer::Impl> impl)
 +     : RenderLayer(makeMutable<style::PluginStyleLayerProperties>(std::move(impl))) {
 +     // Unlike generated layers, a plugin layer has no generated evaluated
-+@@ -379,6 +419,7 @@ void RenderPluginStyleLayer::updateFrame(gfx::ShaderRegistry& shaders,
++@@ -391,6 +431,7 @@ void RenderPluginStyleLayer::updateFrame(gfx::ShaderRegistry& shaders,
 +     std::copy(projMatrix.begin(), projMatrix.end(), frameContext.proj_matrix);
 +     frameContext.project_mercator = &projectToMercatorPixels;
 +     frameContext.destination = &destinationToLatLng;
@@ -148,7 +149,7 @@ index 0000000..6188ac3
 + 
 +     mln_plugin_bucket_v1 output{};
 +     output.struct_size = sizeof(output);
-+@@ -386,22 +427,24 @@ void RenderPluginStyleLayer::updateFrame(gfx::ShaderRegistry& shaders,
++@@ -398,22 +439,24 @@ void RenderPluginStyleLayer::updateFrame(gfx::ShaderRegistry& shaders,
 +         Log::Error(Event::Style, "Plugin layer '" + getID() + "' failed to build its frame");
 +         removeAllDrawables();
 +         frameBucket.reset();
@@ -177,6 +178,7 @@ index 0000000..6188ac3
 +     }
 +     const auto zoom = static_cast<float>(state.getZoom());
 +diff --git a/src/mln/renderer/layers/render_plugin_style_layer.hpp b/src/mln/renderer/layers/render_plugin_style_layer.hpp
++index 4da778bb5e4b89cbe2154bdad38a590740a2cb9e..b52a963511b3ee47e7c092d62a0bfb4e5c8e08bc 100644
 +--- a/src/mln/renderer/layers/render_plugin_style_layer.hpp
 ++++ b/src/mln/renderer/layers/render_plugin_style_layer.hpp
 +@@ -2,6 +2,7 @@
@@ -208,14 +210,14 @@ index 0000000..6188ac3
 + 
 + } // namespace mln
 diff --git a/patches/maplibre-native/README.md b/patches/maplibre-native/README.md
-index 81a7f57..14175b7 100644
+index 68b610a..83a5e85 100644
 --- a/patches/maplibre-native/README.md
 +++ b/patches/maplibre-native/README.md
-@@ -145,6 +145,11 @@ Upstream:
+@@ -161,6 +161,11 @@ upstream PR exists.
  plugin ABI. Rotation transitions follow the shortest arc. This patch is
  local-only: it is not upstreamed, and no upstream PR exists.
  
-+`0026-plugin-frame-queries.patch` adds source-free feature snapshots to the
++`0030-plugin-frame-queries.patch` adds source-free feature snapshots to the
 +plugin ABI. Frame queries use the native dynamic feature index and copy the
 +plugin's GeoJSON and world-pixel envelopes. This patch is local-only: it is
 +not upstreamed, and no upstream PR exists.

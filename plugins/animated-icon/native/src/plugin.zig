@@ -327,7 +327,7 @@ fn section(comptime name: []const u8, comptime body: []const u8) []const u8 {
 
 /// The attribute declarations, each paint attribute guarded so it only
 /// exists for data-driven properties. The explicit locations are what Vulkan
-/// needs; OpenGL matches attributes by name (patch 0008), so the same text
+/// needs; OpenGL matches attributes by name (patch 0007), so the same text
 /// serves both.
 const glsl_attributes = blk: {
     @setEvalBranchQuota(100_000);
@@ -837,6 +837,8 @@ const Registration = struct {
             .query_feature = queryFeature,
             .update_uniform_block = updateUniformBlock,
             .get_query_radius = getQueryRadius,
+            .enable_stencil_overlap_dedup = 0,
+            .enable_near_clipped_matrix = 0,
             .should_animate = shouldAnimate,
             .source_free = 0,
             .build_frame = null,

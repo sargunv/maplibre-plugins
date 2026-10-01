@@ -379,25 +379,24 @@ From `patches/maplibre-native-ffi/` this plugin needs:
 | Patch                                | Used for                                                                                   |
 | ------------------------------------ | ------------------------------------------------------------------------------------------ |
 | `0001` plugin animated layers        | `should_animate` keeps the map repainting while the layer plays                            |
-| `0004` plugin rotation properties    | `icon-rotate` transitions along the shortest arc                                           |
-| `0005` plugin frame queries          | the bucket's layout only (see below)                                                       |
-| `0006` OpenGL uniform blocks ≥ 8 KiB | catalogs of more than 254 animations on OpenGL, whose header block outgrows the 8 KiB page |
-| `0007` plugin static textures        | the catalog texture that holds every frame, so each icon picks its own animation and phase |
-| `0008` plugin OpenGL attributes      | data-driven paint attributes land in the right shader inputs on OpenGL                     |
+| `0003` plugin rotation properties    | `icon-rotate` transitions along the shortest arc                                           |
+| `0004` plugin frame queries          | the bucket's layout only (see below)                                                       |
+| `0005` OpenGL uniform blocks ≥ 8 KiB | catalogs of more than 254 animations on OpenGL, whose header block outgrows the 8 KiB page |
+| `0006` plugin static textures        | the catalog texture that holds every frame, so each icon picks its own animation and phase |
+| `0007` plugin OpenGL attributes      | data-driven paint attributes land in the right shader inputs on OpenGL                     |
 
-`0006` matters only for OpenGL and OpenGL ES builds, and only for catalogs whose
-header block exceeds 8 KiB; Metal and Vulkan draw such blocks without it. `0007`
-is required on every backend. `0008` is required on OpenGL whenever a layer
+`0005` matters only for OpenGL and OpenGL ES builds, and only for catalogs whose
+header block exceeds 8 KiB; Metal and Vulkan draw such blocks without it. `0006`
+is required on every backend. `0007` is required on OpenGL whenever a layer
 mixes data-driven and constant properties: without it the host matches
 attributes by position, not name, and data-driven values reach the wrong inputs.
 The plugin uses no feature of `0002` (source-free layers): the extra
 `source_free` and `build_frame` fields it zeroes are ignored by a host without
-them. It uses no feature of `0005` either and returns no frame features, but the
-vendored header's `mln_plugin_bucket_v1` ends with `0005`'s `frame_features`, so
-`finish_layout` rejects a host's smaller bucket. It does not need premultiplied
-default colors (`0003`): `icon-color` defaults to transparent, which is the same
-premultiplied or not. The patches form one stacked series, though, so a host
-carries `0001` to `0008`.
+them. It uses no feature of `0004` either and returns no frame features, but the
+vendored header's `mln_plugin_bucket_v1` ends with `0004`'s `frame_features`, so
+`finish_layout` rejects a host's smaller bucket. Default-color premultiplication
+is upstream. The patches form one stacked series, so a host carries `0001` to
+`0007`.
 
 ## Weather demo
 
@@ -424,9 +423,8 @@ after the first frame, and `--exit-after <s>` quits.
 
 ## Limits and future improvements
 
-Most limits come from the plugin API; each item names what would lift it.
-Patches `0009` (frame context) and `0010` (uniform-only bindings) are planned
-for M2 and not yet in `patches/maplibre-native-ffi/`.
+Most limits come from the plugin API; each item names what would lift it. Frame
+context and uniform-only bindings are planned for M2.
 
 1. **One catalog per native process, registered by the app.** The host keeps one
    descriptor per plugin id and layer type, so a process registers either the
@@ -441,14 +439,14 @@ for M2 and not yet in `patches/maplibre-native-ffi/`.
    a feature-state change timestamp available to shaders.
 3. **The catalog must fit one texture.** Every frame of every animation stays
    resident: at most 4,194,304 texels (a 2048 × 2048 RGBA32F texture, 64 MiB),
-   510 animations (254 on OpenGL without `0006`), 64 ops per frame and 256
+   510 animations (254 on OpenGL without `0005`), 64 ops per frame and 256
    curves per band. Bake at `--fps 30` to halve a catalog. Fix: fp16 curves or
    dynamic textures that stream frames.
 4. **The plugin keeps its own clock.** Frames come from the plugin's monotonic
    clock, not the host's frame time, so playback cannot follow the map's time.
    The clock wraps every 4096 s, so a played-once icon returns to its first
    frame about every 68 minutes. Fix: the frame time in the uniform context
-   (patch `0009`, planned for M2).
+   (planned for M2).
 5. **Natively, the map repaints whenever the layer sets `icon-animation`.**
    `should_animate` sees paint values without features: a data-driven
    `icon-animation` reads as `"none"` there, and a hover-gated speed as its
@@ -467,11 +465,11 @@ for M2 and not yet in `patches/maplibre-native-ffi/`.
    properties that declare `supports_transitions = 0`.
 7. **Placement matches symbols only at roll 0 and pitch ≤ 90°, and natively
    within half a pixel.** The uniform context has no pitch or roll. The host
-   also hands plugins the pixel-aligned tile matrix, unlike the circle and
-   symbol matrices: native icons sit up to half a logical pixel from the web
-   layer's, while MapLibre Native's circles match gl-js's exactly. Fix: pitch,
-   roll and the unaligned matrix in the uniform context (patch `0009`, planned
-   for M2).
+   supports an unaligned, near-clipped tile matrix through
+   `enable_near_clipped_matrix`. This plugin retains the pixel-aligned matrix,
+   so native icons can sit up to half a logical pixel from the web layer's. Fix:
+   pitch and roll in the uniform context (planned for M2), and use the host's
+   unaligned matrix option.
 8. **No collision.** Icons behave as if `icon-allow-overlap` and
    `icon-ignore-placement` were always on: they never avoid labels and never
    fade. Fix: plugin participation in the collision index.
@@ -500,8 +498,8 @@ for M2 and not yet in `patches/maplibre-native-ffi/`.
 13. **Camera-only properties still take attribute slots.** The host counts every
     declared property attribute against its limit of 16 even when it compiles
     the property as a uniform: this layer declares 14, which leaves room for
-    M2's `icon-secondary-color` only. Fix: uniform-only property bindings (patch
-    `0010`, planned for M2).
+    M2's `icon-secondary-color` only. Fix: uniform-only property bindings
+    (planned for M2).
 14. **Only baked Lottie, up to the Core tier.** Translucent masks and mattes,
     isolated group opacity, merge modes 2–5, highlight gradients and precomp
     clipping arrive with Composite (M3); luma mattes, blend modes, effects and

@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Sargun Vohra <sargunv@users.noreply.github.com>
-Date: Wed, 23 Sep 2026 22:41:47 -0700
-Subject: [PATCH 6/8] Carry OpenGL uniform blocks of a page and larger
+Date: Wed, 30 Sep 2026 18:52:39 -0700
+Subject: [PATCH 5/7] Carry OpenGL uniform blocks of a page and larger
 
 Fixes two OpenGL crashes at the 8 KiB page of the uniform buffer
 allocator. A block larger than a page owns its GL buffer and keeps no
@@ -15,30 +15,31 @@ Not yet proposed upstream.
 Carried by maplibre-plugins until it lands upstream.
 ---
  .mise/bin/sync-submodules                     |   1 +
- .../0027-opengl-large-uniform-blocks.patch    | 157 ++++++++++++++++++
+ .../0031-opengl-large-uniform-blocks.patch    | 160 ++++++++++++++++++
  patches/maplibre-native/README.md             |  11 ++
- 3 files changed, 169 insertions(+)
- create mode 100644 patches/maplibre-native/0027-opengl-large-uniform-blocks.patch
+ 3 files changed, 172 insertions(+)
+ create mode 100644 patches/maplibre-native/0031-opengl-large-uniform-blocks.patch
 
 diff --git a/.mise/bin/sync-submodules b/.mise/bin/sync-submodules
-index 6085fa6..4aafaf1 100755
+index 2b69ab1..dc5ae05 100755
 --- a/.mise/bin/sync-submodules
 +++ b/.mise/bin/sync-submodules
-@@ -74,6 +74,7 @@ mln_patches=(
-   "$repo_root/patches/maplibre-native/0024-premultiply-plugin-default-colors.patch"
-   "$repo_root/patches/maplibre-native/0025-plugin-rotation-properties.patch"
-   "$repo_root/patches/maplibre-native/0026-plugin-frame-queries.patch"
-+  "$repo_root/patches/maplibre-native/0027-opengl-large-uniform-blocks.patch"
+@@ -75,6 +75,7 @@ mln_patches=(
+   "$repo_root/patches/maplibre-native/0028-source-free-plugin-layers.patch"
+   "$repo_root/patches/maplibre-native/0029-plugin-rotation-properties.patch"
+   "$repo_root/patches/maplibre-native/0030-plugin-frame-queries.patch"
++  "$repo_root/patches/maplibre-native/0031-opengl-large-uniform-blocks.patch"
  )
  
  # The patches overlap, so no single patch reverses cleanly on its own once the
-diff --git a/patches/maplibre-native/0027-opengl-large-uniform-blocks.patch b/patches/maplibre-native/0027-opengl-large-uniform-blocks.patch
+diff --git a/patches/maplibre-native/0031-opengl-large-uniform-blocks.patch b/patches/maplibre-native/0031-opengl-large-uniform-blocks.patch
 new file mode 100644
-index 0000000..f435226
+index 0000000..d076723
 --- /dev/null
-+++ b/patches/maplibre-native/0027-opengl-large-uniform-blocks.patch
-@@ -0,0 +1,157 @@
++++ b/patches/maplibre-native/0031-opengl-large-uniform-blocks.patch
+@@ -0,0 +1,160 @@
 +diff --git a/src/mln/gl/buffer_allocator.cpp b/src/mln/gl/buffer_allocator.cpp
++index 4cf4a39200a98f5a5c78214291ff641ee13ed9a2..74142165b351f2fc89f0888e6af864731d9beba2 100644
 +--- a/src/mln/gl/buffer_allocator.cpp
 ++++ b/src/mln/gl/buffer_allocator.cpp
 +@@ -212,13 +212,9 @@ public:
@@ -59,6 +60,7 @@ index 0000000..f435226
 + 
 + public:
 +diff --git a/src/mln/gl/uniform_buffer_gl.cpp b/src/mln/gl/uniform_buffer_gl.cpp
++index 6f0ff4a264f851025920772d2dfef6b76d344ee3..6c16540ad9846d27505f19e6d05fabea3ef38f70 100644
 +--- a/src/mln/gl/uniform_buffer_gl.cpp
 ++++ b/src/mln/gl/uniform_buffer_gl.cpp
 +@@ -141,7 +141,9 @@ void UniformBufferGL::update(const void* data, std::size_t dataSize) {
@@ -73,6 +75,7 @@ index 0000000..f435226
 +     }
 + 
 +diff --git a/test/plugin/rendering.test.cpp b/test/plugin/rendering.test.cpp
++index bc97d7ea8db287dfc60187ef8125982bc93f37fe..964f72c5400e3b349ced1b899ca1a8e2dabd1283 100644
 +--- a/test/plugin/rendering.test.cpp
 ++++ b/test/plugin/rendering.test.cpp
 +@@ -10,6 +10,7 @@
@@ -83,7 +86,7 @@ index 0000000..f435226
 + #include <array>
 + #include <cstring>
 + 
-+@@ -370,4 +371,111 @@ TEST(PluginRendering, NormalizedByteColorAttributes) {
++@@ -384,4 +385,111 @@ TEST(PluginRendering, NormalizedByteColorAttributes) {
 +     }
 + }
 + 
@@ -196,14 +199,14 @@ index 0000000..f435226
 ++
 + } // namespace
 diff --git a/patches/maplibre-native/README.md b/patches/maplibre-native/README.md
-index 14175b7..d632bc7 100644
+index 83a5e85..ab67599 100644
 --- a/patches/maplibre-native/README.md
 +++ b/patches/maplibre-native/README.md
-@@ -150,6 +150,17 @@ plugin ABI. Frame queries use the native dynamic feature index and copy the
+@@ -166,6 +166,17 @@ plugin ABI. Frame queries use the native dynamic feature index and copy the
  plugin's GeoJSON and world-pixel envelopes. This patch is local-only: it is
  not upstreamed, and no upstream PR exists.
  
-+`0027-opengl-large-uniform-blocks.patch` fixes two OpenGL crashes for uniform
++`0031-opengl-large-uniform-blocks.patch` fixes two OpenGL crashes for uniform
 +blocks at and above the 8 KiB page of the uniform buffer allocator. A block
 +larger than a page gets a GL buffer of its own and keeps no CPU copy, but its
 +update compared the new bytes against the empty managed copy and crashed on the

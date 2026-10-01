@@ -28,18 +28,6 @@ pub const features_shader_id = "particle-features";
 pub const emitter_uniform_id: u32 = 0;
 pub const features_uniform_id: u32 = 1;
 
-/// Upstream MapLibre Native maps each active OpenGL attribute by its linked
-/// location, used as an index into the shader's attribute list with the
-/// uniform-delivered paint attributes removed (plugin_shader.cpp,
-/// shader_program_gl.cpp). While this is true the GL source picks every
-/// data-driven attribute's literal location from the other data-driven
-/// properties' _IS_UNIFORM macros so it equals that index. Patch 0008
-/// (patches/maplibre-native-ffi) matches active attributes by name instead,
-/// and the ladder's locations are then ordinary explicit ones, so the ladder
-/// is correct on both hosts. Set it to false only once every host carries
-/// that fix.
-pub const gl_location_ladder = true;
-
 const Backend = enum { gl, vulkan, metal };
 
 fn digits(comptime n: anytype) []const u8 {
@@ -289,20 +277,6 @@ const bindings_by_location = blk: {
     break :blk result;
 };
 
-/// The data-driven bindings in declared-location order: the GL ladder.
-const ladder = blk: {
-    @setEvalBranchQuota(100_000);
-    var result: [properties.features_data_driven.len]FeatureBinding = undefined;
-    var n = 0;
-    for (bindings_by_location) |binding| {
-        if (binding.dataDriven()) {
-            result[n] = binding;
-            n += 1;
-        }
-    }
-    break :blk result;
-};
-
 fn glslAttributeType(comptime binding: FeatureBinding) []const u8 {
     return if (binding.attributeType() == c.MLN_PLUGIN_VERTEX_FLOAT_X2) "vec2" else "vec4";
 }
@@ -323,19 +297,6 @@ fn attributeDeclarations(comptime backend: Backend, comptime binding: FeatureBin
     };
 }
 
-/// GL: the location of ladder[index] is 1 plus the slots of the data-driven
-/// properties before it, chosen by nested #if on their macros (GLSL ES 3.00
-/// needs a literal location).
-fn ladderBranches(comptime index: usize, comptime predecessor: usize, comptime base: u32) []const u8 {
-    if (predecessor == index) return attributeDeclarations(.gl, ladder[index], base);
-    const previous = ladder[predecessor];
-    return "#if " ++ propertyMacro(previous.name) ++ "\n" ++
-        ladderBranches(index, predecessor + 1, base) ++
-        "#else\n" ++
-        ladderBranches(index, predecessor + 1, base + previous.slots()) ++
-        "#endif\n";
-}
-
 /// Every binding's attributes exist only while the host delivers them as
 /// attributes. Camera- and constant-only properties are always uniform, so
 /// their declarations never compile.
@@ -345,14 +306,7 @@ fn featureAttributes(comptime backend: Backend) []const u8 {
         var result: []const u8 = if (backend == .metal) "    float4 a_emit [[attribute(0)]];\n" else "layout(location=0) in vec4 a_emit;\n";
         for (bindings_by_location) |binding| {
             result = result ++ "#if !" ++ propertyMacro(binding.name) ++ "\n";
-            const ladder_index: ?usize = for (ladder, 0..) |step, i| {
-                if (std.mem.eql(u8, step.name, binding.name)) break i;
-            } else null;
-            if (backend == .gl and gl_location_ladder and ladder_index != null) {
-                result = result ++ ladderBranches(ladder_index.?, 0, 1);
-            } else {
-                result = result ++ attributeDeclarations(backend, binding, binding.attribute);
-            }
+            result = result ++ attributeDeclarations(backend, binding, binding.attribute);
             result = result ++ "#endif\n";
         }
         break :blk result;
@@ -954,8 +908,7 @@ test "attribute locations match the host's mapping for every data-driven mask" {
         const mask: Mask = @intCast(bits);
         var macros: std.StringHashMapUnmanaged(bool) = .empty;
         defer macros.deinit(allocator);
-        // The host's attribute list, filtered of the uniform-delivered
-        // attributes (the GL mapping), and the declared ids (Vulkan, Metal).
+        // The attributes delivered for this data-driven mask.
         var filtered: std.ArrayList([]const u8) = .empty;
         defer filtered.deinit(allocator);
         try filtered.append(allocator, "a_emit");
@@ -978,25 +931,16 @@ test "attribute locations match the host's mapping for every data-driven mask" {
             try std.testing.expectEqual(filtered.items.len, lines.len);
             for (lines) |line| {
                 const declaration = try parseDeclaration(line);
-                const expected = if (backend == .gl)
-                    // GL: the location is the index in the filtered list.
-                    declaration.location
-                else for (features_attributes) |a| {
-                    // Vulkan and Metal: the declared location.
+                const expected = for (features_attributes) |a| {
                     if (std.mem.eql(u8, a.name.data[0..a.name.size], declaration.name)) break a.location;
                 } else return error.UnknownAttribute;
                 try std.testing.expectEqual(expected, declaration.location);
-                if (backend == .gl) try std.testing.expectEqualStrings(filtered.items[declaration.location], declaration.name);
                 var found = false;
                 for (filtered.items) |name| found = found or std.mem.eql(u8, name, declaration.name);
                 try std.testing.expect(found);
             }
         }
     }
-    // The GL expectations encode an upstream host, which maps by filtered
-    // index; a host with patch 0008 maps by name and takes these locations
-    // too. Switching the ladder off drops hosts without 0008.
-    try std.testing.expect(gl_location_ladder);
 }
 
 test "the fetched attributes are the declared ones in every mask" {

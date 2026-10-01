@@ -1,44 +1,43 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Sargun Vohra <sargunv@users.noreply.github.com>
-Date: Tue, 22 Sep 2026 23:26:38 -0700
-Subject: [PATCH 1/8] Carry plugin animated layers (maplibre-native#4654)
+Date: Wed, 30 Sep 2026 18:52:39 -0700
+Subject: [PATCH 1/7] Carry plugin animated layers (maplibre-native#4654)
 
-Adds the optional should_animate callback to the plugin layer ABI, so a
-plugin layer can keep a continuous-mode map repainting. Upstream:
-https://github.com/maplibre/maplibre-native/pull/4654
+Backports the merged upstream animation callback from Native commit
+3db2ced57652d0329fe2703148bc10dc5eb32f8d, preserving the upstream stencil
+and near-clipped matrix fields. Drop when the FFI Native pin includes it.
 
-Carried by maplibre-plugins from maplibre-native-ffi PR #731 until it lands
-upstream.
+Carried by maplibre-plugins until the Native pin includes the change.
 ---
  .mise/bin/sync-submodules                     |   1 +
- .../0022-plugin-animated-layers.patch         | 111 ++++++++++++++++++
- patches/maplibre-native/README.md             |   6 +
- 3 files changed, 118 insertions(+)
- create mode 100644 patches/maplibre-native/0022-plugin-animated-layers.patch
+ .../0027-plugin-animated-layers.patch         | 111 ++++++++++++++++++
+ patches/maplibre-native/README.md             |   8 ++
+ 3 files changed, 120 insertions(+)
+ create mode 100644 patches/maplibre-native/0027-plugin-animated-layers.patch
 
 diff --git a/.mise/bin/sync-submodules b/.mise/bin/sync-submodules
-index 637c306..60b3069 100755
+index 1ab8151..bc0cd02 100755
 --- a/.mise/bin/sync-submodules
 +++ b/.mise/bin/sync-submodules
-@@ -69,6 +69,7 @@ mln_patches=(
-   "$repo_root/patches/maplibre-native/0016-location-indicator-color-transitions.patch"
-   "$repo_root/patches/maplibre-native/0017-location-indicator-top-image-hit-testing.patch"
-   "$repo_root/patches/maplibre-native/0021-location-indicator-bearing-accuracy.patch"
-+  "$repo_root/patches/maplibre-native/0022-plugin-animated-layers.patch"
+@@ -71,6 +71,7 @@ mln_patches=(
+   "$repo_root/patches/maplibre-native/0024-render-update-publication.patch"
+   "$repo_root/patches/maplibre-native/0025-vertex-buffer-upload-timestamps.patch"
+   "$repo_root/patches/maplibre-native/0026-empty-symbol-placement.patch"
++  "$repo_root/patches/maplibre-native/0027-plugin-animated-layers.patch"
  )
  
  # The patches overlap, so no single patch reverses cleanly on its own once the
-diff --git a/patches/maplibre-native/0022-plugin-animated-layers.patch b/patches/maplibre-native/0022-plugin-animated-layers.patch
+diff --git a/patches/maplibre-native/0027-plugin-animated-layers.patch b/patches/maplibre-native/0027-plugin-animated-layers.patch
 new file mode 100644
-index 0000000..84de346
+index 0000000..7ce63b9
 --- /dev/null
-+++ b/patches/maplibre-native/0022-plugin-animated-layers.patch
++++ b/patches/maplibre-native/0027-plugin-animated-layers.patch
 @@ -0,0 +1,111 @@
 +diff --git a/include/mln/plugin/plugin_api.h b/include/mln/plugin/plugin_api.h
-+index ed11e95e4e3..7fe5fee371c 100644
++index 212aade3d2ca0c553dab6e6d4da1d6884b073bd3..1af44a33a8137b9a0659d94d0ec553e6595a4e07 100644
 +--- a/include/mln/plugin/plugin_api.h
 ++++ b/include/mln/plugin/plugin_api.h
-+@@ -423,6 +423,16 @@ typedef float (*mln_plugin_query_radius_fn)(const mln_plugin_property_statistics
++@@ -426,6 +426,16 @@ typedef float (*mln_plugin_query_radius_fn)(const mln_plugin_property_statistics
 +                                             const mln_plugin_property_value_v1* camera_properties,
 +                                             size_t camera_property_count);
 + 
@@ -55,40 +54,40 @@ index 0000000..84de346
 + typedef struct mln_plugin_layer_type_v1 {
 +     uint32_t struct_size;
 +     mln_plugin_string layer_type;
-+@@ -439,6 +449,7 @@ typedef struct mln_plugin_layer_type_v1 {
-+     mln_plugin_query_feature_fn query_feature;
-+     mln_plugin_update_uniform_block_fn update_uniform_block;
-+     mln_plugin_query_radius_fn get_query_radius;
++@@ -460,6 +470,7 @@ typedef struct mln_plugin_layer_type_v1 {
++      * non-pixel-snapped, near-clipped projection.
++      */
++     uint8_t enable_near_clipped_matrix;
 ++    mln_plugin_should_animate_fn should_animate;
 + } mln_plugin_layer_type_v1;
 + 
 + typedef struct mln_plugin_descriptor_v1 {
 +diff --git a/src/mln/plugin/plugin_registry.cpp b/src/mln/plugin/plugin_registry.cpp
-+index 6bfb7313b62..9c53679bc92 100644
++index f9902752f1c20f1cedc6e651b324fabf1b6cc81d..6dec93fb5a967e6046654ad53ebeae91a7e27db6 100644
 +--- a/src/mln/plugin/plugin_registry.cpp
 ++++ b/src/mln/plugin/plugin_registry.cpp
-+@@ -459,6 +459,7 @@ mln_plugin_status PluginRegistry::registerPlugin(const mln_plugin_descriptor_v1&
-+         copiedLayerType.queryFeature = layerType.query_feature;
-+         copiedLayerType.queryRadius = layerType.get_query_radius;
++@@ -461,6 +461,7 @@ mln_plugin_status PluginRegistry::registerPlugin(const mln_plugin_descriptor_v1&
 +         copiedLayerType.updateUniformBlock = layerType.update_uniform_block;
++         copiedLayerType.enableStencilOverlapDedup = layerType.enable_stencil_overlap_dedup != 0;
++         copiedLayerType.enableNearClippedMatrix = layerType.enable_near_clipped_matrix != 0;
 ++        copiedLayerType.shouldAnimate = layerType.should_animate;
 +         if (!appendShaders(pluginID,
 +                            layerType.shaders,
 +                            layerType.shader_count,
 +diff --git a/src/mln/plugin/plugin_registry.hpp b/src/mln/plugin/plugin_registry.hpp
-+index c795c96a6ea..12b80907cfc 100644
++index 64765c5d6bb440c99138031fe6da943f1670759c..8ef294fca1e4b5c4af905bcd4169b6f56629f431 100644
 +--- a/src/mln/plugin/plugin_registry.hpp
 ++++ b/src/mln/plugin/plugin_registry.hpp
-+@@ -89,6 +89,7 @@ struct LayerType {
-+     mln_plugin_query_feature_fn queryFeature = nullptr;
-+     mln_plugin_query_radius_fn queryRadius = nullptr;
++@@ -91,6 +91,7 @@ struct LayerType {
 +     mln_plugin_update_uniform_block_fn updateUniformBlock = nullptr;
++     bool enableStencilOverlapDedup = false;
++     bool enableNearClippedMatrix = false;
 ++    mln_plugin_should_animate_fn shouldAnimate = nullptr;
 +     bool operator==(const LayerType&) const = default;
 + 
 +     const PropertyDefinition* findProperty(const std::string& name) const;
 +diff --git a/src/mln/renderer/layers/render_plugin_style_layer.cpp b/src/mln/renderer/layers/render_plugin_style_layer.cpp
-+index 69d74b429c7..b6e4161ab39 100644
++index fb2cccf986937c1aba04c35145ca4167b8f9ad92..f4860bc2315b692277be484211f9c749a4caca45 100644
 +--- a/src/mln/renderer/layers/render_plugin_style_layer.cpp
 ++++ b/src/mln/renderer/layers/render_plugin_style_layer.cpp
 +@@ -99,6 +99,27 @@ void RenderPluginStyleLayer::evaluate(const PropertyEvaluationParameters& parame
@@ -133,7 +132,7 @@ index 0000000..84de346
 + 
 + void RenderPluginStyleLayer::layerChanged(const TransitionParameters&,
 +diff --git a/src/mln/renderer/layers/render_plugin_style_layer.hpp b/src/mln/renderer/layers/render_plugin_style_layer.hpp
-+index e6ba914245a..52d79447b6e 100644
++index e6ba914245ae66b2a2e57533288dd2bf5e4b0f99..52d79447b6ee08d2fed719c06528e545bc9d44b1 100644
 +--- a/src/mln/renderer/layers/render_plugin_style_layer.hpp
 ++++ b/src/mln/renderer/layers/render_plugin_style_layer.hpp
 +@@ -41,6 +41,8 @@ private:
@@ -146,18 +145,20 @@ index 0000000..84de346
 + 
 + } // namespace mln
 diff --git a/patches/maplibre-native/README.md b/patches/maplibre-native/README.md
-index 79efb0c..82b9f03 100644
+index ff75d6c..f27fc57 100644
 --- a/patches/maplibre-native/README.md
 +++ b/patches/maplibre-native/README.md
-@@ -119,6 +119,12 @@ fixtures with their binary reference images. Upstream:
- [maplibre-native#4644](https://github.com/maplibre/maplibre-native/pull/4644),
- at commit `02d9a4b2ccb4f3d15cdca438fd08ea6fa2cd530b`.
+@@ -139,6 +139,14 @@ regressions cover repeated background-only frames, paint transitions, and symbol
+ removal and reappearance within the placement update interval. See
+ [issue #735](https://github.com/maplibre/maplibre-native-ffi/issues/735).
  
-+`0022-plugin-animated-layers.patch` adds an optional `should_animate` callback
++`0027-plugin-animated-layers.patch` adds an optional `should_animate` callback
 +to the plugin layer ABI. A layer whose callback returns nonzero counts as
 +animating during evaluation, so continuous-mode maps report needs-repaint on
 +every rendered frame while the animation is on. Upstream:
-+[maplibre-native#4654](https://github.com/maplibre/maplibre-native/pull/4654).
++[maplibre-native#4654](https://github.com/maplibre/maplibre-native/pull/4654),
++merged as `3db2ced57652d0329fe2703148bc10dc5eb32f8d` on 2026-09-24. Drop
++this backport when the Native pin includes that commit.
 +
  Each patch is the squashed diff of its upstream branch, applied on top of the
  patches before it, so a patch that adds a test next to an earlier patch's test

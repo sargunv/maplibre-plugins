@@ -286,19 +286,11 @@ toward those ceilings as the zoom rises. Line particles flow along their own
 segment (azimuth 0 follows the line's drawing direction), so a river bends its
 flow.
 
-### The GL attribute ladder
+### Native shader attributes
 
-The four data-driven properties of `particle-features` (color, size, density,
-shape) reach the shader as vertex attributes. An upstream OpenGL host maps each
-active attribute by its linked location used as an index into its list of
-non-uniform attributes, so the generated GL source declares each data-driven
-attribute with a literal location that depends on which of the earlier ones are
-data-driven: a compacted `#if` ladder, which puts every attribute at its index.
-Patch `0008` makes the host match attributes by name instead, and the ladder's
-locations are then just explicit locations, so the same source is correct with
-or without it. Metal and Vulkan use the declared locations. A comptime flag
-(`gl_location_ladder` in `native/src/shaders.zig`) switches OpenGL to the
-declared locations too, for when every host carries `0008`.
+Patch `0007` makes OpenGL match active attributes by name. All three native
+backends use the declared attribute locations; uniform-delivered properties
+leave gaps in those locations.
 
 ## Paint properties
 
@@ -383,16 +375,15 @@ the property's default.
 
 From `patches/maplibre-native-ffi/` this plugin needs:
 
-| Patch                                | `particle-emitter` | `particle-features` | Used for                                                                                                                                                                    |
-| ------------------------------------ | ------------------ | ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `0001` plugin animated layers        | ✓                  | ✓                   | `should_animate` keeps the map repainting (always 1, see Limits)                                                                                                            |
-| `0002` source-free plugin layers     | ✓                  | ✓ (library)         | `build_frame` and the DOUBLE2 `emitter-position`. Both types live in one descriptor, so a host without `0002` rejects the whole library.                                    |
-| `0003` premultiplied default colors  | ✓                  | ✓                   | color defaults arrive premultiplied like evaluated colors                                                                                                                   |
-| `0004` rotation properties           | –                  | –                   | not used: azimuths are float2 components, which transition linearly                                                                                                         |
-| `0005` frame queries                 | –                  | –                   | not used: particles are not hit-testable                                                                                                                                    |
-| `0006` OpenGL uniform blocks ≥ 8 KiB | –                  | –                   | not needed: the emitter's block is 4032 bytes and the features block smaller, below OpenGL's 8 KiB page (and Metal's 4 KiB `setVertexBytes` limit); keep them there         |
-| `0007` plugin static textures        | –                  | –                   | not used: the shapes are procedural. The library builds against the header with the texture fields and leaves them zero.                                                    |
-| `0008` OpenGL attributes by name     | –                  | –                   | not required: the GL location ladder (see How it works) puts the data-driven attributes where a host without `0008` looks for them, and a host with it matches them by name |
+| Patch                                | `particle-emitter` | `particle-features` | Used for                                                                                                                                                            |
+| ------------------------------------ | ------------------ | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `0001` plugin animated layers        | ✓                  | ✓                   | `should_animate` keeps the map repainting (always 1, see Limits)                                                                                                    |
+| `0002` source-free plugin layers     | ✓                  | ✓ (library)         | `build_frame` and the DOUBLE2 `emitter-position`. Both types live in one descriptor, so a host without `0002` rejects the whole library.                            |
+| `0003` rotation properties           | –                  | –                   | not used: azimuths are float2 components, which transition linearly                                                                                                 |
+| `0004` frame queries                 | –                  | –                   | not used: particles are not hit-testable                                                                                                                            |
+| `0005` OpenGL uniform blocks ≥ 8 KiB | –                  | –                   | not needed: the emitter's block is 4032 bytes and the features block smaller, below OpenGL's 8 KiB page (and Metal's 4 KiB `setVertexBytes` limit); keep them there |
+| `0006` plugin static textures        | –                  | –                   | not used: the shapes are procedural. The library builds against the header with the texture fields and leaves them zero.                                            |
+| `0007` OpenGL attributes by name     | –                  | ✓                   | matches data-driven attributes by name when uniform properties leave gaps in the declared locations                                                                 |
 
 Like the other plugins, build the library against the plugin ABI header of the
 host it loads into, as the native viewer does (`-Dplugin-api-include-dir`): the
@@ -453,7 +444,7 @@ close it.
    vertex bytes, so about 0.04 ms per frame while nothing changes. _Fix:_ an
    "unchanged" flag or retained buffers.
 9. **No sprite textures, render targets or compute.** Procedural shapes only: no
-   sprite images, trails, bloom or rain distortion. Patch `0007` adds static
+   sprite images, trails, bloom or rain distortion. Patch `0006` adds static
    RGBA32F data textures read by exact texel, which suits lookup tables, not
    filtered sprites.
 10. **Fixed premultiplied-over blending.** Additive light comes only from alpha
@@ -484,11 +475,9 @@ close it.
     animate, so a hidden particle layer keeps the map repainting: remove the
     layer instead of hiding it. _Fix:_ set `styleDependencies`, and skip
     `should_animate` for layers that do not render.
-16. **OpenGL attribute mapping indexes the filtered list** (host bug,
-    `shader_program_gl.cpp:176`). Patch `0008` maps by name, but upstream hosts
-    do not yet, so data-driven properties on `particle-features` keep the
-    compacted location ladder, which works either way. _Fix:_ land `0008`
-    upstream, then drop the ladder.
+16. **OpenGL attributes require the patched host.** Patch `0007` matches active
+    attributes by name when uniform properties leave gaps in the declared
+    locations. Upstream hosts still index the filtered list by location.
 17. **Property types.** No arrays, ramps or a particle-age expression input, so
     curves over life are start/end pairs. FLOAT2 bounds and the enum membership
     of expression results are not validated (the shader clamps). DOUBLE2 cannot
@@ -524,10 +513,10 @@ close it.
     data).
 24. **`struct_size` versioning works only if hosts accept older sizes.** A host
     patch that grows a v1 descriptor struct and rejects the old `struct_size`
-    breaks every existing plugin binary. Patch `0007` grows
+    breaks every existing plugin binary. Patch `0006` grows
     `mln_plugin_shader_descriptor_v1` by its texture fields and marks them
     optional in the header, but the registry still requires `struct_size` of at
-    least its own size (`plugin_registry.cpp`), so a host with `0007` refuses a
+    least its own size (`plugin_registry.cpp`), so a host with `0006` refuses a
     library built against an older header ("plugin shader descriptor is
     malformed") until it is rebuilt. The plugin holds itself to the rule in the
     other direction: it refuses an output bucket too short for the fields it

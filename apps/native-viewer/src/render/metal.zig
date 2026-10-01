@@ -65,7 +65,7 @@ pub const MetalRenderTarget = struct {
 
     pub fn finishFrame(_: *MetalRenderTarget) !void {}
 
-    pub fn renderUpdate(self: *MetalRenderTarget) !bool {
+    pub fn renderUpdate(self: *MetalRenderTarget) !maplibre.RenderResult {
         return self.session.renderUpdate();
     }
 
