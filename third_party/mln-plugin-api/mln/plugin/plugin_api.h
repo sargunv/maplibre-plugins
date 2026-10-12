@@ -168,10 +168,7 @@ typedef enum mln_plugin_vertex_attribute_type {
     MLN_PLUGIN_VERTEX_UINT8_X4_NORMALIZED = 9
 } mln_plugin_vertex_attribute_type;
 
-/* Stable IDs are local to one registered plugin layer type. On OpenGL the host
- * matches active attributes to declared ones by name, so layout(location = N)
- * is optional there. Vulkan (layout(location = N)) and Metal
- * ([[attribute(N)]]) must declare every attribute at its location. */
+/* Stable IDs are local to one registered plugin layer type. */
 typedef struct mln_plugin_shader_attribute_v1 {
     uint32_t struct_size;
     uint32_t attribute_id;

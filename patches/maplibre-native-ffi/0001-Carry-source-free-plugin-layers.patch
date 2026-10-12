@@ -1,39 +1,35 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: maplibre-plugins <sync@localhost>
-Date: Wed, 30 Sep 2026 19:14:29 -0700
-Subject: [PATCH 1/6] Carry source-free plugin layers
+Date: Mon, 12 Oct 2026 02:35:44 -0700
+Subject: [PATCH 1/4] Carry source-free plugin layers
 
-Adds the source_free flag and build_frame callback to the plugin layer
-ABI: a layer with no style source receives its geometry from a per-frame
-callback with camera-evaluated paint values, the projection matrix, the
-camera-to-center distance, and mercator and destination helpers. Not yet
-proposed upstream.
+Per-frame geometry without a style source.
 
 Carried by maplibre-plugins until it lands upstream.
 ---
  .mise/bin/sync-submodules                     |   1 +
- .../0030-source-free-plugin-layers.patch      | 980 ++++++++++++++++++
- patches/maplibre-native/README.md             |  10 +
- 3 files changed, 991 insertions(+)
- create mode 100644 patches/maplibre-native/0030-source-free-plugin-layers.patch
+ .../0040-source-free-plugin-layers.patch      | 980 ++++++++++++++++++
+ patches/maplibre-native/README.md             |   2 +
+ 3 files changed, 983 insertions(+)
+ create mode 100644 patches/maplibre-native/0040-source-free-plugin-layers.patch
 
 diff --git a/.mise/bin/sync-submodules b/.mise/bin/sync-submodules
-index a6b81d8..8677fa1 100755
+index 8e11b1bb..514754a1 100755
 --- a/.mise/bin/sync-submodules
 +++ b/.mise/bin/sync-submodules
-@@ -73,6 +73,7 @@ mln_patches=(
-   "$repo_root/patches/maplibre-native/0027-line-hit-test-endpoint-offset.patch"
-   "$repo_root/patches/maplibre-native/0028-hit-test-camera-zoom.patch"
-   "$repo_root/patches/maplibre-native/0029-query-filter-overscaled-zoom.patch"
-+  "$repo_root/patches/maplibre-native/0030-source-free-plugin-layers.patch"
+@@ -81,6 +81,7 @@ mln_patches=(
+   "$repo_root/patches/maplibre-native/0037-platform-locale-expression-errors.patch"
+   "$repo_root/patches/maplibre-native/0038-apple-locale-expressions.patch"
+   "$repo_root/patches/maplibre-native/0039-color-ramp-global-state.patch"
++  "$repo_root/patches/maplibre-native/0040-source-free-plugin-layers.patch"
  )
  
  # The patches overlap, so no single patch reverses cleanly on its own once the
-diff --git a/patches/maplibre-native/0030-source-free-plugin-layers.patch b/patches/maplibre-native/0030-source-free-plugin-layers.patch
+diff --git a/patches/maplibre-native/0040-source-free-plugin-layers.patch b/patches/maplibre-native/0040-source-free-plugin-layers.patch
 new file mode 100644
-index 0000000..53cbb79
+index 00000000..53cbb795
 --- /dev/null
-+++ b/patches/maplibre-native/0030-source-free-plugin-layers.patch
++++ b/patches/maplibre-native/0040-source-free-plugin-layers.patch
 @@ -0,0 +1,980 @@
 +diff --git a/include/mln/plugin/plugin_api.h b/include/mln/plugin/plugin_api.h
 +index 83d15636a56c787d3c20b27644b78bc5e42ed307..2a4ecac20f74e694be21335377dd1b7d8150dfcb 100644
@@ -1016,23 +1012,12 @@ index 0000000..53cbb79
 +                                     Transitioning<PropertyValue<std::string>>>;
 +     TypedValue value;
 diff --git a/patches/maplibre-native/README.md b/patches/maplibre-native/README.md
-index 68267b7..ba61e14 100644
+index 76fcf59f..f0c9302e 100644
 --- a/patches/maplibre-native/README.md
 +++ b/patches/maplibre-native/README.md
-@@ -151,6 +151,16 @@ The Native regression covers symbols and circles at fractional and overzoomed
- camera zooms. Upstream:
- [maplibre-native#4704](https://github.com/maplibre/maplibre-native/pull/4704).
- 
-+`0030-source-free-plugin-layers.patch` adds an optional `source_free` flag and a
-+`build_frame` callback to the plugin layer ABI. A source-free layer takes no
-+source in the style, skips tile layout, and instead receives its geometry from
-+the callback on every rendered frame, drawing through the same shaders and
-+uniform tweaker as tile-driven layers. The frame context carries the
-+camera-evaluated paint values, the frame's projection matrix, the
-+camera-to-center distance, a mercator world projection, and a ground-offset
-+destination helper. This patch is local-only: it is not upstreamed, and no
-+upstream PR exists.
+@@ -226,3 +226,5 @@ every listed patch's paths, the sync prints the path first. A forced checkout
+ also removes an untracked file that sits where a new pin adds a tracked one, and
+ the sync removes a file that a listed patch adds before applying that patch
+ again.
 +
- Each patch is a squashed diff applied on top of the patches before it. Patch
- context and test placement follow the pinned source and earlier patches. The
- publication patch includes the transition setters for our bearing-accuracy
++`0040-source-free-plugin-layers.patch` Per-frame geometry without a style source. Carried by maplibre-plugins until it lands upstream.

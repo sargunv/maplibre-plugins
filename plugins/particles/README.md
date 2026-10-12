@@ -288,9 +288,9 @@ flow.
 
 ### Native shader attributes
 
-Patch `0006` makes OpenGL match active attributes by name. All three native
-backends use the declared attribute locations; uniform-delivered properties
-leave gaps in those locations.
+The FFI makes OpenGL match active attributes by name. All three native backends
+use the declared attribute locations; uniform-delivered properties leave gaps in
+those locations.
 
 ## Paint properties
 
@@ -375,14 +375,17 @@ the property's default.
 
 From `patches/maplibre-native-ffi/` this plugin needs:
 
-| Patch                                | `particle-emitter` | `particle-features` | Used for                                                                                                                                                            |
-| ------------------------------------ | ------------------ | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `0001` source-free plugin layers     | ✓                  | ✓ (library)         | `build_frame` and the DOUBLE2 `emitter-position`. Both types live in one descriptor, so a host without `0001` rejects the whole library.                            |
-| `0002` rotation properties           | –                  | –                   | not used: azimuths are float2 components, which transition linearly                                                                                                 |
-| `0003` frame queries                 | –                  | –                   | not used: particles are not hit-testable                                                                                                                            |
-| `0004` OpenGL uniform blocks ≥ 8 KiB | –                  | –                   | not needed: the emitter's block is 4032 bytes and the features block smaller, below OpenGL's 8 KiB page (and Metal's 4 KiB `setVertexBytes` limit); keep them there |
-| `0005` plugin static textures        | –                  | –                   | not used: the shapes are procedural. The library builds against the header with the texture fields and leaves them zero.                                            |
-| `0006` OpenGL attributes by name     | –                  | ✓                   | matches data-driven attributes by name when uniform properties leave gaps in the declared locations                                                                 |
+| Patch                            | `particle-emitter` | `particle-features` | Used for                                                                                                                                 |
+| -------------------------------- | ------------------ | ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `0001` source-free plugin layers | ✓                  | ✓ (library)         | `build_frame` and the DOUBLE2 `emitter-position`. Both types live in one descriptor, so a host without `0001` rejects the whole library. |
+| `0002` rotation properties       | –                  | –                   | not used: azimuths are float2 components, which transition linearly                                                                      |
+| `0003` frame queries             | –                  | –                   | not used: particles are not hit-testable                                                                                                 |
+| `0004` plugin static textures    | –                  | –                   | not used: the shapes are procedural. The library builds against the header with the texture fields and leaves them zero.                 |
+
+The FFI itself carries OpenGL attribute-name matching, required by
+`particle-features` when uniform properties leave gaps in declared locations.
+The emitter's uniform block is 4032 bytes and the features block is smaller;
+keep them below Metal's 4 KiB `setVertexBytes` limit.
 
 Like the other plugins, build the library against the plugin ABI header of the
 host it loads into, as the native viewer does (`-Dplugin-api-include-dir`): the
@@ -443,7 +446,7 @@ close it.
    vertex bytes, so about 0.04 ms per frame while nothing changes. _Fix:_ an
    "unchanged" flag or retained buffers.
 9. **No sprite textures, render targets or compute.** Procedural shapes only: no
-   sprite images, trails, bloom or rain distortion. Patch `0005` adds static
+   sprite images, trails, bloom or rain distortion. Patch `0004` adds static
    RGBA32F data textures read by exact texel, which suits lookup tables, not
    filtered sprites.
 10. **Fixed premultiplied-over blending.** Additive light comes only from alpha
@@ -473,12 +476,13 @@ close it.
     overscale in the layout context, and global state in the filter context.
 14. **The uniform context lacks zoom, latitude and meters per pixel.** No world
     space on `particle-features`.
-15. **`should_animate` gets no visibility, zoom range or expression information,
-    and `styleDependencies` is never set** (host bug). Both types always
-    animate, so a hidden particle layer keeps the map repainting: remove the
-    layer instead of hiding it. _Fix:_ set `styleDependencies`, and skip
-    `should_animate` for layers that do not render.
-16. **OpenGL attributes require the patched host.** Patch `0006` matches active
+15. **`should_animate` gets no visibility, zoom range or expression
+    information.** Both types always animate, so a hidden particle layer keeps
+    the map repainting: remove the layer instead of hiding it. Native now sets
+    `styleDependencies` and reevaluates camera paint on zoom changes
+    ([#4721](https://github.com/maplibre/maplibre-native/pull/4721)). _Fix:_
+    skip `should_animate` for layers that do not render.
+16. **OpenGL attributes require the patched host.** The FFI matches active
     attributes by name when uniform properties leave gaps in the declared
     locations. Upstream hosts still index the filtered list by location.
 17. **Property types.** No arrays, ramps or a particle-age expression input, so
@@ -516,10 +520,10 @@ close it.
     data).
 24. **`struct_size` versioning works only if hosts accept older sizes.** A host
     patch that grows a v1 descriptor struct and rejects the old `struct_size`
-    breaks every existing plugin binary. Patch `0005` grows
+    breaks every existing plugin binary. Patch `0004` grows
     `mln_plugin_shader_descriptor_v1` by its texture fields and marks them
     optional in the header, but the registry still requires `struct_size` of at
-    least its own size (`plugin_registry.cpp`), so a host with `0005` refuses a
+    least its own size (`plugin_registry.cpp`), so a host with `0004` refuses a
     library built against an older header ("plugin shader descriptor is
     malformed") until it is rebuilt. The plugin holds itself to the rule in the
     other direction: it refuses an output bucket too short for the fields it

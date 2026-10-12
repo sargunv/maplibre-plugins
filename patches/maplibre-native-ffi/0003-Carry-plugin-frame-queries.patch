@@ -1,37 +1,35 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: maplibre-plugins <sync@localhost>
-Date: Wed, 30 Sep 2026 19:14:29 -0700
-Subject: [PATCH 3/6] Carry plugin frame queries
+Date: Mon, 12 Oct 2026 02:35:45 -0700
+Subject: [PATCH 3/4] Carry plugin frame queries
 
-Lets a source-free plugin layer return GeoJSON features with world-pixel
-hit envelopes each frame, indexed through the native dynamic feature index
-so rendered-feature queries hit them. Not yet proposed upstream.
+Hit envelopes for source-free rendered features.
 
 Carried by maplibre-plugins until it lands upstream.
 ---
  .mise/bin/sync-submodules                     |   1 +
- .../0032-plugin-frame-queries.patch           | 176 ++++++++++++++++++
- patches/maplibre-native/README.md             |   5 +
- 3 files changed, 182 insertions(+)
- create mode 100644 patches/maplibre-native/0032-plugin-frame-queries.patch
+ .../0042-plugin-frame-queries.patch           | 176 ++++++++++++++++++
+ patches/maplibre-native/README.md             |   2 +
+ 3 files changed, 179 insertions(+)
+ create mode 100644 patches/maplibre-native/0042-plugin-frame-queries.patch
 
 diff --git a/.mise/bin/sync-submodules b/.mise/bin/sync-submodules
-index aa42134..607d326 100755
+index 33fb2a84..3c42977e 100755
 --- a/.mise/bin/sync-submodules
 +++ b/.mise/bin/sync-submodules
-@@ -75,6 +75,7 @@ mln_patches=(
-   "$repo_root/patches/maplibre-native/0029-query-filter-overscaled-zoom.patch"
-   "$repo_root/patches/maplibre-native/0030-source-free-plugin-layers.patch"
-   "$repo_root/patches/maplibre-native/0031-plugin-rotation-properties.patch"
-+  "$repo_root/patches/maplibre-native/0032-plugin-frame-queries.patch"
+@@ -83,6 +83,7 @@ mln_patches=(
+   "$repo_root/patches/maplibre-native/0039-color-ramp-global-state.patch"
+   "$repo_root/patches/maplibre-native/0040-source-free-plugin-layers.patch"
+   "$repo_root/patches/maplibre-native/0041-plugin-rotation-properties.patch"
++  "$repo_root/patches/maplibre-native/0042-plugin-frame-queries.patch"
  )
  
  # The patches overlap, so no single patch reverses cleanly on its own once the
-diff --git a/patches/maplibre-native/0032-plugin-frame-queries.patch b/patches/maplibre-native/0032-plugin-frame-queries.patch
+diff --git a/patches/maplibre-native/0042-plugin-frame-queries.patch b/patches/maplibre-native/0042-plugin-frame-queries.patch
 new file mode 100644
-index 0000000..d80c812
+index 00000000..d80c8122
 --- /dev/null
-+++ b/patches/maplibre-native/0032-plugin-frame-queries.patch
++++ b/patches/maplibre-native/0042-plugin-frame-queries.patch
 @@ -0,0 +1,176 @@
 +diff --git a/include/mln/plugin/plugin_api.h b/include/mln/plugin/plugin_api.h
 +index 060130e05f08be4bcc1143f71ba3576d1e1d8b1d..615691a933c19387fa7658184f68c2a55b53abb2 100644
@@ -210,18 +208,12 @@ index 0000000..d80c812
 + 
 + } // namespace mln
 diff --git a/patches/maplibre-native/README.md b/patches/maplibre-native/README.md
-index ad93192..c74b5d3 100644
+index 6dcb12af..f0c76df7 100644
 --- a/patches/maplibre-native/README.md
 +++ b/patches/maplibre-native/README.md
-@@ -165,6 +165,11 @@ upstream PR exists.
- plugin ABI. Rotation transitions follow the shortest arc. This patch is
- local-only: it is not upstreamed, and no upstream PR exists.
+@@ -230,3 +230,5 @@ again.
+ `0040-source-free-plugin-layers.patch` Per-frame geometry without a style source. Carried by maplibre-plugins until it lands upstream.
  
-+`0032-plugin-frame-queries.patch` adds source-free feature snapshots to the
-+plugin ABI. Frame queries use the native dynamic feature index and copy the
-+plugin's GeoJSON and world-pixel envelopes. This patch is local-only: it is
-+not upstreamed, and no upstream PR exists.
+ `0041-plugin-rotation-properties.patch` Shortest-arc rotation transitions. Carried by maplibre-plugins until it lands upstream.
 +
- Each patch is a squashed diff applied on top of the patches before it. Patch
- context and test placement follow the pinned source and earlier patches. The
- publication patch includes the transition setters for our bearing-accuracy
++`0042-plugin-frame-queries.patch` Hit envelopes for source-free rendered features. Carried by maplibre-plugins until it lands upstream.

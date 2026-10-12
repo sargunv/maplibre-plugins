@@ -58,9 +58,8 @@ maplibre-gl-js implementation, plus apps to preview them live.
   and unit-test without the FFI build (see its README).
 - `patches/maplibre-native-ffi/` — extensions carried here until the Native pin
   includes them: source-free layers, rotation properties and frame queries
-  (`0001`–`0003`), an OpenGL uniform block fix (`0004`), static data textures
-  for plugin shaders (`0005`), and plugin vertex attributes matched by name on
-  OpenGL (`0006`).
+  (`0001`–`0003`) and static data textures for plugin shaders (`0004`). The FFI
+  itself carries the OpenGL large uniform block and attribute-name fixes.
 - `scripts/` — repo maintenance scripts (`sync-ffi`, `sync-shaders.mjs`).
 
 ## Dev tool commands
