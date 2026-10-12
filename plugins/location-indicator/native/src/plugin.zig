@@ -628,3 +628,89 @@ test "tilt displacement lifts the puck and arrow and lowers the shadow" {
     try std.testing.expectEqual(@as(c.mln_plugin_status, c.MLN_PLUGIN_STATUS_OK), buildFrame(&ctx, &bucket));
     try std.testing.expectApproxEqAbs(@as(f32, 2 * 1.15 * 10 * 0.01 * 3), scratch.vertices[1].position[0] - scratch.vertices[0].position[0], 0.000001);
 }
+
+// Real native camera/destination references shared with geometry.test.ts.
+// Destination samples are captured from the host's CheapRuler helper. This
+// test checks how build_frame consumes those callbacks without linking FFI.
+const GeographicCase = struct {
+    name: []const u8,
+    paint: struct {
+        position: [2]f64,
+        @"accuracy-radius": f64,
+        @"accuracy-border-width": f64,
+        @"bearing-visible": f64,
+        bearing: f64,
+        @"shadow-radius": f64,
+        @"tilt-displacement": f64,
+    },
+    frame: struct {
+        center: [2]f64,
+        zoom: f64,
+        pitch: f64,
+        bearing: f64,
+        pixelRatio: f32,
+        viewport: [2]u32,
+        cameraToCenterDistance: f32,
+        matrix: [16]f64,
+    },
+    boundary: []const struct { latLng: [2]f64, world: [2]f64 },
+    vertices: []const [2]f64,
+    queryPolygons: []const []const [2]f64,
+};
+fn geographicProject(context: [*c]const c.mln_plugin_frame_context_v1, lat: f64, lon: f64, x: [*c]f64, y: [*c]f64) callconv(.c) void {
+    const case: *const GeographicCase = @ptrCast(@alignCast(context.*.project_state));
+    const world_size = 512 * @exp2(case.frame.zoom);
+    const unwrapped = lon + 360 * @floor((case.frame.center[1] - lon) / 360 + 0.5);
+    x[0] = (unwrapped + 180) / 360 * world_size;
+    const phi = lat * std.math.pi / 180;
+    y[0] = (0.5 - @log(@tan(std.math.pi / 4.0 + phi / 2.0)) / (2 * std.math.pi)) * world_size;
+}
+fn geographicDestination(context: [*c]const c.mln_plugin_frame_context_v1, lat: f64, lon: f64, meters: f64, bearing: f64, out_lat: [*c]f64, out_lon: [*c]f64) callconv(.c) void {
+    const case: *const GeographicCase = @ptrCast(@alignCast(context.*.project_state));
+    std.debug.assert(lat == case.paint.position[0] and lon == case.paint.position[1]);
+    std.debug.assert(@abs(meters - case.paint.@"accuracy-radius" * 1.15) < 1e-9);
+    const sample = case.boundary[@intFromFloat(@round(bearing / 5))];
+    out_lat[0] = sample.latLng[0];
+    out_lon[0] = sample.latLng[1];
+}
+test "native geographic references: screen geometry and frame hit envelopes" {
+    var parsed = try std.json.parseFromSlice(struct { cases: []const GeographicCase }, std.testing.allocator, build_options.geographic_fixture, .{});
+    defer parsed.deinit();
+    for (parsed.value.cases) |*case| {
+        errdefer std.debug.print("geographic case: {s}\n", .{case.name});
+        var props = testProperties();
+        props[0].value.data.double2_value = .{ .x = case.paint.position[0], .y = case.paint.position[1] };
+        inline for (@typeInfo(@TypeOf(case.paint)).@"struct".fields) |field| {
+            if (comptime !std.mem.eql(u8, field.name, "position")) testSet(&props, field.name, @field(case.paint, field.name));
+        }
+        var ctx = testContext(&props);
+        ctx.project_state = case;
+        ctx.zoom = case.frame.zoom;
+        ctx.pitch = case.frame.pitch;
+        ctx.bearing = case.frame.bearing;
+        ctx.pixel_ratio = case.frame.pixelRatio;
+        ctx.viewport_width = case.frame.viewport[0];
+        ctx.viewport_height = case.frame.viewport[1];
+        ctx.camera_to_center_distance = case.frame.cameraToCenterDistance;
+        ctx.proj_matrix = case.frame.matrix;
+        ctx.project_mercator = geographicProject;
+        ctx.destination = geographicDestination;
+        var bucket = std.mem.zeroes(c.mln_plugin_bucket_v1);
+        try std.testing.expectEqual(@as(c.mln_plugin_status, c.MLN_PLUGIN_STATUS_OK), buildFrame(&ctx, &bucket));
+        try std.testing.expectEqual(case.vertices.len, scratch.vertex_count);
+        for (case.vertices, scratch.vertices[0..scratch.vertex_count]) |expected, vertex| {
+            const w: f64 = vertex.position[3];
+            const x = (1 + @as(f64, vertex.position[0]) / w) * 400;
+            const y = (1 - @as(f64, vertex.position[1]) / w) * 300;
+            try std.testing.expectApproxEqAbs(expected[0], x, 0.002);
+            try std.testing.expectApproxEqAbs(expected[1], y, 0.002);
+        }
+        try std.testing.expectEqual(case.queryPolygons.len, scratch.query_count);
+        for (case.queryPolygons, scratch.query_points[0..scratch.query_count]) |expected, points| {
+            for (expected, points) |point, actual| {
+                try std.testing.expectApproxEqAbs(point[0], actual.x, 0.00001);
+                try std.testing.expectApproxEqAbs(point[1], actual.y, 0.00001);
+            }
+        }
+    }
+}

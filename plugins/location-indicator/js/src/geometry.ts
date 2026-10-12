@@ -352,24 +352,27 @@ export function containsPoint(
   return inside;
 }
 
-const EARTH_RADIUS_METERS = 6371008.8;
-
-/** Spherical destination, matching the host helper the native plugin receives. */
+/** WGS84 local destinations, matching MapLibre Native's CheapRuler helper.
+ * The ruler uses curvature at the starting latitude, suitable for accuracy
+ * circles at city scale. Keep longitude unwrapped across the antimeridian. */
 export function destination(
   latitude: number,
   longitude: number,
   distanceMeters: number,
   bearingDegrees: number,
 ): readonly [number, number] {
-  const d = distanceMeters / EARTH_RADIUS_METERS;
-  const phi = (latitude * Math.PI) / 180;
-  const theta = (bearingDegrees * Math.PI) / 180;
-  const lat = Math.asin(
-    Math.sin(phi) * Math.cos(d) + Math.cos(phi) * Math.sin(d) * Math.cos(theta),
-  );
-  const dlon = Math.atan2(
-    Math.sin(theta) * Math.sin(d) * Math.cos(phi),
-    Math.cos(d) - Math.sin(phi) * Math.sin(lat),
-  );
-  return [(lat * 180) / Math.PI, longitude + (dlon * 180) / Math.PI];
+  const radians = Math.PI / 180;
+  const flattening = 1 / 298.257223563;
+  const eccentricitySquared = flattening * (2 - flattening);
+  const cosLatitude = Math.cos(latitude * radians);
+  const w2 = 1 / (1 - eccentricitySquared * (1 - cosLatitude * cosLatitude));
+  const w = Math.sqrt(w2);
+  const metersPerDegree = radians * 6378137;
+  const longitudeScale = metersPerDegree * w * cosLatitude;
+  const latitudeScale = metersPerDegree * w * w2 * (1 - eccentricitySquared);
+  const angle = bearingDegrees * radians;
+  return [
+    latitude + (Math.cos(angle) * distanceMeters) / latitudeScale,
+    longitude + (Math.sin(angle) * distanceMeters) / longitudeScale,
+  ];
 }

@@ -36,7 +36,10 @@ accuracy circle and sector stay on the ground.
 
 Property changes animate over the transition duration (300 ms by default).
 Bearings take the shortest arc, so 350 to 10 degrees animates through north. Use
-continuous longitudes when animating across the antimeridian.
+continuous longitudes when animating across the antimeridian. Accuracy-circle
+boundaries use WGS84 CheapRuler destinations at the starting latitude in both
+implementations, matching the native host; this is a local approximation for
+city-scale distances.
 
 The full property table, with types, defaults, and bounds, is
 [spec.json](spec.json). Sizes are logical pixels unless noted; a zero radius
@@ -95,3 +98,24 @@ Both implementations are tested against `spec.json` and share
 `shaders/puck.glsl`. Preview the web layer with `mise run web`, and the native
 one with `mise run //apps/native-viewer:run location-indicator`, which
 re-applies `examples/layer.json` whenever you save it.
+
+Shared geographic cases in `fixtures/geographic.json` exercise real Mercator
+cameras at equatorial, mid and high latitudes, accuracy radii from 1 mm to 5 km,
+pitch up to 70°, camera bearing, pixel ratios 1/1.5/2, and antimeridian
+crossings. The references come from MapLibre Native's `TransformState`, its
+CheapRuler helper and the built plugin. Both JS and Zig compare screen vertices
+and hit envelopes against them; JS also checks the geographic boundary
+destinations. Screen comparisons allow 0.002 logical pixels for native f32 clip
+coordinates.
+
+After `mise run ffi:build` on macOS Metal, regenerate or render the cases with:
+
+```bash
+mise run //plugins/location-indicator/native:fixtures
+mise run //plugins/location-indicator/native:render-test
+```
+
+The render test checks actual Metal texture pixels in the puck and accuracy
+circle, and rendered-feature hit/miss queries through the FFI. Normal JS/Zig
+unit tests use the checked-in references without a native host or GPU. Globe and
+terrain are outside these Mercator accuracy-parity cases.

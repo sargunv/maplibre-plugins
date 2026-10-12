@@ -2,6 +2,8 @@
 // the same flat 100 000 m/degree test projection at 100 world pixels per
 // degree, so the two implementations are checked against the same numbers.
 
+import { readFileSync } from "node:fs";
+
 import { describe, expect, it } from "vite-plus/test";
 
 import {
@@ -12,6 +14,7 @@ import {
   FLOATS_PER_VERTEX,
   type FrameContext,
   type FrameGeometry,
+  type Point,
 } from "./geometry.ts";
 import { compile, type EvaluatedPaint } from "./paint.ts";
 import { type PaintName, paintNames, paintSpec } from "./spec.ts";
@@ -205,14 +208,129 @@ describe("buildFrame", () => {
   });
 });
 
-describe("destination", () => {
-  it("moves along a bearing on the sphere", () => {
-    const [lat, lon] = destination(0, 0, 111_195, 90);
-    expect(lat).toBeCloseTo(0, 6);
-    expect(lon).toBeCloseTo(1, 3);
-    const [lat2] = destination(10, 20, 111_195, 0);
-    expect(lat2).toBeCloseTo(11, 3);
-  });
+interface GeographicCase {
+  name: string;
+  paint: Partial<Record<PaintName, unknown>> & {
+    position: [number, number];
+    "accuracy-radius": number;
+  };
+  frame: {
+    center: [number, number];
+    zoom: number;
+    pitch: number;
+    bearing: number;
+    pixelRatio: number;
+    viewport: [number, number];
+    cameraToCenterDistance: number;
+    matrix: number[];
+  };
+  boundary: Array<{ latLng: Point; world: Point }>;
+  vertices: Point[];
+  queryPolygons: Point[][];
+}
+const geographicCases = (
+  JSON.parse(
+    readFileSync(
+      new URL("../../fixtures/geographic.json", import.meta.url),
+      "utf8",
+    ),
+  ) as { cases: GeographicCase[] }
+).cases;
+
+function geographicContext(testCase: GeographicCase): FrameContext {
+  const { frame } = testCase;
+  const worldSize = 512 * 2 ** frame.zoom;
+  return {
+    paint: defaults(testCase.paint),
+    pitch: frame.pitch,
+    bearing: (-frame.bearing * 180) / Math.PI,
+    cameraToCenterDistance: frame.cameraToCenterDistance,
+    pixelRatio: frame.pixelRatio,
+    destination,
+    projectMercator: (lat, lon) => {
+      const unwrapped = lon + 360 * Math.round((frame.center[1] - lon) / 360);
+      const phi = (lat * Math.PI) / 180;
+      return [
+        ((unwrapped + 180) / 360) * worldSize,
+        (0.5 - Math.log(Math.tan(Math.PI / 4 + phi / 2)) / (2 * Math.PI)) *
+          worldSize,
+      ];
+    },
+    clipW: (x, y) =>
+      frame.matrix[3]! * x + frame.matrix[7]! * y + frame.matrix[15]!,
+  };
+}
+
+function screen(matrix: number[], viewport: Point, world: Point): Point {
+  const [x, y] = world;
+  const w = matrix[3]! * x + matrix[7]! * y + matrix[15]!;
+  return [
+    ((1 + (matrix[0]! * x + matrix[4]! * y + matrix[12]!) / w) * viewport[0]) /
+      2,
+    ((1 - (matrix[1]! * x + matrix[5]! * y + matrix[13]!) / w) * viewport[1]) /
+      2,
+  ];
+}
+
+// These references come from native TransformState/CheapRuler and the built
+// Zig plugin, not this module. They cover real geographic coordinates/cameras.
+describe("native geographic reference frames", () => {
+  it.each(geographicCases)(
+    "$name: accuracy destinations, screen geometry and hit envelopes",
+    (testCase) => {
+      const ctx = geographicContext(testCase);
+      for (let i = 0; i < testCase.boundary.length; i++) {
+        const [lat, lon] = destination(
+          ...testCase.paint.position,
+          testCase.paint["accuracy-radius"] * 1.15,
+          i * 5,
+        );
+        const reference = testCase.boundary[i]!;
+        expect(lat).toBeCloseTo(reference.latLng[0], 10);
+        expect(lon).toBeCloseTo(reference.latLng[1], 10);
+        const world = ctx.projectMercator(lat, lon);
+        expect(world[0]).toBeCloseTo(reference.world[0], 5);
+        expect(world[1]).toBeCloseTo(reference.world[1], 5);
+      }
+      const geometry = buildFrame(ctx);
+      expect(geometry.vertexCount).toBe(testCase.vertices.length);
+      for (let i = 0; i < geometry.vertexCount; i++) {
+        const actual = screen(
+          testCase.frame.matrix,
+          testCase.frame.viewport,
+          position(geometry, i),
+        );
+        // Native stores clip coordinates as f32, JS keeps world coordinates f64.
+        expect(Math.abs(actual[0] - testCase.vertices[i]![0])).toBeLessThan(
+          0.002,
+        );
+        expect(Math.abs(actual[1] - testCase.vertices[i]![1])).toBeLessThan(
+          0.002,
+        );
+      }
+      expect(geometry.queryPolygons).toHaveLength(
+        testCase.queryPolygons.length,
+      );
+      for (let p = 0; p < geometry.queryPolygons.length; p++) {
+        const polygon = geometry.queryPolygons[p]!;
+        const reference = testCase.queryPolygons[p]!;
+        for (let i = 0; i < polygon.length; i++) {
+          expect(polygon[i]![0]).toBeCloseTo(reference[i]![0], 5);
+          expect(polygon[i]![1]).toBeCloseTo(reference[i]![1], 5);
+        }
+        const center: Point = [
+          (reference[0]![0] + reference[2]![0]) / 2,
+          (reference[0]![1] + reference[2]![1]) / 2,
+        ];
+        expect(containsPoint(polygon, center)).toBe(true);
+        const outside: Point = [
+          center[0] + 3 * (reference[0]![0] - center[0]),
+          center[1] + 3 * (reference[0]![1] - center[1]),
+        ];
+        expect(containsPoint(polygon, outside)).toBe(false);
+      }
+    },
+  );
 });
 
 function paintOf(paint: EvaluatedPaint): Partial<Record<PaintName, unknown>> {
