@@ -536,6 +536,45 @@ Considered and rejected: rebuilding every particle's clip position on the CPU
 `should_animate` paint stash (no layer identity), deriving meters from the tile
 matrix (limit 14), and JS world copies (breaks parity with native).
 
+### Upstream API work to watch
+
+[Native #4685](https://github.com/maplibre/maplibre-native/pull/4685) proposes
+several ways to reduce these limits. These are future implementation options;
+this plugin does not use the proposed API yet.
+
+- **Instance `particle-features` quads (limit 7).** Store one particle record
+  instead of repeating it for four corners, and reuse one quad's indices. The
+  implementation admits Metal and Vulkan, although its header comments still say
+  Vulkan-only. Keep the existing path for OpenGL. The source-free emitter would
+  also need its carried `build_frame` host path extended for instancing.
+- **Add sprite-based particles (limit 9).** IMAGE properties, tile-atlas access
+  and crossfade inputs could supply snowflake, spark or rain sprites to the
+  tile-driven layer on Metal/Vulkan. These do not supply arbitrary textures,
+  render targets or compute, or an atlas for the source-free emitter.
+- **Use richer tile uniforms (limit 14).** Render zoom and canonical tile
+  coordinates/wrap provide inputs for deriving anchor latitude and geographic
+  scale. They could support world-anchored particle motion. Host time, pitch,
+  roll and the emitter's frame matrix are still absent, so the frame table
+  remains necessary (limits 2–5).
+- **Expose geometry controls to layout (limit 13).** Camera-only layout
+  properties could configure spacing or density when slots are built, without
+  paint transitions. The proposal does not add canonical tile identity to the
+  layout callback, cross-tile identity or the missing filter global state.
+- **Reduce paint-buffer work.** Packed RGBA8 colors, shared equal zoom endpoints
+  and skipping state updates for paint that does not depend on feature-state
+  could reduce attribute storage and refills. Uniform-only bindings and the
+  attribute-slot ceiling remain unresolved (limit 1).
+- **Explore 3D passes and lighting (limit 11).** Ordered depth/color passes, 3D
+  metadata and evaluated style-light inputs offer more control over occlusion
+  and shading. They do not automatically fix particle world depth or expose
+  additive/max blending, offscreen trails or collisions.
+
+Adoption requires rebasing our extensions and rebuilding the plugins: the
+proposal's BOOLEAN/IMAGE value IDs collide with our DOUBLE2/ROTATION IDs, and
+its descriptor and render-pass layout differs from our current ABI. It retires
+none of our four carried patches. Prioritize tile-driven instancing and the
+paint-buffer improvements; they do not require solving emitter layer identity.
+
 ## Native
 
 ```bash

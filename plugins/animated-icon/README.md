@@ -535,6 +535,37 @@ context and uniform-only bindings are planned for M2.
       `projectTile` (`js/src/globe.ts`), so a change to gl-js's globe projection
       needs the same change there.
 
+### Upstream API work to watch
+
+[Native #4685](https://github.com/maplibre/maplibre-native/pull/4685) proposes
+API changes that could improve this plugin after migration:
+
+- **Instance icon quads.** Keep one icon record per instance and generate its
+  four corners in the shader, reducing repeated geometry and paint data. The
+  implementation admits Metal and Vulkan despite Vulkan-only header comments;
+  OpenGL would retain the current path.
+- **Reduce color-buffer storage and refills (limit 16).** Packed RGBA8 colors
+  and shared equal zoom endpoints could shrink paint buffers. The host also
+  skips feature-state updates for bindings whose expressions do not read
+  feature-state. State-dependent bindings still update; the proposal does not
+  provide a feature-state timestamp or animation-completion events.
+- **Pass controls into layout (limit 9).** Camera-only layout properties could
+  choose tile-local ordering or geometry settings. They do not provide
+  feature-driven `symbol-sort-key`, screen ordering across tiles or collision
+  participation.
+- **Explore sprite-backed variants.** IMAGE properties and Metal/Vulkan
+  tile-atlas access could support raster sprite icons or accents alongside the
+  vector animations. The sprite atlas does not replace the arbitrary RGBA32F
+  catalog texture, stream Lottie frames or remove its size limit.
+
+The proposal does not address host time, pitch/roll, per-layer catalogs,
+uniform-only paint bindings or collision (limits 1, 4, 7, 8 and 13). Our
+rotation and static-texture extensions remain necessary; the stacked source-free
+and frame-query patches are not replaced either. Adopting the API requires
+reconciling descriptor changes and its BOOLEAN/IMAGE IDs with our
+DOUBLE2/ROTATION IDs, updating shaders/fixtures together, and rebuilding the
+plugin. Paint-buffer improvements and instancing are the first candidates.
+
 ## Web
 
 ```ts

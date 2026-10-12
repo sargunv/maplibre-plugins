@@ -88,6 +88,27 @@ and what each needs from the plugin API:
 Native's stencil control makes option 2 possible. Offscreen accumulation still
 needs render targets and blending controls from the host.
 
+### Upstream API work to watch
+
+[Native #4685](https://github.com/maplibre/maplibre-native/pull/4685) proposes
+ordered passes across all tiles in a layer, with depth/color writes, culling and
+3D metadata. After API migration, this could make option 2 easier to test:
+finish a layer-wide depth pre-pass before the color pass. The existing
+first-fragment shading and transparent-coverage caveats still apply; ordered
+passes alone do not solve overlapping shoreline geometry.
+
+The proposal also adds evaluated style-light inputs for optional wave shading,
+and IMAGE properties with Metal/Vulkan tile-atlas access for patterned water.
+The implementation admits both backends even though the header comments say
+Vulkan-only. These would require new properties and shader work in both plugin
+implementations. Packed colors and reduced feature-state refills could also
+reduce paint-buffer costs.
+
+Offscreen accumulation still needs render targets and max blending, which the
+proposal does not provide. It does not replace our carried extensions, and
+adoption requires reconciling its descriptors/render passes with the current
+host ABI and rebuilding the plugin. None of these changes is implemented here.
+
 ## Paint properties
 
 The full property table, with types, defaults, and bounds, is
