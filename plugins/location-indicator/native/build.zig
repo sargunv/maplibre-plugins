@@ -30,6 +30,7 @@ pub fn build(b: *std.Build) void {
     const options = b.addOptions();
     options.addOption([]const u8, "shade_glsl", readRepoFile(b, "../shaders/puck.glsl"));
     options.addOption([]const u8, "spec_json", readRepoFile(b, "../spec.json"));
+    options.addOption([]const u8, "geographic_fixture", readRepoFile(b, "../fixtures/geographic.json"));
 
     // The plugin's module gets only the translated header and libc: the
     // register function arrives as a runtime argument, so the library carries

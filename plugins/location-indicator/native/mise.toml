@@ -8,3 +8,16 @@ run = "zig build"
 [tasks.test]
 description = "Run the plugin's Zig unit tests (no native library needed)."
 run = "zig build test"
+
+[tasks.fixtures]
+description = "Regenerate shared geographic references from the built macOS Metal FFI."
+depends = ["build"]
+run = '''
+python3 ../fixtures/generate.py "$MLN_NATIVE_INSTALL_DIR/.."
+dprint fmt ../fixtures/geographic.json
+'''
+
+[tasks.render-test]
+description = "Render the geographic fixture cameras on Metal and check pixels and rendered queries."
+depends = ["build"]
+run = 'python3 ../fixtures/generate.py "$MLN_NATIVE_INSTALL_DIR/.." --render'
