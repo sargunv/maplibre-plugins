@@ -8,28 +8,28 @@ Hit envelopes for source-free rendered features.
 Carried by maplibre-plugins until it lands upstream.
 ---
  .mise/bin/sync-submodules                     |   1 +
- .../0042-plugin-frame-queries.patch           | 176 ++++++++++++++++++
+ .../0044-plugin-frame-queries.patch           | 176 ++++++++++++++++++
  patches/maplibre-native/README.md             |   2 +
  3 files changed, 179 insertions(+)
- create mode 100644 patches/maplibre-native/0042-plugin-frame-queries.patch
+ create mode 100644 patches/maplibre-native/0044-plugin-frame-queries.patch
 
 diff --git a/.mise/bin/sync-submodules b/.mise/bin/sync-submodules
-index 33fb2a84..3c42977e 100755
+index 18a41c6e..c65dc034 100755
 --- a/.mise/bin/sync-submodules
 +++ b/.mise/bin/sync-submodules
-@@ -83,6 +83,7 @@ mln_patches=(
+@@ -81,6 +81,7 @@ mln_patches=(
    "$repo_root/patches/maplibre-native/0039-color-ramp-global-state.patch"
-   "$repo_root/patches/maplibre-native/0040-source-free-plugin-layers.patch"
-   "$repo_root/patches/maplibre-native/0041-plugin-rotation-properties.patch"
-+  "$repo_root/patches/maplibre-native/0042-plugin-frame-queries.patch"
+   "$repo_root/patches/maplibre-native/0042-source-free-plugin-layers.patch"
+   "$repo_root/patches/maplibre-native/0043-plugin-rotation-properties.patch"
++  "$repo_root/patches/maplibre-native/0044-plugin-frame-queries.patch"
  )
  
  # The patches overlap, so no single patch reverses cleanly on its own once the
-diff --git a/patches/maplibre-native/0042-plugin-frame-queries.patch b/patches/maplibre-native/0042-plugin-frame-queries.patch
+diff --git a/patches/maplibre-native/0044-plugin-frame-queries.patch b/patches/maplibre-native/0044-plugin-frame-queries.patch
 new file mode 100644
 index 00000000..d80c8122
 --- /dev/null
-+++ b/patches/maplibre-native/0042-plugin-frame-queries.patch
++++ b/patches/maplibre-native/0044-plugin-frame-queries.patch
 @@ -0,0 +1,176 @@
 +diff --git a/include/mln/plugin/plugin_api.h b/include/mln/plugin/plugin_api.h
 +index 060130e05f08be4bcc1143f71ba3576d1e1d8b1d..615691a933c19387fa7658184f68c2a55b53abb2 100644
@@ -208,12 +208,12 @@ index 00000000..d80c8122
 + 
 + } // namespace mln
 diff --git a/patches/maplibre-native/README.md b/patches/maplibre-native/README.md
-index 6dcb12af..f0c76df7 100644
+index f34f21f8..6d18573b 100644
 --- a/patches/maplibre-native/README.md
 +++ b/patches/maplibre-native/README.md
-@@ -230,3 +230,5 @@ again.
- `0040-source-free-plugin-layers.patch` Per-frame geometry without a style source. Carried by maplibre-plugins until it lands upstream.
+@@ -209,3 +209,5 @@ again.
+ `0042-source-free-plugin-layers.patch` Per-frame geometry without a style source. Carried by maplibre-plugins until it lands upstream.
  
- `0041-plugin-rotation-properties.patch` Shortest-arc rotation transitions. Carried by maplibre-plugins until it lands upstream.
+ `0043-plugin-rotation-properties.patch` Shortest-arc rotation transitions. Carried by maplibre-plugins until it lands upstream.
 +
-+`0042-plugin-frame-queries.patch` Hit envelopes for source-free rendered features. Carried by maplibre-plugins until it lands upstream.
++`0044-plugin-frame-queries.patch` Hit envelopes for source-free rendered features. Carried by maplibre-plugins until it lands upstream.

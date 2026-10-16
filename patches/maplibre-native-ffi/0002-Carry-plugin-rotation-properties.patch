@@ -8,28 +8,28 @@ Shortest-arc rotation transitions.
 Carried by maplibre-plugins until it lands upstream.
 ---
  .mise/bin/sync-submodules                     |   1 +
- .../0041-plugin-rotation-properties.patch     | 161 ++++++++++++++++++
+ .../0043-plugin-rotation-properties.patch     | 161 ++++++++++++++++++
  patches/maplibre-native/README.md             |   2 +
  3 files changed, 164 insertions(+)
- create mode 100644 patches/maplibre-native/0041-plugin-rotation-properties.patch
+ create mode 100644 patches/maplibre-native/0043-plugin-rotation-properties.patch
 
 diff --git a/.mise/bin/sync-submodules b/.mise/bin/sync-submodules
-index 514754a1..33fb2a84 100755
+index 98ef81b8..18a41c6e 100755
 --- a/.mise/bin/sync-submodules
 +++ b/.mise/bin/sync-submodules
-@@ -82,6 +82,7 @@ mln_patches=(
+@@ -80,6 +80,7 @@ mln_patches=(
    "$repo_root/patches/maplibre-native/0038-apple-locale-expressions.patch"
    "$repo_root/patches/maplibre-native/0039-color-ramp-global-state.patch"
-   "$repo_root/patches/maplibre-native/0040-source-free-plugin-layers.patch"
-+  "$repo_root/patches/maplibre-native/0041-plugin-rotation-properties.patch"
+   "$repo_root/patches/maplibre-native/0042-source-free-plugin-layers.patch"
++  "$repo_root/patches/maplibre-native/0043-plugin-rotation-properties.patch"
  )
  
  # The patches overlap, so no single patch reverses cleanly on its own once the
-diff --git a/patches/maplibre-native/0041-plugin-rotation-properties.patch b/patches/maplibre-native/0041-plugin-rotation-properties.patch
+diff --git a/patches/maplibre-native/0043-plugin-rotation-properties.patch b/patches/maplibre-native/0043-plugin-rotation-properties.patch
 new file mode 100644
 index 00000000..a0e6ac95
 --- /dev/null
-+++ b/patches/maplibre-native/0041-plugin-rotation-properties.patch
++++ b/patches/maplibre-native/0043-plugin-rotation-properties.patch
 @@ -0,0 +1,161 @@
 +diff --git a/include/mln/plugin/plugin_api.h b/include/mln/plugin/plugin_api.h
 +index 2a4ecac20f74e694be21335377dd1b7d8150dfcb..060130e05f08be4bcc1143f71ba3576d1e1d8b1d 100644
@@ -193,12 +193,12 @@ index 00000000..a0e6ac95
 +                                     Transitioning<PropertyValue<std::array<double, 2>>>,
 +                                     Transitioning<PropertyValue<Color>>,
 diff --git a/patches/maplibre-native/README.md b/patches/maplibre-native/README.md
-index f0c9302e..6dcb12af 100644
+index a8dcfa51..f34f21f8 100644
 --- a/patches/maplibre-native/README.md
 +++ b/patches/maplibre-native/README.md
-@@ -228,3 +228,5 @@ the sync removes a file that a listed patch adds before applying that patch
+@@ -207,3 +207,5 @@ the sync removes a file that a listed patch adds before applying that patch
  again.
  
- `0040-source-free-plugin-layers.patch` Per-frame geometry without a style source. Carried by maplibre-plugins until it lands upstream.
+ `0042-source-free-plugin-layers.patch` Per-frame geometry without a style source. Carried by maplibre-plugins until it lands upstream.
 +
-+`0041-plugin-rotation-properties.patch` Shortest-arc rotation transitions. Carried by maplibre-plugins until it lands upstream.
++`0043-plugin-rotation-properties.patch` Shortest-arc rotation transitions. Carried by maplibre-plugins until it lands upstream.
