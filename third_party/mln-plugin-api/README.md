@@ -4,10 +4,10 @@
 compile against. It is copied from the patched MapLibre Native tree that
 [maplibre-native-ffi](https://github.com/maplibre/maplibre-native-ffi) builds.
 
-Source: FFI `6f5a662093873a5a690de34fe21f6329b58e77e3`, Native
-`43e10605cd5b8b24d1cd411ce9544b70130fc040`, plus the four patches in
+Source: FFI `4da98bb271d6b6aa8e1516a023abf9c2fc546256`, Native
+`254d0a872407c15e9ea4211691af0abeb7e18f16`, plus the four patches in
 [`patches/maplibre-native-ffi/`](../../patches/maplibre-native-ffi/README.md)
-(Native patch numbers `0040`–`0043`). Animation, default-color premultiplication,
+(Native patch numbers `0042`–`0045`). Animation, default-color premultiplication,
 stencil overlap deduplication, near-clipped tile matrices, per-drawable
 depth/stencil/culling and camera-paint reevaluation on zoom changes are upstream.
 OpenGL large uniform blocks and attribute-name matching are carried by the FFI.

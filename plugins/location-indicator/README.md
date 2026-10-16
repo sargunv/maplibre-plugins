@@ -66,13 +66,25 @@ on the host.
 
 From `patches/maplibre-native-ffi/` this plugin uses:
 
-| Patch                             | Used for                                                     |
-| --------------------------------- | ------------------------------------------------------------ |
-| `0001` source-free plugin layers  | `build_frame` supplies the geometry; the layer has no source |
-| `0002` plugin rotation properties | `bearing` transitions along the shortest arc                 |
-| `0003` plugin frame queries       | rendered-feature hit envelopes for the puck and arrow        |
+| Patch                             | Used for                                                                                              |
+| --------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| `0001` source-free plugin layers  | `build_frame`, camera/geographic helpers and double-precision position paint; the layer has no source |
+| `0002` plugin rotation properties | `bearing` transitions along the shortest arc                                                          |
+| `0003` plugin frame queries       | rendered-feature hit envelopes for the puck and arrow                                                 |
 
-Default colors use the upstream host's premultiplied-color conversion.
+All three remain necessary at FFI `4da98bb2` / Native `254d0a87`: upstream's C
+plugin API still has none of these extensions. Their inner Native patch numbers
+are `0042`, `0043` and `0044`, respectively. The plugin does not use `0004`
+static textures; its shapes are procedural.
+
+For OpenGL, the FFI also carries attribute-name matching (`0035`), which binds
+the puck's vertex inputs correctly. The large-uniform-block fix (`0034`) is
+still carried by FFI for other plugins; the puck has no large uniform block.
+Default colors use the upstream host's premultiplied-color conversion, and
+camera-dependent paint reevaluates on zoom through upstream Native.
+
+FFI's bearing-accuracy patches for Native's built-in location-indicator layer
+are separate from this `location-puck` plugin and do not replace these patches.
 
 The puck has no animation of its own; paint transitions repaint through the
 host.

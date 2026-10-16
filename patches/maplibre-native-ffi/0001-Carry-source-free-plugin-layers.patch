@@ -8,28 +8,28 @@ Per-frame geometry without a style source.
 Carried by maplibre-plugins until it lands upstream.
 ---
  .mise/bin/sync-submodules                     |   1 +
- .../0040-source-free-plugin-layers.patch      | 980 ++++++++++++++++++
+ .../0042-source-free-plugin-layers.patch      | 980 ++++++++++++++++++
  patches/maplibre-native/README.md             |   2 +
  3 files changed, 983 insertions(+)
- create mode 100644 patches/maplibre-native/0040-source-free-plugin-layers.patch
+ create mode 100644 patches/maplibre-native/0042-source-free-plugin-layers.patch
 
 diff --git a/.mise/bin/sync-submodules b/.mise/bin/sync-submodules
-index 8e11b1bb..514754a1 100755
+index c470e491..98ef81b8 100755
 --- a/.mise/bin/sync-submodules
 +++ b/.mise/bin/sync-submodules
-@@ -81,6 +81,7 @@ mln_patches=(
-   "$repo_root/patches/maplibre-native/0037-platform-locale-expression-errors.patch"
+@@ -79,6 +79,7 @@ mln_patches=(
+   "$repo_root/patches/maplibre-native/0036-platform-locale-expression-options.patch"
    "$repo_root/patches/maplibre-native/0038-apple-locale-expressions.patch"
    "$repo_root/patches/maplibre-native/0039-color-ramp-global-state.patch"
-+  "$repo_root/patches/maplibre-native/0040-source-free-plugin-layers.patch"
++  "$repo_root/patches/maplibre-native/0042-source-free-plugin-layers.patch"
  )
  
  # The patches overlap, so no single patch reverses cleanly on its own once the
-diff --git a/patches/maplibre-native/0040-source-free-plugin-layers.patch b/patches/maplibre-native/0040-source-free-plugin-layers.patch
+diff --git a/patches/maplibre-native/0042-source-free-plugin-layers.patch b/patches/maplibre-native/0042-source-free-plugin-layers.patch
 new file mode 100644
 index 00000000..53cbb795
 --- /dev/null
-+++ b/patches/maplibre-native/0040-source-free-plugin-layers.patch
++++ b/patches/maplibre-native/0042-source-free-plugin-layers.patch
 @@ -0,0 +1,980 @@
 +diff --git a/include/mln/plugin/plugin_api.h b/include/mln/plugin/plugin_api.h
 +index 83d15636a56c787d3c20b27644b78bc5e42ed307..2a4ecac20f74e694be21335377dd1b7d8150dfcb 100644
@@ -1012,12 +1012,12 @@ index 00000000..53cbb795
 +                                     Transitioning<PropertyValue<std::string>>>;
 +     TypedValue value;
 diff --git a/patches/maplibre-native/README.md b/patches/maplibre-native/README.md
-index 76fcf59f..f0c9302e 100644
+index d345f0a7..a8dcfa51 100644
 --- a/patches/maplibre-native/README.md
 +++ b/patches/maplibre-native/README.md
-@@ -226,3 +226,5 @@ every listed patch's paths, the sync prints the path first. A forced checkout
+@@ -205,3 +205,5 @@ every listed patch's paths, the sync prints the path first. A forced checkout
  also removes an untracked file that sits where a new pin adds a tracked one, and
  the sync removes a file that a listed patch adds before applying that patch
  again.
 +
-+`0040-source-free-plugin-layers.patch` Per-frame geometry without a style source. Carried by maplibre-plugins until it lands upstream.
++`0042-source-free-plugin-layers.patch` Per-frame geometry without a style source. Carried by maplibre-plugins until it lands upstream.

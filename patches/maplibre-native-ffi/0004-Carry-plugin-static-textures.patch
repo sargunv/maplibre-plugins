@@ -8,28 +8,28 @@ Static RGBA32F catalog textures for plugin shaders.
 Carried by maplibre-plugins until it lands upstream.
 ---
  .mise/bin/sync-submodules                     |    1 +
- .../0043-plugin-static-textures.patch         | 1078 +++++++++++++++++
+ .../0045-plugin-static-textures.patch         | 1078 +++++++++++++++++
  patches/maplibre-native/README.md             |    2 +
  3 files changed, 1081 insertions(+)
- create mode 100644 patches/maplibre-native/0043-plugin-static-textures.patch
+ create mode 100644 patches/maplibre-native/0045-plugin-static-textures.patch
 
 diff --git a/.mise/bin/sync-submodules b/.mise/bin/sync-submodules
-index 3c42977e..2aee21a0 100755
+index c65dc034..bc72747c 100755
 --- a/.mise/bin/sync-submodules
 +++ b/.mise/bin/sync-submodules
-@@ -84,6 +84,7 @@ mln_patches=(
-   "$repo_root/patches/maplibre-native/0040-source-free-plugin-layers.patch"
-   "$repo_root/patches/maplibre-native/0041-plugin-rotation-properties.patch"
-   "$repo_root/patches/maplibre-native/0042-plugin-frame-queries.patch"
-+  "$repo_root/patches/maplibre-native/0043-plugin-static-textures.patch"
+@@ -82,6 +82,7 @@ mln_patches=(
+   "$repo_root/patches/maplibre-native/0042-source-free-plugin-layers.patch"
+   "$repo_root/patches/maplibre-native/0043-plugin-rotation-properties.patch"
+   "$repo_root/patches/maplibre-native/0044-plugin-frame-queries.patch"
++  "$repo_root/patches/maplibre-native/0045-plugin-static-textures.patch"
  )
  
  # The patches overlap, so no single patch reverses cleanly on its own once the
-diff --git a/patches/maplibre-native/0043-plugin-static-textures.patch b/patches/maplibre-native/0043-plugin-static-textures.patch
+diff --git a/patches/maplibre-native/0045-plugin-static-textures.patch b/patches/maplibre-native/0045-plugin-static-textures.patch
 new file mode 100644
 index 00000000..b030a1c7
 --- /dev/null
-+++ b/patches/maplibre-native/0043-plugin-static-textures.patch
++++ b/patches/maplibre-native/0045-plugin-static-textures.patch
 @@ -0,0 +1,1078 @@
 +diff --git a/include/mln/plugin/plugin_api.h b/include/mln/plugin/plugin_api.h
 +index 615691a9..f1d66d1b 100644
@@ -1110,12 +1110,12 @@ index 00000000..b030a1c7
 ++
 + } // namespace
 diff --git a/patches/maplibre-native/README.md b/patches/maplibre-native/README.md
-index f0c76df7..dec7baba 100644
+index 6d18573b..4cb2c041 100644
 --- a/patches/maplibre-native/README.md
 +++ b/patches/maplibre-native/README.md
-@@ -232,3 +232,5 @@ again.
- `0041-plugin-rotation-properties.patch` Shortest-arc rotation transitions. Carried by maplibre-plugins until it lands upstream.
+@@ -211,3 +211,5 @@ again.
+ `0043-plugin-rotation-properties.patch` Shortest-arc rotation transitions. Carried by maplibre-plugins until it lands upstream.
  
- `0042-plugin-frame-queries.patch` Hit envelopes for source-free rendered features. Carried by maplibre-plugins until it lands upstream.
+ `0044-plugin-frame-queries.patch` Hit envelopes for source-free rendered features. Carried by maplibre-plugins until it lands upstream.
 +
-+`0043-plugin-static-textures.patch` Static RGBA32F catalog textures for plugin shaders. Carried by maplibre-plugins until it lands upstream.
++`0045-plugin-static-textures.patch` Static RGBA32F catalog textures for plugin shaders. Carried by maplibre-plugins until it lands upstream.

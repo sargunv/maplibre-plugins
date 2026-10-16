@@ -5,15 +5,15 @@ the pinned upstream commit, as commits (`git am`). Each patch carries a focused
 MapLibre Native change into the FFI's `patches/maplibre-native/` and its
 `sync-submodules` list. Drop a patch when the host includes its change.
 
-The FFI pin is `6f5a662093873a5a690de34fe21f6329b58e77e3`, with Native pinned to
-`43e10605cd5b8b24d1cd411ce9544b70130fc040`.
+The FFI pin is `4da98bb271d6b6aa8e1516a023abf9c2fc546256`, with Native pinned to
+`254d0a872407c15e9ea4211691af0abeb7e18f16`.
 
 | Patch                                            | Native patch | Purpose                                         |
 | ------------------------------------------------ | ------------ | ----------------------------------------------- |
-| `0001` source-free plugin layers (`build_frame`) | `0040`       | per-frame geometry without a style source       |
-| `0002` plugin rotation properties                | `0041`       | shortest-arc rotation transitions               |
-| `0003` plugin frame queries                      | `0042`       | hit envelopes for source-free rendered features |
-| `0004` plugin static textures (RGBA32F)          | `0043`       | `animated-icon` catalog data                    |
+| `0001` source-free plugin layers (`build_frame`) | `0042`       | per-frame geometry without a style source       |
+| `0002` plugin rotation properties                | `0043`       | shortest-arc rotation transitions               |
+| `0003` plugin frame queries                      | `0044`       | hit envelopes for source-free rendered features |
+| `0004` plugin static textures (RGBA32F)          | `0045`       | `animated-icon` catalog data                    |
 
 Animation, default-color premultiplication, near-clipped tile matrices and
 [per-drawable depth, stencil and culling](https://github.com/maplibre/maplibre-native/pull/4692)
@@ -21,6 +21,50 @@ are upstream. Tile-driven drawables explicitly select read-only depth to retain
 their previous behavior; the new descriptor's zero depth mode disables depth
 testing. The source-free path retains read-only depth and no stencil or culling.
 Plugin libraries must be rebuilt against the refreshed vendored header.
+
+## Patch audit, 2026-10-16
+
+The FFI update includes
+[#818](https://github.com/maplibre/maplibre-native-ffi/pull/818), which retires
+its Windows file URL, custom geometry query, frame statistics and locale error
+patches after their Native merges. It also replaces its combined render-update
+publication patch with the remaining source/image, tile-selection and built-in
+location-indicator bearing-accuracy changes. Those are FFI-owned patches; none
+replaces one of our four plugin extensions.
+
+Native's unpatched `include/mln/plugin/plugin_api.h` is byte-for-byte unchanged
+between the old and new pins. It still lacks `build_frame`, DOUBLE2 coordinates,
+ROTATION values, frame query envelopes and static textures. All four local
+patches remain required. Their Native diffs are unchanged; only their FFI
+integration context and inner filenames were refreshed. Native patch numbers
+move from `0040`-`0043` to `0042`-`0045` because FFI now uses `0040` and `0041`.
+The outer patch numbers (`0001`-`0004`) stay the same.
+
+For our location indicator, `0001` supplies per-frame geometry, camera and
+geographic helpers, and double-precision position paint; `0002` interpolates
+`bearing` across north on the shortest arc; `0003` exposes the generated puck
+and arrow envelopes to rendered-feature queries. It does not use `0004`, which
+supplies animated-icon's catalog textures. FFI's bearing-accuracy patches
+(`0021` and `0041`) extend Native's built-in location-indicator layer, a
+separate implementation from our `location-puck` plugin.
+
+OpenGL large uniform blocks (`0034`) and attribute-name matching (`0035`) remain
+FFI-owned. The puck needs attribute-name matching for its OpenGL vertex inputs;
+its lack of a large uniform block means it does not need the 8 KiB allocator
+fix. The previous retirement of those local copies still stands.
+
+## Validation, 2026-10-16
+
+All four exported patches replay cleanly through `scripts/sync-ffi force`, and
+the next sync is a no-op. The macOS ARM64 Metal FFI build and C API tests pass.
+Refreshing the vendored header from that install produces no byte changes. All
+JS and native plugin tests/builds, repository format/lint checks and the full
+catalog rebake check pass.
+
+The location-indicator render test passes all eight Metal fixture cameras,
+including pixel checks and rendered-feature hit/miss queries. The native viewer
+unit tests pass against the refreshed FFI install. OpenGL and Vulkan were not
+run locally.
 
 ## Patch audit, 2026-10-12
 
@@ -78,7 +122,7 @@ Relevant open work to watch:
   depth handling and Metal stencil caching. Watch these for rendering artifacts;
   neither retires a local plugin extension.
 
-## Validation
+## Validation, 2026-10-12
 
 The four exported patches reapply cleanly through `scripts/sync-ffi force`, and
 another sync is a no-op. The macOS ARM64 Metal FFI build and C API tests pass,
