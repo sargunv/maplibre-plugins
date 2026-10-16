@@ -53,6 +53,19 @@ FFI-owned. The puck needs attribute-name matching for its OpenGL vertex inputs;
 its lack of a large uniform block means it does not need the 8 KiB allocator
 fix. The previous retirement of those local copies still stands.
 
+## Validation, 2026-10-16
+
+All four exported patches replay cleanly through `scripts/sync-ffi force`, and
+the next sync is a no-op. The macOS ARM64 Metal FFI build and C API tests pass.
+Refreshing the vendored header from that install produces no byte changes. All
+JS and native plugin tests/builds, repository format/lint checks and the full
+catalog rebake check pass.
+
+The location-indicator render test passes all eight Metal fixture cameras,
+including pixel checks and rendered-feature hit/miss queries. The native viewer
+unit tests pass against the refreshed FFI install. OpenGL and Vulkan were not
+run locally.
+
 ## Patch audit, 2026-10-12
 
 Two local patches have been retired because upstream FFI now carries them:
