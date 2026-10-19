@@ -39,7 +39,16 @@ for (const name of ["examples/osm/buildings", "fixtures/skeleton/invalides"]) {
       cases.push({ rings, shape: feature.properties["roof:shape"] ?? "flat" });
     }
   }
-  for (const override of [null, "gabled", "gambrel", "hipped", "mansard"]) {
+  for (const override of [
+    null,
+    "gabled",
+    "gambrel",
+    "hipped",
+    "mansard",
+    "cone",
+    "dome",
+    "onion",
+  ]) {
     const times: number[] = [];
     let flat = 0,
       empty = 0,

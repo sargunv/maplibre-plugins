@@ -1,5 +1,5 @@
 {
-  "description": "A courtyard: skeleton roofs follow the eaves, frame roofs clip around the hole, radial roofs stay flat. Courtyard walls face into it and follow the roof profile.",
+  "description": "A courtyard: skeleton roofs follow the eaves, frame roofs clip around the hole, cone, dome and onion use inscribed circles with terraces, pyramidal stays flat. Courtyard walls face into it and follow the roof profile.",
   "extent": 8192,
   "features": [
     {
@@ -191,9 +191,9 @@
     }
   ],
   "expected": {
-    "vertex_count": 1326,
-    "index_count": 3006,
-    "segments": [[0, 0, 1326, 3006]],
+    "vertex_count": 2031,
+    "index_count": 5904,
+    "segments": [[0, 0, 2031, 5904]],
     "ranges": [
       [0, 0, 40],
       [1, 40, 102],
@@ -206,12 +206,12 @@
       [8, 702, 72],
       [9, 774, 58],
       [10, 832, 142],
-      [11, 974, 40],
-      [12, 1014, 72],
-      [13, 1086, 120],
-      [14, 1206, 40],
-      [15, 1246, 40],
-      [16, 1286, 40]
+      [11, 974, 361],
+      [12, 1335, 72],
+      [13, 1407, 120],
+      [14, 1527, 328],
+      [15, 1855, 136],
+      [16, 1991, 40]
     ],
     "summaries": [
       {
@@ -303,12 +303,12 @@
         "moment": 2901137
       },
       {
-        "vertices": 40,
-        "triangles": 24,
-        "sum_pos": [48000, 46000, 0],
-        "sum_roof": [24, 32, 0, 0],
-        "weighted": 48244.9,
-        "moment": 51377
+        "vertices": 361,
+        "triangles": 602,
+        "sum_pos": [476585.15625, 442485.15625, 23228.09375],
+        "sum_roof": [129.000002623, 674, 0, 0],
+        "weighted": 476552.686791,
+        "moment": 283721000
       },
       {
         "vertices": 72,
@@ -327,20 +327,20 @@
         "moment": 3998718
       },
       {
-        "vertices": 40,
-        "triangles": 24,
-        "sum_pos": [48000, 46000, 0],
-        "sum_roof": [24, 32, 0, 0],
-        "weighted": 48244.9,
-        "moment": 51377
+        "vertices": 328,
+        "triangles": 346,
+        "sum_pos": [432525, 401725, 21104.75],
+        "sum_roof": [124.159999847, 672, 0, 0],
+        "weighted": 432953.904234,
+        "moment": 80522868
       },
       {
-        "vertices": 40,
-        "triangles": 24,
-        "sum_pos": [48000, 46000, 0],
-        "sum_roof": [24, 32, 0, 0],
-        "weighted": 48244.9,
-        "moment": 51377
+        "vertices": 136,
+        "triangles": 90,
+        "sum_pos": [176175, 164575, 8750.75],
+        "sum_roof": [32, 224, 0, 0],
+        "weighted": 179199.027575,
+        "moment": 2018265
       },
       {
         "vertices": 40,
