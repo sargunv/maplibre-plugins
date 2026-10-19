@@ -318,6 +318,25 @@ const cases = [
     points: near,
     sameAs: courtyard,
   },
+  {
+    // A dropped first ring that a query covers: the layout draws nothing
+    // there, so it is no top of its own and has no walls.
+    name: "dropped first ring under the query",
+    matrix: topDown,
+    rings: [
+      [
+        [3806, 3806],
+        [3807, 3807],
+        [3807, 3806],
+      ],
+      ...square,
+    ],
+    base: 0,
+    height: 20,
+    points: grid(3801.25, 3801.25, 3811.25, 3811.25, 0.5, 0.5),
+    sameAs: square,
+    hitless: true,
+  },
 ];
 
 const out = cases.map((c) => {
@@ -365,7 +384,8 @@ const out = cases.map((c) => {
     rows.push(row);
   }
   const total = g.rows * g.columns;
-  if (hits === 0 && c.height > 0) throw new Error(`${c.name}: no hits`);
+  if (hits === 0 && c.height > 0 && !c.hitless)
+    throw new Error(`${c.name}: no hits`);
   if (c.distinguishes && differs === 0)
     throw new Error(`${c.name}: does not distinguish a translated prism`);
   console.log(

@@ -157,9 +157,10 @@ export function prismHit(
   const bottom = projectRings(rings, b, matrix, translate);
   const top = projectRings(rings, h, matrix, translate);
   let closest = Infinity;
+  const polygons = polygonRings(rings);
   // Each polygon's top on its own: one with a vertex behind the camera
   // must not hide the others.
-  for (const polygon of polygonRings(rings)) {
+  for (const polygon of polygons) {
     const tops = polygon.map((i) => top[i]!);
     if (!insideRings(tops, q)) continue;
     // Every ring of a top lies in one plane, but one can be degenerate
@@ -172,7 +173,8 @@ export function prismHit(
       }
     }
   }
-  for (let r = 0; r < top.length; r++) {
+  // The layout drops the rings in no polygon, so they have no walls.
+  for (const r of polygons.flat()) {
     const ringTop = top[r]!;
     const ringBase = bottom[r]!;
     const n = ringTop.length;
