@@ -21,12 +21,15 @@ lockfile = true
 zig_version = "0.16.0"
 # The maplibre-native-ffi CMake preset whose install directory the native apps
 # consume on this host. The checkout is the patched submodule by default;
-# override with MLN_FFI_DIR (another checkout) or MLN_NATIVE_INSTALL_DIR.
+# override with MLN_FFI_DIR (another checkout) or MLN_NATIVE_INSTALL_DIR. Set
+# MLN_NATIVE_PRESET to build and use another backend's preset, e.g.
+# macos-arm64-vulkan (MoltenVK) or macos-arm64-egl (ANGLE) on macOS.
 host_native_preset = '{% if os() == "macos" %}macos-arm64-metal{% elif os() == "linux" %}linux-gnu-{{ arch() }}-egl{% else %}windows-{{ arch() }}-wgl{% endif %}'
 
 [env]
 MLN_FFI_DIR = "{{ env.MLN_FFI_DIR | default(value=config_root ~ '/third_party/maplibre-native-ffi') }}"
-MLN_NATIVE_INSTALL_DIR = "{{ env.MLN_NATIVE_INSTALL_DIR | default(value=env.MLN_FFI_DIR ~ '/build/' ~ vars.host_native_preset ~ '/install') }}"
+MLN_NATIVE_PRESET = "{{ env.MLN_NATIVE_PRESET | default(value=vars.host_native_preset) }}"
+MLN_NATIVE_INSTALL_DIR = "{{ env.MLN_NATIVE_INSTALL_DIR | default(value=env.MLN_FFI_DIR ~ '/build/' ~ env.MLN_NATIVE_PRESET ~ '/install') }}"
 
 [tools]
 "aqua:dprint/dprint" = "0.57.4"
@@ -95,10 +98,10 @@ description = "Rewrite patches/maplibre-native-ffi from the commits in the submo
 run = "scripts/sync-ffi export"
 
 [tasks."ffi:build"]
-description = "Build the patched maplibre-native-ffi for this host (slow the first time)."
+description = "Build the patched maplibre-native-ffi for this host, or for $MLN_NATIVE_PRESET (slow the first time)."
 depends = ["ffi:sync"]
 dir = "third_party/maplibre-native-ffi"
-run = "mise run build {{vars.host_native_preset}}"
+run = 'mise run build "$MLN_NATIVE_PRESET"'
 
 [tasks.sync-plugin-header]
 description = "Refresh the vendored plugin ABI header from the FFI install."
@@ -125,6 +128,7 @@ run = "node plugins/animated-icon/baker/src/cli.ts --check --full"
 description = "Show which maplibre-native-c install the native apps will use."
 run = '''
 echo "MLN_FFI_DIR=$MLN_FFI_DIR"
+echo "MLN_NATIVE_PRESET=$MLN_NATIVE_PRESET"
 echo "MLN_NATIVE_INSTALL_DIR=$MLN_NATIVE_INSTALL_DIR"
 if [ -f "$MLN_NATIVE_INSTALL_DIR/share/maplibre-native-c/artifact.json" ]; then
   cat "$MLN_NATIVE_INSTALL_DIR/share/maplibre-native-c/artifact.json"

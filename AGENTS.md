@@ -105,10 +105,13 @@ The native viewer needs a maplibre-native-c install (headers, library, and
 `share/maplibre-native-c/artifact.json`). `mise run ffi:build` produces one from
 the patched submodule at `third_party/maplibre-native-ffi/build/<host
 preset>/install`; override with `MLN_FFI_DIR` (another checkout) or
-`MLN_NATIVE_INSTALL_DIR`, for example in a gitignored `mise.local.toml`. The
-plugin layers only work against a build that carries the patches in
-`patches/maplibre-native-ffi/`; an unpatched FFI release does not have the
-source-free plugin layer ABI yet.
+`MLN_NATIVE_INSTALL_DIR`, for example in a gitignored `mise.local.toml`. Setting
+`MLN_NATIVE_PRESET` builds and uses another backend's preset instead: on macOS
+`macos-arm64-vulkan` (MoltenVK, from Homebrew's `molten-vk` and `vulkan-loader`)
+or `macos-arm64-egl` (ANGLE), each in its own build directory; the viewer tasks
+and the building render test follow it. The plugin layers only work against a
+build that carries the patches in `patches/maplibre-native-ffi/`; an unpatched
+FFI release does not have the source-free plugin layer ABI yet.
 
 Moving the FFI pin: check out the new upstream commit in the submodule, commit
 the submodule pointer, run `scripts/sync-ffi` (which re-applies the patches),

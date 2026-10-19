@@ -211,8 +211,67 @@ The host work above was checked again from scratch:
   the JS tests other than the in-progress `plugins/building/js`, `mise run
   build`, `mise run bake:check`, `mise run check`, the location-indicator render
   test, the viewer's unit tests and the ReleaseSafe smoke runs listed below all
-  pass again. The default Debug viewer still hits the Zig unwinder panic
-  described under 2026-10-12, and hangs in it.
+  pass again. The default Debug viewer still hit the Zig unwinder panic
+  described under 2026-10-12, and hung in it; it no longer does (next section).
+
+## Debug viewer, Vulkan and OpenGL, 2026-10-18
+
+**Debug viewer.** The panic is
+[ziglang/zig#37310](https://codeberg.org/ziglang/zig/issues/37310): Zig 0.16's
+Mach-O unwinder (`std.debug.SelfInfo.MachO`) has no case for the arm64
+compact-unwind mode `FRAME_PAUTH_LR` (5), which macOS 27's system libraries use.
+Unwinding into such a frame panics with "switch on corrupt value" while holding
+the debug-info lock, and the panic handler then waits on that lock forever.
+[#37318](https://codeberg.org/ziglang/zig/pulls/37318) fixes it; it was merged
+on 2026-10-18 for the 0.17.1 milestone, so 0.16.0 and 0.17.0 lack it, and there
+is no 0.16 backport. The repo stays on Zig 0.16.0.
+
+On this host (macOS 27.0.1, Zig 0.16.0) a probe program shows where it bites:
+the main thread's stack ends in dyld and unwinds fine, but every spawned
+thread's ends in `libsystem_pthread`, whose entry frame has the new mode.
+
+- Capturing or printing a stack trace off the main thread hangs: a
+  `DebugAllocator` that records traces (the Debug default, 6 frames),
+  `std.debug.captureCurrentStackTrace`/`dumpCurrentStackTrace`, and Debug's
+  `unexpected_error_tracing` (an unexpected errno dumps a trace).
+- A panic or segfault off the main thread prints the Zig frames, then aborts
+  with "aborting due to recursive panic" instead of hanging.
+
+The viewer's runtime thread allocated through a trace-recording
+`DebugAllocator`, so Debug builds hung before the map existed. `main.zig` now
+uses `DebugAllocator(.{ .stack_trace_frames = 0 })`, and the runtime thread
+allocates only through it; `init_args.gpa` (start.zig's allocator, which still
+records traces in Debug) stays on the main thread. Restoring the default frames
+reproduces the hang at once. With the change the default Debug viewer runs every
+task against the Metal install: `run building`, `building-osm` (with a scripted
+click hit), `run location-indicator`, `run water`, `run animated-icon`, `run
+particles` and `weather` (click hit) each reach `--exit-after` with status 0.
+Left as is: an unexpected errno on the runtime thread would still hang a Debug
+build, and a panic there loses the frames below the thread entry. Both go away
+with Zig 0.17.1; ReleaseSafe avoids the allocator path entirely.
+
+**Vulkan and OpenGL ES.** The FFI's `macos-arm64-vulkan` (MoltenVK and the
+Vulkan loader from Homebrew, as its `mise.macos.toml` sets up) and
+`macos-arm64-egl` (the ANGLE build pinned in `third_party/angle/manifest.json`,
+downloaded at configure time) presets build this patch stack in their own
+`build/<preset>` directories; `MLN_NATIVE_PRESET=<preset> mise run ffi:build`
+builds one and points the native apps at it. Their installed `plugin_api.h` is
+byte-identical to the vendored header, and the FFI's C API tests pass on both.
+
+- The building render test passes all 23 cameras on Metal, Vulkan and OpenGL ES:
+  every query, and the four core fill-extrusion pixel comparisons with the same
+  sampled colors on all three. Against Metal the frames differ only where
+  coplanar OSM parts z-fight (at most 0.085% of the pixels, in the castle views)
+  and in single edge pixels.
+- The Debug viewer, built against each install, runs every task above to
+  `--exit-after` with no native diagnostics, the scripted clicks included. These
+  smoke runs check logs and queries, not pixels.
+
+Both run on the same Apple GPU: MoltenVK and ANGLE translate to Metal. They
+exercise Native's Vulkan and OpenGL renderers, our patches' paths through them
+and the plugins' GLSL, but not other drivers. A Linux runner (Mesa's lavapipe
+for Vulkan, EGL on llvmpipe or a GPU) or Windows with a Vulkan SDK would cover
+those. location-indicator's render test is still Metal-only.
 
 ## Plugin migration and validation, 2026-10-18
 
@@ -402,7 +461,10 @@ short Metal viewer smoke runs in `ReleaseSafe`. The default Debug viewer hits a
 Zig 0.16 macOS stack-unwinder panic while the debug allocator captures a trace
 on the runtime thread, before map creation. The sampled stack points to
 `debug.SelfInfo.MachO.unwindFrameInner`; ReleaseSafe disables allocator stack
-capture and avoids the failure. OpenGL and Vulkan were not run locally.
+capture and avoids the failure. (This is
+[ziglang/zig#37310](https://codeberg.org/ziglang/zig/issues/37310); the viewer
+avoids it in Debug since 2026-10-18, see "Debug viewer, Vulkan and OpenGL".)
+OpenGL and Vulkan were not run locally.
 
 To change a patch: edit and commit inside `third_party/maplibre-native-ffi` (one
 commit per patch), then run `scripts/sync-ffi export`. To move the pin: check

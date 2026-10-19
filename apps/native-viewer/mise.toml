@@ -2,10 +2,24 @@
 # example layer on a live map. Edit the layer JSON while it runs to tweak
 # paint properties. `weather` opens the animated-icon weather-stations demo,
 # `building-osm` the building layer on real OSM buildings of Prague.
-# Needs `mise run ffi:build` first.
+# Needs `mise run ffi:build` first. The viewer follows the install's render
+# backend: with MLN_NATIVE_PRESET=macos-arm64-vulkan (or macos-arm64-egl) set
+# for `mise run ffi:build` and these tasks, it runs on Vulkan through MoltenVK
+# (Homebrew's molten-vk and vulkan-loader) or on OpenGL ES through ANGLE.
 
 [tools]
 "core:zig" = "{{vars.zig_version}}"
+
+[vars]
+# A macOS Vulkan install links Homebrew's Vulkan loader and runs on MoltenVK,
+# which the loader finds only through VK_DRIVER_FILES; the FFI's own
+# mise.macos.toml sets both the same way. Other backends ignore them.
+zig_build = '''
+if [ "$(uname)" = Darwin ]; then
+  export MLN_FFI_VULKAN_LOADER_DIR="${MLN_FFI_VULKAN_LOADER_DIR:-/opt/homebrew/opt/vulkan-loader/lib}"
+  export VK_DRIVER_FILES="${VK_DRIVER_FILES:-/opt/homebrew/opt/molten-vk/etc/vulkan/icd.d/MoltenVK_icd.json}"
+fi
+zig build'''
 
 [deps.zig]
 auto = true
@@ -23,7 +37,7 @@ run = "zig build --fetch=needed"
 [tasks.build]
 description = "Build the viewer and every plugin it knows."
 run = '''
-zig build \
+{{vars.zig_build}} \
   -Dnative-install-dir="$MLN_NATIVE_INSTALL_DIR" \
   -Ddependency-include-dir="$MLN_FFI_DIR/third_party/maplibre-native/vendor/Vulkan-Headers/include"
 '''
@@ -31,7 +45,7 @@ zig build \
 [tasks.test]
 description = "Run the viewer's unit tests (the play-once pick)."
 run = '''
-zig build test \
+{{vars.zig_build}} test \
   -Dnative-install-dir="$MLN_NATIVE_INSTALL_DIR" \
   -Ddependency-include-dir="$MLN_FFI_DIR/third_party/maplibre-native/vendor/Vulkan-Headers/include"
 '''
@@ -43,7 +57,7 @@ arg "[plugin]" default="location-indicator"
 arg "[args]..." var=#true help="Extra viewer flags, e.g. --style url --zoom 15"
 '''
 run = '''
-zig build "run-$usage_plugin" \
+{{vars.zig_build}} "run-$usage_plugin" \
   -Dnative-install-dir="$MLN_NATIVE_INSTALL_DIR" \
   -Ddependency-include-dir="$MLN_FFI_DIR/third_party/maplibre-native/vendor/Vulkan-Headers/include" \
   -- --layer "../../plugins/$usage_plugin/examples/layer.json" $usage_args
@@ -55,7 +69,7 @@ usage = '''
 arg "[args]..." var=#true help="Extra viewer flags, e.g. --layer ../../plugins/animated-icon/examples/weather/play-once.layer.json"
 '''
 run = '''
-zig build run-animated-icon \
+{{vars.zig_build}} run-animated-icon \
   -Dnative-install-dir="$MLN_NATIVE_INSTALL_DIR" \
   -Ddependency-include-dir="$MLN_FFI_DIR/third_party/maplibre-native/vendor/Vulkan-Headers/include" \
   -- --layer ../../plugins/animated-icon/examples/weather/layer.json \
@@ -72,7 +86,7 @@ usage = '''
 arg "[args]..." var=#true help="Extra viewer flags, e.g. --zoom 18 --bearing 300"
 '''
 run = '''
-zig build run-building \
+{{vars.zig_build}} run-building \
   -Dnative-install-dir="$MLN_NATIVE_INSTALL_DIR" \
   -Ddependency-include-dir="$MLN_FFI_DIR/third_party/maplibre-native/vendor/Vulkan-Headers/include" \
   -- --layer ../../plugins/building/examples/osm/layer.json \

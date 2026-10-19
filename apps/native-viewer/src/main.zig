@@ -314,9 +314,14 @@ pub fn main(init_args: std.process.Init) !void {
     var current_viewport = viewport.get(window);
     viewport.log("initial viewport", current_viewport);
 
-    // No allocation stack traces: Zig 0.16's Mach-O unwinder panics ("switch
-    // on corrupt value") on frames of the macOS 27 system libraries, and Debug
-    // builds capture a trace on every allocation.
+    // No allocation stack traces: Zig 0.16's Mach-O unwinder has no case for
+    // the arm64 compact-unwind mode FRAME_PAUTH_LR of macOS 27's system
+    // libraries (ziglang/zig#37310, fixed for 0.17.1 by #37318). Unwinding past
+    // a thread's entry in libsystem_pthread panics ("switch on corrupt value")
+    // and then deadlocks, and Debug builds capture a trace on every allocation.
+    // The main thread's stack ends in dyld and unwinds fine, so `init_args.gpa`
+    // (Debug-allocated with traces) must stay on this thread: the runtime
+    // thread allocates only through this allocator.
     var gpa = std.heap.DebugAllocator(.{ .stack_trace_frames = 0 }){};
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
