@@ -114,7 +114,18 @@ and no feature id, and does not know which neighboring tiles are drawn.
   across tiles as Mapbox's fill-extrusion does for its edge features, or a
   polygon analogue of GeoJSON's `lineMetrics`, which already tells a line's
   clipped range; a cross-tile index like symbols', or the set of tiles being
-  drawn.
+  drawn. For building's skeleton roofs, bounds alone are insufficient: they can
+  mark a copy as cut but cannot reconstruct reflex corners, courtyards or local
+  runs. The smallest broadly useful change is explicit cut-edge/buffer metadata,
+  to remove today's cut-line guess. Complete GeoJSON geometry could be an
+  optional layout input, paired with the web source's original data, but that
+  needs projection, lifetime and worker-memory rules and does not solve vector
+  tiles. For vector tiles, prefer source-supplied complete footprints or roof
+  meshes with stable identities and enough buffer. Cross-tile stitching needs
+  both stable feature ids and a host-owned channel between layout workers; ids
+  alone are not enough. No `0007` patch is carried for this: increasing the
+  example's buffer already covers its buildings, and a GeoJSON-only ABI
+  extension would leave the general problem open.
 
 **Source-free layers.** Upstream plugin layers need a style source.
 

@@ -65,15 +65,16 @@ Buildings rules to real OSM tags.
 
 Both twins lay out each tile's polygons the same way (`native/src/layout.zig`
 and `js/src/layout.ts`, tested against `fixtures/layout/`). A footprint is
-cleaned up and gets a straight skeleton for hipped and mansard roofs, or a roof
-frame from its minimum-area bounding rectangle for other shapes. Its walls and
-roof become one mesh, built with that feature's roof shape, orientation and
-direction. The vertices carry relative roof elevations rather than heights: the
-shared vertex shader (`shaders/building.glsl`) turns them into meters from the
-paint properties, so heights, colors and roof angles change without a new
-layout, and only the three layout properties lay tiles out again. The shader
-lights every vertex exactly as core fill-extrusion does, and three draw passes
-give opaque or translucent buildings (see [Rendering](#rendering)).
+cleaned up and gets a straight skeleton for hipped and mansard roofs and for
+gabled and gambrel arms and courtyards, or a roof frame from its minimum-area
+bounding rectangle for other shapes. Its walls and roof become one mesh, built
+with that feature's roof shape, orientation and direction. The vertices carry
+relative roof elevations rather than heights: the shared vertex shader
+(`shaders/building.glsl`) turns them into meters from the paint properties, so
+heights, colors and roof angles change without a new layout, and only the three
+layout properties lay tiles out again. The shader lights every vertex exactly as
+core fill-extrusion does, and three draw passes give opaque or translucent
+buildings (see [Rendering](#rendering)).
 
 ### Geometry
 
@@ -101,12 +102,25 @@ give opaque or translucent buildings (see [Rendering](#rendering)).
      the roof, with valleys at reflex corners and hips at convex corners. A
      mansard changes slope at one third of the maximum inward run. Orientation
      and direction do not change these roofs.
+   - **Gabled and gambrel arms** first build the equal-speed skeleton to find
+     terminal hips. An exterior edge becomes a gable when both its corners are
+     convex, its neighboring sides point roughly opposite (normalized dot
+     product at most -0.8), and its complete hip face is a triangle. Events may
+     split that face into several pieces; their union must still be a triangle.
+     A second wavefront keeps these edges stationary and moves all other eaves
+     at speed one. Walls follow the roof along stationary ends. Gambrel uses the
+     same two-slope profile as mansard. Courtyard edges always move; a closed
+     courtyard wing with no terminal hips has a continuous hipped ridge.
+     Orientation and direction are ignored on this path: the arms decide.
+     Without holes, footprints filling at least 98% of their bounding rectangle
+     keep the existing frame profile, including its orientation and direction;
+     other footprints without a qualifying terminal hip also keep the frame.
    - **Frame shapes** are concave height functions over the frame, written as
      the minimum of planes. The footprint is ear-clipped, and every triangle is
-     clipped to every plane's facet, so each output triangle is planar. Points
-     within `1e-9` (in `n`) of a break line count as on it, so rounding never
-     makes a crossing where a line runs along or through a triangle's edge or
-     corner.
+     clipped to every plane's facet, so each output triangle is planar. Holes
+     remain open and courtyard walls rise to the roof profile. Points within
+     `1e-9` (in `n`) of a break line count as on it, so rounding never makes a
+     crossing where a line runs along or through a triangle's edge or corner.
    - **Radial shapes** are copies of the footprint shrunk toward the frame
      center, following a profile of (height, scale) steps.
    - **Flat roofs** are a triangulation at `n = 1`, and **roofless** cut copies
@@ -119,11 +133,11 @@ The Source column names where each profile's constants come from.
 | Shape             | Definition                                                                                                                                  | Source                                                                           |
 | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
 | flat, many        | `n = 1`                                                                                                                                     |                                                                                  |
-| gabled            | `1 - abs(v)/b`                                                                                                                              | OSM2World                                                                        |
+| gabled            | Frame: `1 - abs(v)/b`; on arms and courtyards, stationary-end skeleton                                                                      | OSM2World                                                                        |
 | hipped            | Equal slopes over the straight skeleton of the footprint, including courtyard eaves.                                                        | [Straight skeleton](https://en.wikipedia.org/wiki/Straight_skeleton)             |
 | half-hipped       | Hips keep the side slope and start `min(b/3, 0.8a)` in from the ends, so the end walls rise to `n = 2/3`.                                   | OSM2World `HalfHippedRoof` (1/6 of the end wall, capped at 0.4 × the ridge line) |
 | skillion          | One plane. A set direction slopes it down exactly that way, over the footprint's extent along it. Otherwise it falls toward `+v` over `2b`. | OSM2World                                                                        |
-| gambrel           | `min(1 - abs(v)/2b, 2 - 2·abs(v)/b)`: breaks at `n = 2/3`, `b/3` in from the eaves                                                          | OSM2World `GambrelRoof`                                                          |
+| gambrel           | Frame: `min(1 - abs(v)/2b, 2 - 2·abs(v)/b)`; on arms and courtyards, stationary-end skeleton with the mansard profile                       | OSM2World `GambrelRoof`                                                          |
 | mansard           | Straight skeleton with `n = min(2t/run, 0.5 + 0.5t/run)`, where `t` is inward distance from an eave.                                        | Gambrel slope profile on the straight skeleton                                   |
 | saltbox           | Equal slopes, with the ridge 0.7 of the width from the front eaves. The back eaves stop at `n = 4/7`.                                       | OSM2World `SaltboxRoof` (Streets GL uses a back eave at 0.2 instead)             |
 | round             | A semicircular barrel vault across `v` in 15° strips, with smooth gradients. Its gable walls follow the arc.                                | OSM2World / Streets GL (Streets GL uses 10° steps)                               |
@@ -143,9 +157,10 @@ Streets GL and the wiki's `Tag:roof:shape=round_gabled` page.
 
 `run` is `b` for most shapes. It is the face's own run for the saltbox variants
 (`0.3b`), `1.4b` for saltbox, the slope extent for skillion, and half the
-bounding rectangle's short side for radial shapes. For hipped and mansard roofs
-it is the maximum wavefront distance before the footprint disappears. Mansard
-lower faces have slope `2/run`, and upper faces `0.5/run` in relative height;
+bounding rectangle's short side for radial shapes. For skeleton roofs it is the
+maximum wavefront time before the footprint disappears; moving eaves travel at
+speed one, so this is also their maximum inward distance. Mansard lower faces
+have slope `2/run`, and upper faces `0.5/run` in relative height;
 `building-roof-angle` still sets the total height from `run`.
 
 ### Tile copies
@@ -166,11 +181,11 @@ is drawn, also while its neighbors load.
 - A copy the source cut cannot know its roof: its frame needs the whole
   footprint. It draws roofless: walls up to the eaves and a flat lid at `n = 0`
   there, in the roof color. The real roof is never below the eaves, so wherever
-  a whole copy is drawn it covers the cut one. Flat shapes and unsupported
-  courtyard shapes draw their flat roof, as their whole footprint does. Hipped
-  and mansard courtyard copies draw roofless when cut. The lid carries the run
-  the piece would have if it were whole, which only `building-roof-angle` reads:
-  with `building-roof-height` the eaves are exact, with an angle they are an
+  a whole copy is drawn it covers the cut one. Flat shapes and radial courtyard
+  shapes draw their flat roof, as their whole footprint does. Other courtyard
+  copies draw roofless when cut. The lid carries the run the piece would have if
+  it were whole, which only `building-roof-angle` reads: with
+  `building-roof-height` the eaves are exact, with an angle they are an
   estimate.
 - A cut is a ring edge on an axis-aligned line outside the tile square `[0,
   extent]` that is also the outermost coordinate of all the features the tile
@@ -205,12 +220,13 @@ These cases get a flat roof, and their walls are still drawn (copies the source
 cut draw roofless instead, see [Tile copies](#tile-copies)):
 
 - `flat`, `many`, and unknown shape values. Unknown orientations mean `along`.
-- Footprints with holes for shapes other than hipped and mansard. Courtyard
-  walls face into the courtyard.
-- Hipped or mansard footprints whose skeleton cannot resolve a numerical event
-  or cover the footprint, whose maximum inward run is under 1 tile unit, or that
-  have more than 192 vertices in all their rings: the skeleton's event search is
-  about cubic, and the web layer lays tiles out on the main thread.
+- Footprints with holes for radial shapes (pyramidal, cone, dome and onion).
+  Other families keep courtyards open, with walls facing into them.
+- Footprints using a skeleton that cannot resolve a numerical event or cover the
+  footprint, whose maximum inward run is under 1 tile unit, or that have more
+  than 192 vertices in all their rings: the skeleton's event search is about
+  cubic, and the web layer lays tiles out on the main thread. Gable-end
+  selection can require two skeleton builds; the cap is unchanged.
 - Footprints whose bounding rectangle is thinner than 2 tile units, or a
   skillion whose extent along its direction is less than 2 tile units.
 - Radial shapes whose center is not at least 0.5 tile units inside every edge
@@ -618,10 +634,10 @@ up:
   it exercises both binding paths.
 - [`examples/shapes/`](examples/shapes/README.md): a synthetic grid of 170
   buildings in an empty part of Letenské sady, Prague. It covers all 17 roof
-  shapes on a rectangle, a rotated rectangle, an L-shape and a round footprint,
-  with `along`, `across`, direction and roof-angle variants. Every tile edge up
-  to zoom 18 runs between the buildings, so it draws the same with any GeoJSON
-  source options.
+  shapes on rectangles, a rotated rectangle, L/T/U arms, a round footprint and a
+  courtyard, with `along`, `across`, direction and roof-angle variants. Every
+  tile edge up to zoom 18 runs between the buildings, so it draws the same with
+  any GeoJSON source options.
 - [`examples/osm/`](examples/osm/README.md): real OSM buildings of Bamberg's old
   town with their roof tagging, and a layer with the Simple 3D Buildings rules
   that colours roofs by whether `roof:shape` is tagged.
@@ -709,11 +725,13 @@ gaps of every plugin in this repo, with workarounds and the host fixes that
 would close them. The ones that limit this layer are under
 [Plugin API gaps](#plugin-api-gaps) below.
 
-1. **Frame roofs follow the bounding rectangle.** On footprints that are not
-   rectangles (L, T or irregular outlines), gabled and the other frame shapes
-   are the rectangle's roof clipped to the footprint, so their ridges do not
-   follow the arms of an L. Hipped and mansard roofs use the footprint's
-   straight skeleton and follow its arms and courtyards.
+1. **Some roofs still follow the bounding rectangle.** Half-hipped, saltbox,
+   double_saltbox, quadruple_saltbox and the curved frame shapes keep a single
+   frame on L, T and U footprints. Gabled and gambrel use local arms when
+   terminal hips identify their ends, but irregular outlines without a clear end
+   keep the frame. End selection is a geometric inference, not a reading of roof
+   ridges from the source. Hipped and mansard always use the skeleton.
+   [Geometry decisions](geometry-notes.md) records the choices and measurements.
 2. **Radial shapes copy the footprint.** A dome or onion on a rectangle is a
    rectangular bulb, and on footprints whose center is outside their kernel (an
    L) radial shapes fall back to flat. Fix: blend the profile toward a circle
@@ -723,8 +741,9 @@ would close them. The ones that limit this layer are under
    lid ([Tile copies](#tile-copies)); a building is cut in every tile only when
    it is larger than the buffer. No building of the Bamberg example is, with its
    buffer of 256, but vector tiles often have small buffers. The web twin's
-   `queryFeatures` still reports the tagged shape for them. Fix: unclipped
-   feature bounds from the host (see the gap below).
+   `queryFeatures` still reports the tagged shape for them. Fix: complete
+   footprints or precomputed roof data from the source; bounds alone cannot
+   reconstruct a skeleton (see the gap below).
 4. **Cut copies guess some things.** A roofless lid sits exactly at the eaves
    with `building-roof-height`; with `building-roof-angle` its run, and so its
    eaves, come from the piece, and can stand above the real roof's eaves where a
@@ -733,10 +752,11 @@ would close them. The ones that limit this layer are under
    there, so in a sparse tile a lone axis-aligned building across its edge draws
    roofless. A cut whose crossings a vector tile encoder merged into one point
    is taken for a whole footprint.
-5. **Courtyards support hipped and mansard roofs.** Other sloped shapes still
-   fall back to flat on footprints with holes. The skeleton uses floating-point
-   event calculations; unresolved events fall back to flat. Self-intersecting
-   footprints are not repaired.
+5. **Courtyard roofs are inferred.** Gabled, gambrel, hipped and mansard use
+   skeletons; other frame shapes clip their height field around holes, so a
+   ridge can end at a courtyard wall. Radial shapes with holes stay flat. The
+   skeleton uses floating-point events; unresolved or over-budget skeletons fall
+   back to flat. Self-intersecting footprints are not repaired.
 6. **Building parts are the source's job.** The layer draws every polygon it is
    given. Simple 3D Buildings' rules for `building:part` (drop the outline that
    has parts; parts do not inherit the outline's tags) and `type=building`
@@ -788,10 +808,10 @@ this layer:
   building smaller than the buffer is sure of a whole copy
   ([Tile copies](#tile-copies)). The cut lines themselves are inferred from the
   tile's bounds, as the layout context has no buffer. A host fix: each feature's
-  unclipped bounds (or its whole outline) in the layout callbacks, or a stable
-  feature id to stitch the pieces across tiles as Mapbox's fill-extrusion does
-  for its edge features, or a polygon analogue of GeoJSON's `lineMetrics`, which
-  already carries the clipped range of a line.
+  whole outline in the layout callbacks (bounds only help identify cuts), or a
+  stable feature id to stitch the pieces across tiles as Mapbox's fill-extrusion
+  does for its edge features, or a polygon analogue of GeoJSON's `lineMetrics`,
+  which already carries the clipped range of a line.
 - `query_feature` returns only a boolean, so Native cannot order 3D hits by
   depth; they come in the host's source order. A host fix: return an
   intersection distance, as gl-js's `getIntersectionDistance` gives, and sort 3D
@@ -897,7 +917,7 @@ in the other:
 | ---------------------- | -------------------- | -------------------------------------------------- |
 | `footprint.ts`         | `footprint.zig`      | ring cleanup and classification, bounding frame    |
 | `triangulate.ts`       | `triangulate.zig`    | ear clipping with hole bridges                     |
-| `skeleton.ts`          | `skeleton.zig`       | equal-speed wavefront with courtyard boundaries    |
+| `skeleton.ts`          | `skeleton.zig`       | zero/one-speed wavefront with courtyard boundaries |
 | `roof.ts`              | `roof.zig`           | roof frames, planes, profiles                      |
 | `layout.ts`            | `layout.zig`         | walls, roofs, vertex output and segments           |
 | `spec.ts`              | `spec.zig`           | the layout table's enums (paint with `plugin.zig`) |
