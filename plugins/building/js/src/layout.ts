@@ -37,6 +37,14 @@
 // every copy computes the same roof, bit for bit for integer coordinates.
 // A cut copy cannot know its roof, and draws roofless (see addPolygon).
 
+import type { CanonicalTile } from "@maplibre-plugins/paint";
+
+import {
+  complexRoof,
+  complexStops,
+  partitionRoofGraph,
+  type RoofGraph,
+} from "./complex.ts";
 import {
   classifyRings,
   cross,
@@ -138,6 +146,7 @@ export interface Range {
 export interface LayoutValues {
   /** building-roof-shape; unknown values draw flat roofs. */
   shape?: string;
+  lines?: string;
   /** building-roof-orientation; unknown values mean along. */
   orientation?: string;
   /** building-roof-direction in degrees; negative means unset. */
@@ -197,6 +206,7 @@ export class BuildingLayout {
   readonly segments: Segment[] = [];
   readonly ranges: Range[] = [];
   readonly extent: number;
+  tile?: CanonicalTile;
   /** The bounds of every feature of the tile, which locate its cut lines. */
   readonly bounds: TileBounds;
   /** Where the polygon being built has its frame, in tile units. */
@@ -208,8 +218,13 @@ export class BuildingLayout {
    * `bounds` covers every point of every feature the tile lays out
    * (`tileBounds`); without it nothing counts as cut.
    */
-  constructor(extent: number, bounds: TileBounds = NO_CUTS) {
+  constructor(
+    extent: number,
+    bounds: TileBounds = NO_CUTS,
+    tile?: CanonicalTile,
+  ) {
     this.extent = extent;
+    this.tile = tile;
     this.bounds = bounds;
   }
 
@@ -272,8 +287,24 @@ export class BuildingLayout {
       ? (values.orientation as RoofOrientation)
       : "along";
     const direction = directionVector(values.direction ?? -1);
-    for (const polygon of classifyRings(rings, this.extent, this.bounds))
-      this.addPolygon(polygon, shape, orientation, direction);
+    const polygons = classifyRings(rings, this.extent, this.bounds);
+    const graphs =
+      shape === "complex"
+        ? partitionRoofGraph(
+            polygons,
+            values.lines ?? "",
+            this.tile,
+            this.extent,
+          )
+        : [];
+    for (const [i, polygon] of polygons.entries())
+      this.addPolygon(
+        polygon,
+        shape,
+        orientation,
+        direction,
+        graphs[i] ?? null,
+      );
     const vertexCount = this.vertexCount - firstVertex;
     if (vertexCount > 0)
       this.ranges.push({ featureIndex, firstVertex, vertexCount });
@@ -293,6 +324,7 @@ export class BuildingLayout {
     shape: RoofShape,
     orientation: RoofOrientation,
     direction: Point | null,
+    lines: RoofGraph | null,
   ): void {
     const rings = [polygon.outer, ...polygon.holes];
     const walls = rings.map((ring) =>
@@ -324,6 +356,18 @@ export class BuildingLayout {
     let model = footprint.cut
       ? cutModel(footprint, shape, orientation, direction)
       : modelFor(footprint, shape, orientation, direction);
+    if (shape === "complex" && !footprint.cut) {
+      const run = minimumAreaRectangle(footprint.outer)?.halfShort ?? 0;
+      const roof = complexRoof(footprint, lines, origin, run);
+      if (roof) {
+        model = { type: "complex", ...roof };
+        const probe = new BuildingLayout(this.extent);
+        probe.closure = new Map();
+        probe.build(footprint, model, walls);
+        if ([...probe.closure.values()].some((count) => count !== 0))
+          model = { type: "flat" };
+      }
+    }
     if (
       model.type === "radial" &&
       !model.base &&
@@ -391,6 +435,27 @@ export class BuildingLayout {
             run,
           );
         return this.addRadialRoof(model.base ?? polygon.outer, model);
+      case "complex":
+        for (let t = 0; t < model.triangles.length; t += 3) {
+          const [a, b, c] = model.triangles
+            .slice(t, t + 3)
+            .map((i) => model.points[i]!) as [
+            (typeof model.points)[number],
+            (typeof model.points)[number],
+            (typeof model.points)[number],
+          ];
+          const area = cross(a, b, c);
+          const gx =
+            ((b.n - a.n) * (c.y - a.y) - (c.n - a.n) * (b.y - a.y)) / area;
+          const gy =
+            ((b.x - a.x) * (c.n - a.n) - (c.x - a.x) * (b.n - a.n)) / area;
+          const mesh = new Mesh();
+          for (const p of [a, b, c])
+            mesh.add({ ...p, run, kind: ROOF, gx, gy });
+          mesh.triangle(0, 1, 2);
+          this.emit(mesh);
+        }
+        return;
       case "skeleton":
         return this.addSkeletonRoof(model);
     }
@@ -490,6 +555,7 @@ export class BuildingLayout {
     model: RoofModel,
     stationary: boolean,
   ): { x: number; y: number; n: number }[] {
+    if (model.type === "complex") return complexStops(a, b, model);
     if (model.type === "skeleton" && stationary) {
       const dx = b.x - a.x,
         dy = b.y - a.y;

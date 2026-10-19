@@ -9,7 +9,11 @@
       ["get", "roof:orientation"],
       "along"
     ],
-    "building-roof-direction": ["coalesce", ["get", "roof:direction"], -1]
+    "building-roof-direction": ["coalesce", ["get", "roof:direction"], -1],
+    "building-roof-lines": [
+      "to-string",
+      ["coalesce", ["get", "roof_lines"], ""]
+    ]
   },
   "paint": {
     "building-height": ["get", "height"],

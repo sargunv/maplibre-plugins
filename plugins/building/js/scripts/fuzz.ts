@@ -353,7 +353,7 @@ function fuzzLayouts(
       return p[0] !== q[0] || p[1] !== q[1];
     });
     if (!simple(distinct)) continue;
-    for (const shape of ROOF_SHAPES)
+    for (const shape of ROOF_SHAPES.filter((shape) => shape !== "complex"))
       for (const orientation of ["along", "across"])
         for (const direction of [
           -1,
@@ -495,14 +495,66 @@ function fuzzTouchingCourtyards(r: () => number, iterations: number): string[] {
   return failures;
 }
 
+function fuzzRoofLines(seed: number, iterations: number): string[] {
+  const r = random(seed);
+  const failures: string[] = [];
+  const tile = { z: 16, x: 34748, y: 22257 };
+  const scale = EXTENT * 2 ** tile.z;
+  for (let i = 0; i < iterations; i++) {
+    const ring = star(r);
+    if (!simple(ring)) continue;
+    const center = ring.reduce(
+      ([x, y], p) => [x + p[0] / ring.length, y + p[1] / ring.length] as P,
+      [0, 0] as P,
+    );
+    const vertices = [
+      ...ring.map(([x, y]) => [x, y, 0]),
+      [Math.round(center[0]), Math.round(center[1]), 1],
+    ].map(([x, y, n]) => [
+      ((x! + tile.x * EXTENT) / scale) * 360 - 180,
+      (Math.atan(
+        Math.sinh(Math.PI * (1 - (2 * (y! + tile.y * EXTENT)) / scale)),
+      ) *
+        180) /
+        Math.PI,
+      n,
+    ]);
+    const lines = JSON.stringify({
+      vertices,
+      edges: ring.map((_, k) => [k, ring.length]),
+    });
+    const layout = new BuildingLayout(EXTENT, undefined, tile);
+    layout.addFeature([toPoints(ring)], 0, { shape: "complex", lines });
+    const copy = new BuildingLayout(EXTENT, undefined, {
+      ...tile,
+      x: tile.x - 1,
+    });
+    copy.addFeature([toPoints(ring.map(([x, y]) => [x + EXTENT, y]))], 0, {
+      shape: "complex",
+      lines,
+    });
+    const found = [
+      ...problems(layout, "complex"),
+      ...copyProblems(layout, copy, [EXTENT, 0]),
+    ];
+    if (found.length) failures.push(`roof graph ${i}: ${found.join(", ")}`);
+  }
+  return failures;
+}
+
 const seed = Number(process.argv[2] ?? 1);
 const iterations = Number(process.argv[3] ?? 300);
 const r = random(seed);
 const layouts = fuzzLayouts(r, random(seed ^ 0x9e3779b9), iterations);
 const courtyards = fuzzTouchingCourtyards(r, 10 * iterations);
-for (const failure of [...layouts, ...courtyards].slice(0, 20))
+const roofLines = fuzzRoofLines(seed, iterations);
+for (const failure of [...layouts, ...courtyards, ...roofLines].slice(0, 20))
   console.log(failure);
 console.log(
   `seed ${seed}: ${layouts.length} failing layouts, ${courtyards.length} of ${10 * iterations} courtyard triangulations failing`,
 );
-process.exitCode = layouts.length + courtyards.length > 0 ? 1 : 0;
+console.log(
+  `roof lines: ${roofLines.length} failing layouts of ${iterations} attempts`,
+);
+process.exitCode =
+  layouts.length + courtyards.length + roofLines.length > 0 ? 1 : 0;

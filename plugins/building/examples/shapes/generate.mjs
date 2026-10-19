@@ -28,7 +28,9 @@ import { BuildingLayout, ROOF } from "../../js/src/layout.ts";
 const HERE = dirname(fileURLToPath(import.meta.url));
 const OUTPUT = join(HERE, "buildings.geojson");
 const spec = JSON.parse(readFileSync(join(HERE, "../../spec.json"), "utf8"));
-const SHAPES = spec.layout["building-roof-shape"].values;
+const SHAPES = spec.layout["building-roof-shape"].values.filter(
+  (shape) => shape !== "complex",
+);
 
 /** The north-west corner of the grid, rounded down to a zoom-18 tile. */
 const NORTH_WEST = { lon: 14.4116, lat: 50.0985 };

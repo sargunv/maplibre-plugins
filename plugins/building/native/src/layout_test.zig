@@ -333,6 +333,19 @@ test "keeps the invariants on every layout fixture" {
     try testing.expectEqual(0, failed);
 }
 
+test "keeps repeated and quantized roof graphs complex" {
+    for (build_options.layout_fixture_names, build_options.layout_fixtures) |name, text| {
+        if (!std.mem.eql(u8, name, "roof-lines-repeated.json") and
+            !std.mem.eql(u8, name, "roof-lines-quantized.json")) continue;
+        var parsed = try fixture.parse(testing.allocator, text);
+        defer parsed.deinit();
+        var result = try fixture.layOut(testing.allocator, parsed.value.extent, parsed.value.features);
+        defer result.deinit();
+        try testing.expect(result.vertexCount() > 0);
+        for (result.vertices.items) |v| try testing.expect(v.run > 0);
+    }
+}
+
 // ---- Roof shapes -------------------------------------------------------------
 
 /// A 300 × 160 rectangle centered on (1150, 1080): b = 80, a = 150.

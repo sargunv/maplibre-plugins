@@ -29,6 +29,7 @@ pub const RoofShape = enum {
     onion,
     cone,
     many,
+    complex,
 };
 
 pub const RoofOrientation = enum { along, across };
@@ -60,7 +61,7 @@ test "the layout table matches spec.json" {
     const spec = parsed.value.object;
     try std.testing.expectEqualStrings(layer_type, spec.get("layerType").?.string);
     const layout = spec.get("layout").?.object;
-    try std.testing.expectEqual(3, layout.count());
+    try std.testing.expectEqual(4, layout.count());
 
     const shape = layout.get("building-roof-shape").?.object;
     try expectEnumValues(RoofShape, shape, "flat");

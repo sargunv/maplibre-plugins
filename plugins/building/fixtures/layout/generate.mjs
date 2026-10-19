@@ -89,7 +89,8 @@ function matrix(rings, options = {}) {
       direction,
     });
   if (options.along !== false)
-    for (const shape of ROOF_SHAPES) add(shape, "along", -1, `${shape}`);
+    for (const shape of ROOF_SHAPES.filter((shape) => shape !== "complex"))
+      add(shape, "along", -1, `${shape}`);
   if (options.across !== false)
     for (const shape of FRAME_SHAPES)
       add(shape, "across", -1, `${shape} across`);
@@ -931,6 +932,359 @@ function rounded(expected) {
     }),
   };
 }
+
+// Real ridge/hip graph and small cases that isolate graph recovery and fallbacks.
+const tile = { z: 16, x: 34748, y: 22254 };
+const scale = EXTENT * 2 ** tile.z;
+const projectForExtent =
+  (extent) =>
+  ([lon, lat]) => {
+    const scale = extent * 2 ** tile.z;
+    const sin = Math.sin((lat * Math.PI) / 180);
+    return [
+      ((Math.round((lon / 360 + 0.5) * scale) - tile.x * extent) * EXTENT) /
+        extent,
+      ((Math.round(
+        (0.5 - Math.log((1 + sin) / (1 - sin)) / (4 * Math.PI)) * scale,
+      ) -
+        tile.y * extent) *
+        EXTENT) /
+        extent,
+    ];
+  };
+const project = projectForExtent(EXTENT);
+const geographic = ([x, y, n]) => [
+  ((x + tile.x * EXTENT) / scale) * 360 - 180,
+  (Math.atan(Math.sinh(Math.PI * (1 - (2 * (y + tile.y * EXTENT)) / scale))) *
+    180) /
+    Math.PI,
+  n,
+];
+const graph = (vertices, edges) =>
+  JSON.stringify({ vertices: vertices.map(geographic), edges });
+const real = JSON.parse(
+  readFileSync(join(here, "../../examples/osm/buildings.geojson"), "utf8"),
+).features.find((f) => f.id === 36941229);
+const realRings = real.geometry.coordinates.map((r) =>
+  r.map(project).reverse(),
+);
+const ridge = graph(
+  [
+    [1000, 1080, 1],
+    [1300, 1080, 1],
+  ],
+  [[0, 1]],
+);
+const cases = [
+  {
+    label: "Bamberg way/36941229",
+    rings: realRings,
+    lines: JSON.stringify(real.properties.roof_lines),
+  },
+  { label: "ridge reaching gable walls", rings: [rectangle], lines: ridge },
+  {
+    label: "edge apex at mapped relative height",
+    rings: [rectangle],
+    lines: graph(
+      [
+        [1000, 1000, 0],
+        [1300, 1000, 0],
+        [1300, 1160, 0],
+        [1000, 1160, 0],
+        [1130, 1070, 0.75],
+      ],
+      [
+        [0, 4],
+        [1, 4],
+        [2, 4],
+        [3, 4],
+      ],
+    ),
+  },
+  {
+    label: "isolated apex",
+    rings: [rectangle],
+    lines: graph([[1130, 1070, 1]], []),
+  },
+  { label: "missing lines", rings: [rectangle] },
+  { label: "malformed JSON", rings: [rectangle], lines: "{" },
+  {
+    label: "outside footprint",
+    rings: [rectangle],
+    lines: graph([[900, 900, 1]], []),
+  },
+  {
+    label: "invalid height",
+    rings: [rectangle],
+    lines: graph([[1100, 1100, 2]], []),
+  },
+  {
+    label: "crossing without a junction",
+    rings: [rectangle],
+    lines: graph(
+      [
+        [1000, 1080, 1],
+        [1300, 1080, 1],
+        [1150, 1000, 0],
+        [1150, 1160, 0],
+      ],
+      [
+        [0, 1],
+        [2, 3],
+      ],
+    ),
+  },
+];
+cases.push({
+  label: "courtyard with a closed ridge ring",
+  rings: [
+    [
+      [1000, 1000],
+      [1400, 1000],
+      [1400, 1400],
+      [1000, 1400],
+    ],
+    [
+      [1150, 1150],
+      [1150, 1250],
+      [1250, 1250],
+      [1250, 1150],
+    ],
+  ],
+  lines: graph(
+    [
+      [1075, 1075, 1],
+      [1325, 1075, 1],
+      [1325, 1325, 1],
+      [1075, 1325, 1],
+    ],
+    [
+      [0, 1],
+      [1, 2],
+      [2, 3],
+      [3, 0],
+    ],
+  ),
+});
+
+fixtures["roof-lines"] = {
+  description:
+    "Explicit roof graphs: OSM Bamberg way/36941229, gables, apex heights, invalid input and whole tile copies. Real data © OpenStreetMap contributors, ODbL; see ../../examples/osm/buildings.geojson.LICENSE.txt.",
+  full: true,
+  features: cases.flatMap((f, i) =>
+    [0, 1, -1].map((offset, k) => ({
+      ...f,
+      index: i * 3 + k,
+      shape: "complex",
+      tile: { ...tile, x: tile.x - offset },
+      rings: f.rings.map((r) => r.map(([x, y]) => [x + offset * EXTENT, y])),
+    })),
+  ),
+};
+
+fixtures["roof-lines-quantized"] = {
+  description:
+    "Bamberg way/36941229 from a 4096-extent vector tile, doubled to the 8192 layout grid; geographic graph vertices round directly to 8192. Real data © OpenStreetMap contributors, ODbL; see ../../examples/osm/buildings.geojson.LICENSE.txt.",
+  features: [
+    {
+      index: 0,
+      tile,
+      shape: "complex",
+      rings: real.geometry.coordinates.map((ring) =>
+        ring.map(projectForExtent(4096)).reverse(),
+      ),
+      lines: JSON.stringify(real.properties.roof_lines),
+    },
+  ],
+};
+
+// Review repros share their geometry and expected mesh with the Zig twin.
+const component = (x) => [
+  [x, 1000],
+  [x + 300, 1000],
+  [x + 300, 1300],
+  [x, 1300],
+];
+const apexes = [
+  [1150, 1150, 1],
+  [1650, 1150, 1],
+];
+const cyclePoints = [
+  [100, 300],
+  [100, 700],
+  [400, 500],
+  [900, 700],
+  [900, 950],
+  [500, 200],
+  [900, 200],
+  [400, 100],
+];
+const regressions = [
+  {
+    label: "constraint recovery cycle",
+    rings: [
+      [
+        [0, 0],
+        [1000, 0],
+        [1000, 1000],
+        [0, 1000],
+      ],
+    ],
+    lines: graph(
+      cyclePoints.map((p) => [...p, 1]),
+      [[4, 7]],
+    ),
+  },
+  {
+    label: "multipolygon apexes",
+    rings: [component(1000), component(1500)],
+    lines: graph(apexes, []),
+  },
+  {
+    label: "cross component edge",
+    rings: [component(1000), component(1500), component(2000)],
+    lines: graph([...apexes, [2150, 1150, 1]], [[0, 1]]),
+  },
+  {
+    label: "numeric string height",
+    rings: [component(1000)],
+    lines:
+      '{"vertices":[[10.877235978841782,49.9012145259869,"1"]],"edges":[]}',
+  },
+];
+for (const position of [0, 1, 2]) {
+  const vertex = geographic(apexes[0]);
+  vertex[position] = String(vertex[position]);
+  regressions.push({
+    label: `numeric string vertex ${position}`,
+    rings: [component(1000)],
+    lines: JSON.stringify({ vertices: [vertex], edges: [] }),
+  });
+}
+for (const edge of [
+  ["0", 1],
+  [0, "1"],
+  [null, 1],
+  [false, 1],
+  [0, 0.5],
+])
+  regressions.push({
+    label: `invalid edge ${JSON.stringify(edge)}`,
+    rings: [component(1000)],
+    lines: graph(
+      [
+        [1100, 1100, 1],
+        [1200, 1200, 1],
+      ],
+      [edge],
+    ),
+  });
+regressions.push({
+  label: "numeric exponent edge",
+  rings: [component(1000)],
+  lines: graph(
+    [
+      [1100, 1100, 1],
+      [1200, 1200, 1],
+    ],
+    [[0, 1]],
+  ).replace('"edges":[[0,1]]', '"edges":[[0.0,1e0]]'),
+});
+fixtures["roof-lines-regressions"] = {
+  description:
+    "PR12 review: terminating constraint insertion, per-component graphs, and strict numeric JSON tokens.",
+  full: true,
+  features: regressions.map((f, index) => ({
+    ...f,
+    index,
+    tile,
+    shape: "complex",
+  })),
+};
+
+// The near-limit case used to spend seconds flipping before falling back.
+let denseState = 1;
+const denseRandom = () => {
+  denseState = (Math.imul(denseState, 1664525) + 1013904223) >>> 0;
+  return denseState / 2 ** 32;
+};
+fixtures["roof-lines-dense"] = {
+  description:
+    "188 interior vertices and a constrained segment: terminating recovery near the graph size limit.",
+  features: [
+    {
+      index: 0,
+      tile,
+      shape: "complex",
+      rings: [
+        [
+          [0, 0],
+          [1000, 0],
+          [1000, 1000],
+          [0, 1000],
+        ],
+      ],
+      lines: graph(
+        Array.from({ length: 188 }, () => [
+          1 + Math.floor(denseRandom() * 998),
+          1 + Math.floor(denseRandom() * 998),
+          1,
+        ]),
+        [[0, 187]],
+      ),
+    },
+  ],
+};
+
+const collinear = Array.from({ length: 188 }, (_, i) => [100 + 4 * i, 500, 1]);
+fixtures["roof-lines-repeated"] = {
+  description:
+    "PR12 review: 576 repeated unordered constraints over 188 collinear vertices, duplicate endpoints after remapping, and overlapping constraints whose subsegments are already fixed.",
+  features: [
+    {
+      label: "576 repeated long edges",
+      vertices: collinear,
+      edges: Array.from({ length: 576 }, (_, i) =>
+        i % 2 ? [187, 0] : [0, 187],
+      ),
+    },
+    {
+      label: "duplicate endpoints after remapping",
+      vertices: [...collinear.slice(0, 186), collinear[0], collinear[185]],
+      edges: Array.from({ length: 576 }, (_, i) =>
+        i % 2 ? [187, 186] : [0, 185],
+      ),
+    },
+    {
+      label: "long edge with already recovered subsegments",
+      vertices: collinear,
+      edges: [
+        ...Array.from({ length: 187 }, (_, i) => [i, i + 1]),
+        ...Array.from({ length: 389 }, () => [0, 187]),
+      ],
+    },
+  ].map(({ label, vertices, edges }, index) => ({
+    index,
+    label,
+    tile,
+    shape: "complex",
+    rings: fixtures["roof-lines-dense"].features[0].rings,
+    lines: graph(vertices, edges),
+  })),
+};
+
+// Bounds beyond the copies: these two degenerate points emit no geometry.
+fixtures["roof-lines"].features.push({
+  index: 99,
+  label: "tile bounds",
+  shape: "flat",
+  rings: [
+    [
+      [-20000, -20000],
+      [30000, 30000],
+    ],
+  ],
+});
 
 for (const [name, { description, features, full = false }] of Object.entries(
   fixtures,

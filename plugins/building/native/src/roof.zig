@@ -81,10 +81,12 @@ pub const RoofModel = union(enum) {
     planes: PlaneRoof,
     radial: RadialRoof,
     skeleton: SkeletonRoof,
+    complex: @import("complex.zig").ComplexRoof,
 
     /// The horizontal eave-to-ridge distance, in tile units (0 when flat).
     pub fn run(self: RoofModel) f64 {
         return switch (self) {
+            .complex => |c| c.run,
             .flat => 0,
             .roofless => |r| r,
             .planes => |p| p.run,
@@ -390,7 +392,7 @@ pub fn roofModel(
         .cone => return radialModel(rect, &cone_steps, true, true),
         .dome => return radialModel(rect, &dome_steps, true, false),
         .onion => return radialModel(rect, &onion_steps, true, true),
-        .flat, .many => return .flat,
+        .flat, .many, .complex => return .flat,
     }
 }
 

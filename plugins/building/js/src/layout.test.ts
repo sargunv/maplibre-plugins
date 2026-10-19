@@ -17,7 +17,7 @@ import {
   layOut,
   triangles,
 } from "./fixture.ts";
-import { isClipEdge } from "./footprint.ts";
+import { isClipEdge, NO_CUTS } from "./footprint.ts";
 import {
   BuildingLayout,
   type LayoutValues,
@@ -825,5 +825,82 @@ describe("roof shapes", () => {
     expect(layout.vertexCount).toBeGreaterThan(MAX_SEGMENT_VERTICES);
     expect(layout.segments.length).toBeGreaterThan(1);
     checkInvariants(layout, () => "round");
+  });
+});
+
+describe("explicit roof graphs", () => {
+  it("recovers the cycling constraint, partitions components, and rejects numeric strings", () => {
+    const regression = fixtures.find(
+      (f) => f.name === "roof-lines-regressions.json",
+    )!.fixture;
+    for (const f of regression.features) {
+      const mesh = layOut(regression.extent, [f]);
+      const runs = [...new Set(allVertices(mesh).map((v) => v.run))].sort(
+        (a, b) => a - b,
+      );
+      if (f.label === "constraint recovery cycle") expect(runs).toEqual([500]);
+      else if (
+        f.label === "multipolygon apexes" ||
+        f.label === "numeric exponent edge"
+      )
+        expect(runs).toEqual([150]);
+      else if (f.label === "cross component edge") {
+        expect(runs).toEqual([0, 150]);
+        for (const v of allVertices(mesh))
+          expect(v.run).toBe(v.x >= 2000 ? 150 : 0);
+      } else expect(runs).toEqual([0]);
+    }
+  });
+  it("recovers a segment at the 192-point mesh limit", () => {
+    const dense = fixtures.find(
+      (f) => f.name === "roof-lines-dense.json",
+    )!.fixture;
+    const mesh = layOut(dense.extent, dense.features);
+    expect(allVertices(mesh).every((v) => v.run === 500)).toBe(true);
+  });
+  it("deduplicates repeated edges and already recovered collinear subsegments", () => {
+    const repeated = fixtures.find(
+      (f) => f.name === "roof-lines-repeated.json",
+    )!.fixture;
+    const mesh = layOut(repeated.extent, repeated.features);
+    expect(allVertices(mesh).every((v) => v.run === 500)).toBe(true);
+  });
+  it("snaps graph boundaries to footprints quantized through extent 4096", () => {
+    const quantized = fixtures.find(
+      (f) => f.name === "roof-lines-quantized.json",
+    )!.fixture;
+    const mesh = layOut(quantized.extent, quantized.features);
+    expect(mesh.vertex(0).run).toBeGreaterThan(0);
+  });
+  const fixture = fixtures.find((f) => f.name === "roof-lines.json")!.fixture;
+  it("keeps gable peaks, mapped apex heights and the same graph in adjacent tiles", () => {
+    for (let start = 0; start < 12; start += 3) {
+      const layouts = fixture.features.slice(start, start + 3).map((f) => {
+        const layout = new BuildingLayout(fixture.extent, NO_CUTS, f.tile);
+        layout.addFeature(toRings(f.rings), 0, {
+          shape: f.shape,
+          lines: f.lines,
+        });
+        return layout;
+      });
+      const [base, ...copies] = layouts;
+      expect(base!.vertex(0).run).toBeGreaterThan(0);
+      for (const [i, copy] of copies.entries()) {
+        const dx = (i === 0 ? 1 : -1) * fixture.extent;
+        expect(copy.indices()).toEqual(base!.indices());
+        for (let v = 0; v < base!.vertexCount; v++) {
+          const a = base!.exactVertex(v),
+            b = copy.exactVertex(v);
+          expect({ ...b, x: b.x - dx }).toEqual(a);
+        }
+      }
+    }
+    const apex = layOut(fixture.extent, [fixture.features[6]!]);
+    expect(Math.max(...allVertices(apex).map((v) => v.n))).toBe(0.75);
+    const gable = layOut(fixture.extent, [fixture.features[3]!]);
+    expect(
+      allVertices(gable).some((v) => v.kind === WALL_TOP && v.n === 1),
+    ).toBe(true);
+    expect(allVertices(gable).every((v) => v.run === 80)).toBe(true);
   });
 });

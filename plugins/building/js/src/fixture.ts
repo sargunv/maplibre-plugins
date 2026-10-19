@@ -21,6 +21,8 @@
 // last-bit differences between the twins' math and tight enough to catch
 // any change of logic.
 
+import type { CanonicalTile } from "@maplibre-plugins/paint";
+
 import { BuildingLayout, FLOATS_PER_VERTEX, tileBounds } from "./layout.ts";
 
 export interface FixtureFeature {
@@ -30,6 +32,8 @@ export interface FixtureFeature {
   shape: string;
   orientation?: string;
   direction?: number;
+  lines?: string;
+  tile?: CanonicalTile;
   /** Lays the feature out this many times, with consecutive indices. */
   repeat?: number;
   label?: string;
@@ -77,11 +81,13 @@ export function layOut(
   const layout = new BuildingLayout(extent, tileBounds(all));
   features.forEach((feature, f) => {
     const rings = all[f]!;
+    layout.tile = feature.tile;
     for (let k = 0; k < (feature.repeat ?? 1); k++) {
       layout.addFeature(rings, feature.index + k, {
         shape: feature.shape,
         orientation: feature.orientation ?? "along",
         direction: feature.direction ?? -1,
+        lines: feature.lines,
       });
     }
   });

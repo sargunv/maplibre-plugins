@@ -198,6 +198,7 @@ export function layoutTile(
   const layout = new BuildingLayout(
     EXTENT,
     tileBounds(read.map((r) => r.rings)),
+    tileID,
   );
   const features: PolygonFeature[] = [];
   for (const { index, id, rings, evaluation } of read) {
