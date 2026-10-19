@@ -194,6 +194,30 @@ const fixtures = {
       }));
     }),
   },
+  profiles: {
+    description:
+      "Unequal L arms: the 40-unit arm disappears before the global cap time (0.3 of the maximum run). Caps and 15-degree arches share event and band vertices with walls, recorded vertex by vertex.",
+    full: true,
+    features: [
+      "double_saltbox",
+      "quadruple_saltbox",
+      "round",
+      "round_gabled",
+    ].map((shape, index) => ({
+      index,
+      shape,
+      rings: [
+        [
+          [1000, 1000],
+          [1040, 1000],
+          [1040, 1200],
+          [1400, 1200],
+          [1400, 1360],
+          [1000, 1360],
+        ],
+      ],
+    })),
+  },
   "rectangle-full": {
     description:
       "A 300 × 160 axis-aligned rectangle with every roof shape, recorded vertex by vertex.",
@@ -224,7 +248,7 @@ const fixtures = {
   },
   "l-shape": {
     description:
-      "An L: gabled and gambrel follow its arms; other frame shapes span the bounding rectangle. Radial shapes fall back to flat (the center is outside the kernel).",
+      "An L: gabled, gambrel, capped and barrel roofs follow its arms; half-hipped and saltbox span the bounding rectangle. Radial shapes fall back to flat (the center is outside the kernel).",
     features: matrix([
       [
         [1000, 1000],

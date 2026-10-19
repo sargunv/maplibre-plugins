@@ -39,6 +39,7 @@
 
 import {
   classifyRings,
+  cross,
   isClipEdge,
   minimumAreaRectangle,
   NO_CUTS,
@@ -51,6 +52,10 @@ import {
   directionVector,
   envelope,
   frameFor,
+  FLAT_TOP_INSET,
+  roundProfile,
+  roundGabledProfile,
+  type StripProfile,
   MIN_HALF_WIDTH,
   type Plane,
   roofModel,
@@ -318,7 +323,12 @@ export class BuildingLayout {
     model: RoofModel,
     walls: readonly (readonly boolean[])[],
   ): void {
-    const run = model.type === "flat" ? 0 : model.run;
+    const run =
+      model.type === "flat"
+        ? 0
+        : model.type === "skeleton"
+          ? (model.eaveRun ?? model.run)
+          : model.run;
     [polygon.outer, ...polygon.holes].forEach((ring, r) =>
       this.addWalls(
         ring,
@@ -345,12 +355,10 @@ export class BuildingLayout {
   private addSkeletonRoof(
     model: Extract<RoofModel, { type: "skeleton" }>,
   ): void {
+    const breaks = skeletonBreaks(model);
     for (const face of model.faces) {
-      const bands = model.mansard ? [0, 1] : [0];
-      for (const band of bands) {
-        const points = model.mansard
-          ? clipSkeletonFace(face.points, model.run / 3, band === 0)
-          : face.points;
+      for (let band = 0; band <= breaks.length; band++) {
+        const points = skeletonBand(face.points, breaks, band);
         if (points.length < 3) continue;
         const slope = model.mansard ? (band === 0 ? 2 : 0.5) : 1;
         const mesh = new Mesh();
@@ -362,16 +370,24 @@ export class BuildingLayout {
           center.y += p.y / points.length;
           center.time += p.time / points.length;
         }
-        for (const p of [center, ...points])
+        for (const p of [center, ...points]) {
+          const gradient = model.profile
+            ? stripGradient(model.profile, band, p.time)
+            : slope / model.run;
           mesh.add({
             x: p.x,
             y: p.y,
-            run: model.run,
-            n: skeletonHeight(p.time, model.run, model.mansard),
+            run: model.eaveRun ?? model.run,
+            n: skeletonHeight(p.time, model.run, model.mansard, model.profile),
             kind: ROOF,
-            gx: (slope * face.normal.x) / model.run,
-            gy: (slope * face.normal.y) / model.run,
+            gx: model.profile
+              ? gradient * face.normal.x
+              : (slope * face.normal.x) / model.run,
+            gy: model.profile
+              ? gradient * face.normal.y
+              : (slope * face.normal.y) / model.run,
           });
+        }
         if (points.length === 3) {
           if (
             triangleArea2(f32(points[0]!), f32(points[1]!), f32(points[2]!)) > 0
@@ -443,11 +459,10 @@ export class BuildingLayout {
         { ...a, time: 0, t: 0 },
         { ...b, time: 0, t: 1 },
       ];
+      const breaks = skeletonBreaks(model);
       for (const face of model.faces) {
-        for (const band of model.mansard ? [0, 1] : [0]) {
-          const points = model.mansard
-            ? clipSkeletonFace(face.points, model.run / 3, band === 0)
-            : face.points;
+        for (let band = 0; band <= breaks.length; band++) {
+          const points = skeletonBand(face.points, breaks, band);
           for (const p of points) {
             const t = ((p.x - a.x) * dx + (p.y - a.y) * dy) / length2;
             if (
@@ -467,7 +482,7 @@ export class BuildingLayout {
       return stops.map((p) => ({
         x: p.x,
         y: p.y,
-        n: skeletonHeight(p.time, model.run, model.mansard),
+        n: skeletonHeight(p.time, model.run, model.mansard, model.profile),
       }));
     }
     if (model.type !== "planes") {
@@ -841,7 +856,25 @@ function modelFor(
       : { type: "flat" };
   }
   if (
-    (shape === "gabled" || shape === "gambrel") &&
+    [
+      "gabled",
+      "gambrel",
+      "double_saltbox",
+      "quadruple_saltbox",
+      "round",
+      "round_gabled",
+    ].includes(shape) &&
+    (shape === "gabled" ||
+      shape === "gambrel" ||
+      polygon.holes.length > 0 ||
+      polygon.outer.some(
+        (p, i, ring) =>
+          cross(
+            ring[(i + ring.length - 1) % ring.length]!,
+            p,
+            ring[(i + 1) % ring.length]!,
+          ) < 0,
+      )) &&
     (polygon.holes.length > 0 ||
       signedArea2(polygon.outer) <
         RECTANGLE_FILL * 8 * rect.halfLong * rect.halfShort)
@@ -850,15 +883,20 @@ function modelFor(
     if (!hips) return { type: "flat" };
     const ends = gableEnds(polygon.outer, hips);
     if (ends.some(Boolean) || polygon.holes.length > 0) {
-      const skeleton = ends.some(Boolean)
-        ? straightSkeleton(polygon, ends)
-        : hips;
+      const capped =
+        shape === "double_saltbox" || shape === "quadruple_saltbox";
+      const skeleton =
+        ends.some(Boolean) && shape !== "quadruple_saltbox"
+          ? straightSkeleton(polygon, ends)
+          : hips;
       return skeleton && skeleton.run >= MIN_HALF_WIDTH
         ? {
             type: "skeleton",
             mansard: shape === "gambrel",
-            stationary: ends,
+            stationary: shape === "quadruple_saltbox" ? [] : ends,
             ...skeleton,
+            profile: skeletonProfile(shape, skeleton.run),
+            eaveRun: capped ? FLAT_TOP_INSET * skeleton.run : undefined,
           }
         : { type: "flat" };
     }
@@ -901,7 +939,60 @@ function isRadial(shape: RoofShape): boolean {
   return ["pyramidal", "cone", "dome", "onion"].includes(shape);
 }
 
-function skeletonHeight(time: number, run: number, mansard: boolean): number {
+function skeletonProfile(
+  shape: RoofShape,
+  run: number,
+): StripProfile | undefined {
+  if (shape === "double_saltbox" || shape === "quadruple_saltbox")
+    return { v: [0, FLAT_TOP_INSET * run, run], n: [0, 1, 1], groups: [0, 1] };
+  if (shape !== "round" && shape !== "round_gabled") return undefined;
+  const profile =
+    shape === "round" ? roundProfile(run) : roundGabledProfile(run);
+  // The first half of the arch maps inward distance to height. Keep the other
+  // half for the gradient at its ridge (smooth for round, creased for pointed).
+  profile.v = profile.v.map((v) => v + run);
+  return profile;
+}
+
+function skeletonBreaks(
+  model: Extract<RoofModel, { type: "skeleton" }>,
+): number[] {
+  return model.profile
+    ? model.profile.v.filter((t) => t > 0 && t < model.run)
+    : model.mansard
+      ? [model.run / 3]
+      : [];
+}
+
+function skeletonBand(
+  points: SkeletonPoint[],
+  breaks: number[],
+  band: number,
+): SkeletonPoint[] {
+  if (band > 0) points = clipSkeletonFace(points, breaks[band - 1]!, false);
+  if (band < breaks.length)
+    points = clipSkeletonFace(points, breaks[band]!, true);
+  return points;
+}
+
+function skeletonHeight(
+  time: number,
+  run: number,
+  mansard: boolean,
+  profile?: StripProfile,
+): number {
+  if (profile) {
+    let band = 0;
+    while (band + 2 < profile.v.length && time > profile.v[band + 1]!) band++;
+    const t = Math.max(
+      0,
+      Math.min(
+        1,
+        (time - profile.v[band]!) / (profile.v[band + 1]! - profile.v[band]!),
+      ),
+    );
+    return profile.n[band]! + t * (profile.n[band + 1]! - profile.n[band]!);
+  }
   return Math.max(
     0,
     Math.min(

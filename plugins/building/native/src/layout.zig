@@ -374,11 +374,10 @@ pub const BuildingLayout = struct {
     // ---- Roofs ---------------------------------------------------------------
 
     fn addSkeletonRoof(self: *BuildingLayout, scratch: Allocator, model: roof.SkeletonRoof) Allocator.Error!void {
-        const run = model.geometry.run;
+        const breaks = try skeletonBreaks(scratch, model);
         for (model.geometry.faces) |face| {
-            const bands: usize = if (model.mansard) 2 else 1;
-            for (0..bands) |band| {
-                const points = if (model.mansard) try clipSkeletonFace(scratch, face.points, run / 3, band == 0) else face.points;
+            for (0..breaks.len + 1) |band| {
+                const points = try skeletonBand(scratch, face.points, breaks, band);
                 if (points.len < 3) continue;
                 const slope: f64 = if (model.mansard) (if (band == 0) 2 else 0.5) else 1;
                 var mesh: Mesh = .init(scratch);
@@ -390,10 +389,8 @@ pub const BuildingLayout = struct {
                     center.y += p.y / length;
                     center.time += p.time / length;
                 }
-                const gx = slope * face.normal.x / run;
-                const gy = slope * face.normal.y / run;
-                _ = try mesh.add(vertex(center.x, center.y, run, skeletonHeight(center.time, run, model.mansard), roof_kind, gx, gy));
-                for (points) |p| _ = try mesh.add(vertex(p.x, p.y, run, skeletonHeight(p.time, run, model.mansard), roof_kind, gx, gy));
+                _ = try mesh.add(skeletonVertex(center, model, face.normal, band, slope));
+                for (points) |p| _ = try mesh.add(skeletonVertex(p, model, face.normal, band, slope));
                 if (points.len == 3) {
                     if (triangleArea2(f32Point(.{ .x = points[0].x, .y = points[0].y }), f32Point(.{ .x = points[1].x, .y = points[1].y }), f32Point(.{ .x = points[2].x, .y = points[2].y })) > 0)
                         try mesh.triangle(1, 2, 3);
@@ -694,10 +691,10 @@ fn wallStops(scratch: Allocator, a: Point, b: Point, model: RoofModel, stationar
         };
         var stops: std.ArrayList(TimedStop) = .empty;
         try stops.appendSlice(scratch, &.{ .{ .x = a.x, .y = a.y, .time = 0, .t = 0 }, .{ .x = b.x, .y = b.y, .time = 0, .t = 1 } });
+        const breaks = try skeletonBreaks(scratch, m);
         for (m.geometry.faces) |face| {
-            const bands: usize = if (m.mansard) 2 else 1;
-            for (0..bands) |band| {
-                const points = if (m.mansard) try clipSkeletonFace(scratch, face.points, run / 3, band == 0) else face.points;
+            for (0..breaks.len + 1) |band| {
+                const points = try skeletonBand(scratch, face.points, breaks, band);
                 for (points) |p| {
                     const t = ((p.x - a.x) * dx + (p.y - a.y) * dy) / length2;
                     if (t < -1e-9 or t > 1 + 1e-9 or @abs(dx * (p.y - a.y) - dy * (p.x - a.x)) > 1e-7 * length2) continue;
@@ -716,7 +713,7 @@ fn wallStops(scratch: Allocator, a: Point, b: Point, model: RoofModel, stationar
         }
         std.mem.sort(TimedStop, stops.items, {}, TimedStop.less);
         const result = try scratch.alloc(Stop, stops.items.len);
-        for (result, stops.items) |*s, p| s.* = .{ .x = p.x, .y = p.y, .n = skeletonHeight(p.time, run, m.mansard) };
+        for (result, stops.items) |*s, p| s.* = .{ .x = p.x, .y = p.y, .n = skeletonHeight(p.time, run, m.mansard, m.profile) };
         return result;
     }
     const planes = switch (model) {
@@ -784,16 +781,23 @@ fn modelFor(
         if (geometry.run < min_half_width) return .flat;
         return .{ .skeleton = .{ .geometry = geometry, .mansard = shape == .mansard } };
     }
-    if ((shape == .gabled or shape == .gambrel) and
+    var concave = false;
+    for (polygon.outer, 0..) |p, i| {
+        const ring = polygon.outer;
+        if (footprint.cross(ring[(i + ring.len - 1) % ring.len], p, ring[(i + 1) % ring.len]) < 0) concave = true;
+    }
+    if ((shape == .gabled or shape == .gambrel or shape == .double_saltbox or shape == .quadruple_saltbox or shape == .round or shape == .round_gabled) and
+        (shape == .gabled or shape == .gambrel or polygon.holes.items.len > 0 or concave) and
         (polygon.holes.items.len > 0 or footprint.signedArea2(polygon.outer) < rectangle_fill * 8 * rect.half_long * rect.half_short))
     {
         const hips = (try skeleton.straightSkeleton(scratch, polygon)) orelse return .flat;
         const ends = try skeleton.gableEnds(scratch, polygon.outer, hips);
         const has_ends = std.mem.indexOfScalar(bool, ends, true) != null;
         if (has_ends or polygon.holes.items.len > 0) {
-            const geometry = if (has_ends) (try skeleton.weightedSkeleton(scratch, polygon, ends)) orelse return .flat else hips;
+            const capped = shape == .double_saltbox or shape == .quadruple_saltbox;
+            const geometry = if (has_ends and shape != .quadruple_saltbox) (try skeleton.weightedSkeleton(scratch, polygon, ends)) orelse return .flat else hips;
             if (geometry.run < min_half_width) return .flat;
-            return .{ .skeleton = .{ .geometry = geometry, .mansard = shape == .gambrel, .stationary = ends } };
+            return .{ .skeleton = .{ .geometry = geometry, .mansard = shape == .gambrel, .stationary = if (shape == .quadruple_saltbox) &.{} else ends, .profile = try skeletonProfile(scratch, shape, geometry.run), .eave_run = if (capped) roof.flat_top_inset * geometry.run else null } };
         }
     }
     if (polygon.holes.items.len > 0 and isRadial(shape)) return .flat;
@@ -824,7 +828,48 @@ fn cutModel(
     return .{ .roofless = if (model == .flat) rect.half_short else model.run() };
 }
 
-fn skeletonHeight(time: f64, run: f64, mansard: bool) f64 {
+fn skeletonProfile(scratch: Allocator, shape: RoofShape, run: f64) Allocator.Error!?roof.StripProfile {
+    if (shape == .double_saltbox or shape == .quadruple_saltbox)
+        return .{ .v = try scratch.dupe(f64, &.{ 0, roof.flat_top_inset * run, run }), .n = try scratch.dupe(f64, &.{ 0, 1, 1 }), .groups = try scratch.dupe(u32, &.{ 0, 1 }) };
+    if (shape != .round and shape != .round_gabled) return null;
+    var profile = if (shape == .round) try roof.roundProfile(scratch, run) else try roof.roundGabledProfile(scratch, run);
+    // Keep both halves for the ridge gradient: round is smooth, pointed creased.
+    const times = try scratch.alloc(f64, profile.v.len);
+    for (times, profile.v) |*t, v| t.* = v + run;
+    profile.v = times;
+    return profile;
+}
+
+fn skeletonBreaks(scratch: Allocator, model: roof.SkeletonRoof) Allocator.Error![]const f64 {
+    if (model.profile) |profile| {
+        var count: usize = 1;
+        while (count < profile.v.len and profile.v[count] < model.geometry.run) : (count += 1) {}
+        return profile.v[1..count];
+    }
+    return if (model.mansard) try scratch.dupe(f64, &.{model.geometry.run / 3}) else &.{};
+}
+
+fn skeletonBand(scratch: Allocator, points: []const skeleton.SkeletonPoint, breaks: []const f64, band: usize) Allocator.Error![]const skeleton.SkeletonPoint {
+    var result = points;
+    if (band > 0) result = try clipSkeletonFace(scratch, result, breaks[band - 1], false);
+    if (band < breaks.len) result = try clipSkeletonFace(scratch, result, breaks[band], true);
+    return result;
+}
+
+fn skeletonVertex(p: skeleton.SkeletonPoint, model: roof.SkeletonRoof, normal: Point, band: usize, slope: f64) Local {
+    const run = model.geometry.run;
+    const gx = if (model.profile) |profile| stripGradient(profile, band, p.time) * normal.x else slope * normal.x / run;
+    const gy = if (model.profile) |profile| stripGradient(profile, band, p.time) * normal.y else slope * normal.y / run;
+    return vertex(p.x, p.y, model.eave_run orelse run, skeletonHeight(p.time, run, model.mansard, model.profile), roof_kind, gx, gy);
+}
+
+fn skeletonHeight(time: f64, run: f64, mansard: bool, strips: ?roof.StripProfile) f64 {
+    if (strips) |profile| {
+        var band: usize = 0;
+        while (band + 2 < profile.v.len and time > profile.v[band + 1]) : (band += 1) {}
+        const t = std.math.clamp((time - profile.v[band]) / (profile.v[band + 1] - profile.v[band]), 0, 1);
+        return profile.n[band] + t * (profile.n[band + 1] - profile.n[band]);
+    }
     return std.math.clamp(if (mansard) @min(2 * time / run, 0.5 + 0.5 * time / run) else time / run, 0, 1);
 }
 

@@ -89,12 +89,20 @@ pub const RoofModel = union(enum) {
             .roofless => |r| r,
             .planes => |p| p.run,
             .radial => |r| r.run,
-            .skeleton => |s| s.geometry.run,
+            .skeleton => |s| s.eave_run orelse s.geometry.run,
         };
     }
 };
 
-pub const SkeletonRoof = struct { geometry: skeleton.Skeleton, mansard: bool, stationary: []const bool = &.{} };
+pub const SkeletonRoof = struct {
+    geometry: skeleton.Skeleton,
+    mansard: bool,
+    /// Optional strips in wavefront time, with the frame-strip gradient rules.
+    profile: ?StripProfile = null,
+    /// Capped roofs reach their top before the wavefront disappears.
+    eave_run: ?f64 = null,
+    stationary: []const bool = &.{},
+};
 
 pub const PlaneRoof = struct {
     /// Planes in tile coordinates; n is their minimum.

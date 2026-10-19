@@ -66,15 +66,15 @@ Buildings rules to real OSM tags.
 Both twins lay out each tile's polygons the same way (`native/src/layout.zig`
 and `js/src/layout.ts`, tested against `fixtures/layout/`). A footprint is
 cleaned up and gets a straight skeleton for hipped and mansard roofs and for
-gabled and gambrel arms and courtyards, or a roof frame from its minimum-area
-bounding rectangle for other shapes. Its walls and roof become one mesh, built
-with that feature's roof shape, orientation and direction. The vertices carry
-relative roof elevations rather than heights: the shared vertex shader
-(`shaders/building.glsl`) turns them into meters from the paint properties, so
-heights, colors and roof angles change without a new layout, and only the three
-layout properties lay tiles out again. The shader lights every vertex exactly as
-core fill-extrusion does, and three draw passes give opaque or translucent
-buildings (see [Rendering](#rendering)).
+gabled, gambrel, capped and barrel arms and courtyards, or a roof frame from its
+minimum-area bounding rectangle for other shapes. Its walls and roof become one
+mesh, built with that feature's roof shape, orientation and direction. The
+vertices carry relative roof elevations rather than heights: the shared vertex
+shader (`shaders/building.glsl`) turns them into meters from the paint
+properties, so heights, colors and roof angles change without a new layout, and
+only the three layout properties lay tiles out again. The shader lights every
+vertex exactly as core fill-extrusion does, and three draw passes give opaque or
+translucent buildings (see [Rendering](#rendering)).
 
 ### Geometry
 
@@ -102,19 +102,28 @@ buildings (see [Rendering](#rendering)).
      the roof, with valleys at reflex corners and hips at convex corners. A
      mansard changes slope at one third of the maximum inward run. Orientation
      and direction do not change these roofs.
-   - **Gabled and gambrel arms** first build the equal-speed skeleton to find
-     terminal hips. An exterior edge becomes a gable when both its corners are
-     convex, its neighboring sides point roughly opposite (normalized dot
-     product at most -0.8), and its complete hip face is a triangle. Events may
-     split that face into several pieces; their union must still be a triangle.
-     A second wavefront keeps these edges stationary and moves all other eaves
-     at speed one. Walls follow the roof along stationary ends. Gambrel uses the
-     same two-slope profile as mansard. Courtyard edges always move; a closed
-     courtyard wing with no terminal hips has a continuous hipped ridge.
-     Orientation and direction are ignored on this path: the arms decide.
-     Without holes, footprints filling at least 98% of their bounding rectangle
-     keep the existing frame profile, including its orientation and direction;
-     other footprints without a qualifying terminal hip also keep the frame.
+   - **Gable-family arms** first build the equal-speed skeleton to find terminal
+     hips. An exterior edge becomes a gable when both its corners are convex,
+     its neighboring sides point roughly opposite (normalized dot product at
+     most -0.8), and its complete hip face is a triangle. Events may split that
+     face into several pieces; their union must still be a triangle. A second
+     wavefront keeps these edges stationary and moves all other eaves at speed
+     one. Walls follow the roof along stationary ends. Gambrel uses the same
+     two-slope profile as mansard. Double_saltbox caps this skeleton at `0.3` of
+     its maximum time; quadruple_saltbox caps the equal-speed skeleton instead,
+     so its ends remain hips. Both use one global cap time, keeping the top
+     level across arms of unequal width; a narrow arm that disappears earlier
+     has a lower ridge. Round and round_gabled map time to the same 15° arc
+     samples as their frame profiles: six and four bands per side, respectively.
+     Bands are planar with smooth gradients; the pointed arch keeps its ridge
+     crease. Courtyard edges always move; a closed courtyard wing with no
+     terminal hips has a continuous hipped ridge. Orientation and direction are
+     ignored on this path: the arms decide. Without holes, footprints filling at
+     least 98% of their bounding rectangle keep the existing frame profile,
+     including its orientation and direction; other footprints without a
+     qualifying terminal hip also keep the frame. The capped and barrel profiles
+     also keep the frame on convex footprints without holes, including round
+     outlines. Half-hipped and saltbox keep the frame for all footprints.
    - **Frame shapes** are concave height functions over the frame, written as
      the minimum of planes. The footprint is ear-clipped, and every triangle is
      clipped to every plane's facet, so each output triangle is planar. Holes
@@ -135,15 +144,15 @@ The Source column names where each profile's constants come from.
 | flat, many        | `n = 1`                                                                                                                                     |                                                                                  |
 | gabled            | Frame: `1 - abs(v)/b`; on arms and courtyards, stationary-end skeleton                                                                      | OSM2World                                                                        |
 | hipped            | Equal slopes over the straight skeleton of the footprint, including courtyard eaves.                                                        | [Straight skeleton](https://en.wikipedia.org/wiki/Straight_skeleton)             |
-| half-hipped       | Hips keep the side slope and start `min(b/3, 0.8a)` in from the ends, so the end walls rise to `n = 2/3`.                                   | OSM2World `HalfHippedRoof` (1/6 of the end wall, capped at 0.4 × the ridge line) |
+| half-hipped       | Frame: hips keep the side slope and start `min(b/3, 0.8a)` in from the ends, so the end walls rise to `n = 2/3`.                            | OSM2World `HalfHippedRoof` (1/6 of the end wall, capped at 0.4 × the ridge line) |
 | skillion          | One plane. A set direction slopes it down exactly that way, over the footprint's extent along it. Otherwise it falls toward `+v` over `2b`. | OSM2World                                                                        |
 | gambrel           | Frame: `min(1 - abs(v)/2b, 2 - 2·abs(v)/b)`; on arms and courtyards, stationary-end skeleton with the mansard profile                       | OSM2World `GambrelRoof`                                                          |
 | mansard           | Straight skeleton with `n = min(2t/run, 0.5 + 0.5t/run)`, where `t` is inward distance from an eave.                                        | Gambrel slope profile on the straight skeleton                                   |
-| saltbox           | Equal slopes, with the ridge 0.7 of the width from the front eaves. The back eaves stop at `n = 4/7`.                                       | OSM2World `SaltboxRoof` (Streets GL uses a back eave at 0.2 instead)             |
-| round             | A semicircular barrel vault across `v` in 15° strips, with smooth gradients. Its gable walls follow the arc.                                | OSM2World / Streets GL (Streets GL uses 10° steps)                               |
-| round_gabled      | An equilateral pointed arch: each side is an arc of radius `2b` centered on the opposite eave. The two smooth sides meet at a crisp ridge.  | OSM wiki: "gabled, but the 2 roof slopes are rounded"                            |
-| double_saltbox    | A gabled roof cut off by a flat top. The faces rise over `0.3b`.                                                                            | StreetComplete `roof_double_saltbox` drawing                                     |
-| quadruple_saltbox | A hipped roof cut off by a flat top, with equal slopes over `0.3b`.                                                                         | StreetComplete drawing; Streets GL `QuadrupleSaltboxRoofBuilder` (uses `0.5b`)   |
+| saltbox           | Frame: equal slopes, with the ridge 0.7 of the width from the front eaves. The back eaves stop at `n = 4/7`.                                | OSM2World `SaltboxRoof` (Streets GL uses a back eave at 0.2 instead)             |
+| round             | Semicircular barrel in 15° strips, with smooth gradients and arc-shaped gable walls. On arms, uses stationary-end skeleton time.            | OSM2World / Streets GL (Streets GL uses 10° steps)                               |
+| round_gabled      | Equilateral pointed arch: arcs of radius `2b` centered on opposite eaves, with a crisp ridge. On arms, uses stationary-end skeleton time.   | OSM wiki: "gabled, but the 2 roof slopes are rounded"                            |
+| double_saltbox    | Gabled with a flat top: faces rise over `0.3b` in the frame, or `0.3` of the stationary-end skeleton run on arms.                           | StreetComplete `roof_double_saltbox` drawing                                     |
+| quadruple_saltbox | Hipped with a flat top: equal slopes over `0.3b` in the frame, or `0.3` of the equal-speed skeleton run on arms.                            | StreetComplete drawing; Streets GL `QuadrupleSaltboxRoofBuilder` (uses `0.5b`)   |
 | pyramidal         | Radial, one band to the apex, flat-shaded                                                                                                   | OSM2World                                                                        |
 | cone              | Radial, one band, smooth. Each face gets its own apex vertex.                                                                               | OSM2World                                                                        |
 | dome              | Radial: ten rings with scale `sqrt(1 - h²)`, smooth, with a shared flat apex                                                                | OSM2World `DomeRoof`                                                             |
@@ -158,9 +167,10 @@ Streets GL and the wiki's `Tag:roof:shape=round_gabled` page.
 `run` is `b` for most shapes. It is the face's own run for the saltbox variants
 (`0.3b`), `1.4b` for saltbox, the slope extent for skillion, and half the
 bounding rectangle's short side for radial shapes. For skeleton roofs it is the
-maximum wavefront time before the footprint disappears; moving eaves travel at
-speed one, so this is also their maximum inward distance. Mansard lower faces
-have slope `2/run`, and upper faces `0.5/run` in relative height;
+maximum wavefront time before the footprint disappears (or `0.3` of that time
+for the capped shapes). Moving eaves travel at speed one; capped roofs use only
+the distance to the flat top for `building-roof-angle`. Mansard lower faces have
+slope `2/run`, and upper faces `0.5/run` in relative height;
 `building-roof-angle` still sets the total height from `run`.
 
 ### Tile copies
@@ -226,7 +236,8 @@ cut draw roofless instead, see [Tile copies](#tile-copies)):
   footprint, whose maximum inward run is under 1 tile unit, or that have more
   than 192 vertices in all their rings: the skeleton's event search is about
   cubic, and the web layer lays tiles out on the main thread. Gable-end
-  selection can require two skeleton builds; the cap is unchanged.
+  selection can require two skeleton builds; the cap is unchanged. Sampled
+  barrel profiles split the swept faces into bands after the skeleton is built.
 - Footprints whose bounding rectangle is thinner than 2 tile units, or a
   skillion whose extent along its direction is less than 2 tile units.
 - Radial shapes whose center is not at least 0.5 tile units inside every edge
@@ -725,12 +736,16 @@ gaps of every plugin in this repo, with workarounds and the host fixes that
 would close them. The ones that limit this layer are under
 [Plugin API gaps](#plugin-api-gaps) below.
 
-1. **Some roofs still follow the bounding rectangle.** Half-hipped, saltbox,
-   double_saltbox, quadruple_saltbox and the curved frame shapes keep a single
-   frame on L, T and U footprints. Gabled and gambrel use local arms when
-   terminal hips identify their ends, but irregular outlines without a clear end
-   keep the frame. End selection is a geometric inference, not a reading of roof
-   ridges from the source. Hipped and mansard always use the skeleton.
+1. **Some roofs still follow the bounding rectangle.** Half-hipped and saltbox
+   keep a single frame on L, T and U footprints. Half-hipped needs a change in
+   edge speed or clipping that also rebuilds the gable-wall boundary; it is not
+   just a height profile. Saltbox needs a consistent front/back choice across
+   intersecting arms. Gabled, gambrel, double_saltbox, quadruple_saltbox, round
+   and round_gabled use local arms when terminal hips identify their ends, but
+   irregular outlines without a clear end keep the frame. End selection is a
+   geometric inference, not a reading of roof ridges from the source. Hipped and
+   mansard always use the skeleton. Capped and curved profiles use one global
+   time scale, so narrower arms can have lower ridges.
 2. **Radial shapes copy the footprint.** A dome or onion on a rectangle is a
    rectangular bulb, and on footprints whose center is outside their kernel (an
    L) radial shapes fall back to flat. Fix: blend the profile toward a circle
@@ -751,11 +766,12 @@ would close them. The ones that limit this layer are under
    there, so in a sparse tile a lone axis-aligned building across its edge draws
    roofless. A cut whose crossings a vector tile encoder merged into one point
    is taken for a whole footprint.
-5. **Courtyard roofs are inferred.** Gabled, gambrel, hipped and mansard use
-   skeletons; other frame shapes clip their height field around holes, so a
-   ridge can end at a courtyard wall. Radial shapes with holes stay flat. The
-   skeleton uses floating-point events; unresolved or over-budget skeletons fall
-   back to flat. Self-intersecting footprints are not repaired.
+5. **Courtyard roofs are inferred.** Gabled, gambrel, hipped, mansard, the
+   capped shapes and the two barrels use skeletons; half-hipped, saltbox and
+   skillion clip their height field around holes, so a ridge can end at a
+   courtyard wall. Radial shapes with holes stay flat. The skeleton uses
+   floating-point events; unresolved or over-budget skeletons fall back to flat.
+   Self-intersecting footprints are not repaired.
 6. **Building parts are the source's job.** The layer draws every polygon it is
    given. Simple 3D Buildings' rules for `building:part` (drop the outline that
    has parts; parts do not inherit the outline's tags) and `type=building`
