@@ -113,7 +113,8 @@ give opaque or translucent buildings (see [Rendering](#rendering)).
      and the emitted roof and wall edges must pair before the mesh is accepted.
      Coincident graph nodes retain different heights: duplicate projected edges
      separate roof sectors, whose connecting edges assign their heights. A
-     vertical wall joins the two sides; ambiguous sectors fall back to flat.
+     vertical wall joins the two sides; ambiguous positions collapse to the
+     last-listed height, forming a continuous surface.
    - **Skeleton shapes** (hipped and mansard) move every eave inward at equal
      speed, including courtyard boundaries, which expand into the building. Edge
      collapses and contacts split or merge wavefront loops. The swept faces form
@@ -659,16 +660,16 @@ explicit shared vertex. Vertical steps use distinct vertices at the same
 position with different heights, linked by their own roof edges, as in the
 [roof-lines proposal's vertical parts](https://wiki.openstreetmap.org/wiki/ProposedRoofLines#Step_3:_add_vertical_parts).
 The edges on each side must identify its height; a duplicate pair alone cannot
-say which side is high and falls back. Steps whose heights swap along a seam
-split at their crossing into two triangles, each facing its lower side. This
-extends OSM2World's `ComplexRoof`, which stores only one height per position.
-Overlapping roof surfaces and roof-line overhangs remain unsupported.
-Multipolygon features assign vertices to their exterior component (respecting
-holes), and retain edges within that component. An edge joining two components
-makes both fall back to flat; other components keep their roofs. Coordinates,
-heights and edge indices must be JSON numbers, not numeric strings. Vertices on
-a cleaned-up eave snap to it within 2.2 tile units; points farther outside cause
-a flat fallback.
+say which side is high, so its copies collapse to the last-listed height. Steps
+whose heights swap along a seam split at their crossing into two triangles, each
+facing its lower side. This extends OSM2World's `ComplexRoof`, which stores only
+one height per position. Overlapping roof surfaces and roof-line overhangs
+remain unsupported. Multipolygon features assign vertices to their exterior
+component (respecting holes), and retain edges within that component. An edge
+joining two components makes both fall back to flat; other components keep their
+roofs. Coordinates, heights and edge indices must be JSON numbers, not numeric
+strings. Vertices on a cleaned-up eave snap to it within 2.2 tile units; points
+farther outside cause a flat fallback.
 
 Paint properties follow `fill-extrusion`'s:
 
@@ -876,8 +877,9 @@ would close them. The ones that limit this layer are under
    The source also joins `roof:ridge`, `roof:edge` and `roof:apex` elements into
    `building-roof-lines`; the tile layout cannot look up neighboring OSM ways.
    Vertical steps can taper to a point or swap heights along a shared seam;
-   overlapping roof surfaces and roof-line overhangs remain unsupported.
-   Coplanar faces of overlapping parts z-fight.
+   ambiguous roof-line sectors collapse to the last-listed height, following
+   OSM2World. Overlapping roof surfaces and roof-line overhangs remain
+   unsupported. Coplanar faces of overlapping parts z-fight.
 7. **Triangulation.** Rings that touch at a point triangulate correctly: an ear
    is never clipped across a copy of one of its corners whose boundary runs into
    it, and zero-width spikes are dropped first. Chains of courtyards touching

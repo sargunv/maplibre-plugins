@@ -383,7 +383,7 @@ fn assignHeight(parent: []usize, heights: []?f64, corner: usize, n: f64) bool {
 }
 
 /// Duplicate projected graph edges separate triangle fans. Ordinary graph edges
-/// in each sector seed its height; ambiguous sectors fail without guessing.
+/// in each sector seed its height; ambiguous positions use the last-listed copy.
 fn splitHeights(scratch: Allocator, points: []const RoofPoint, triangles: []const usize, graph: RoofGraph, ids: []const usize, run: f64) Allocator.Error!?ComplexRoof {
     const parent = try scratch.alloc(usize, triangles.len);
     for (parent, 0..) |*p, i| p.* = i;
@@ -420,13 +420,14 @@ fn splitHeights(scratch: Allocator, points: []const RoofPoint, triangles: []cons
                 };
                 if (!found) try entry.value_ptr.values.append(scratch, pair);
             }
-            if (entry.value_ptr.values.items.len > 2) return null;
         }
         try entry.value_ptr.corners.append(scratch, .{ a, b });
     };
     for (edges.values()) |edge| if (edge.values.items.len < 2 and edge.corners.items.len == 2) {
         for (0..2) |k| parent[root(parent, edge.corners.items[1][k])] = root(parent, edge.corners.items[0][k]);
     };
+    const ambiguous = try scratch.alloc(bool, points.len);
+    @memset(ambiguous, false);
     const heights = try scratch.alloc(?f64, triangles.len);
     @memset(heights, null);
     for (triangles, 0..) |id, c| {
@@ -435,13 +436,32 @@ fn splitHeights(scratch: Allocator, points: []const RoofPoint, triangles: []cons
     }
     for (edges.values()) |edge| if (edge.values.items.len == 1) {
         for (edge.corners.items) |pair| for (0..2) |k| {
-            if (!assignHeight(parent, heights, pair[k], edge.values.items[0][k])) return null;
+            if (!assignHeight(parent, heights, pair[k], edge.values.items[0][k])) {
+                const id = triangles[pair[k]];
+                if (variants[id].items.len == 1) return null;
+                ambiguous[id] = true;
+            }
         };
     };
-    for (triangles, 0..) |_, c| if (heights[root(parent, c)] == null) {
-        return null;
+    for (triangles, 0..) |id, c| if (heights[root(parent, c)] == null) {
+        if (variants[id].items.len == 1) return null;
+        ambiguous[id] = true;
     };
-    for (edges.values()) |edge| if (edge.values.items.len == 2) {
+    if (std.mem.indexOfScalar(bool, ambiguous, true) != null) {
+        // ids already remaps each copy's edges. Rebuild sectors after replacing
+        // only ambiguous endpoints with their last-listed height. Each retry
+        // removes at least one position with multiple height variants.
+        var collapsed: RoofGraph = .{ .edges = graph.edges };
+        for (graph.vertices.items, ids) |v, id| {
+            var p = v;
+            if (ambiguous[id]) p.n = points[id].n;
+            try collapsed.vertices.append(scratch, p);
+        }
+        return splitHeights(scratch, points, triangles, collapsed, ids, run);
+    }
+    for (edges.values()) |edge| {
+        if (edge.values.items.len > 2) return null;
+        if (edge.values.items.len != 2) continue;
         if (edge.corners.items.len > 2) return null;
         var used: [2]?usize = .{ null, null };
         for (edge.corners.items, 0..) |pair, j| for (edge.values.items, 0..) |v, i| {
@@ -457,7 +477,7 @@ fn splitHeights(scratch: Allocator, points: []const RoofPoint, triangles: []cons
             // A raised eave's facade fills the vertical part down to the base.
             for (0..2) |k| if (edge.values.items[used[0].?][k] < edge.values.items[1 - used[0].?][k] - eps) return null;
         }
-    };
+    }
     var output: std.ArrayList(RoofPoint) = .empty;
     var original: std.ArrayList(usize) = .empty;
     const result = try scratch.alloc(usize, triangles.len);
