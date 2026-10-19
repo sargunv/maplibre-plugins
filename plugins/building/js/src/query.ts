@@ -12,7 +12,12 @@
 // does a hit inside the box, and an onion's bulge beyond the footprint does
 // not.
 
-import { type Point, signedArea2 } from "./footprint.ts";
+import {
+  MIN_RING_AREA,
+  type Point,
+  signedArea2,
+  simplifyRing,
+} from "./footprint.ts";
 
 /** A projected point: x and y in normalized device coordinates, z its depth. */
 export interface Projected {
@@ -48,16 +53,19 @@ function projectRings(
 }
 
 /**
- * A feature's rings grouped into polygons, as classifyRings groups them: the
- * first ring with an area sets the exterior winding, and every exterior
- * starts a polygon that the holes after it join. Returns ring indices.
+ * A feature's rings grouped into polygons, as classifyRings groups them: a
+ * ring the layout drops (degenerate once simplified, or under
+ * MIN_RING_AREA) is skipped, the first other ring sets the exterior
+ * winding, and every exterior starts a polygon that the holes after it
+ * join. Returns ring indices.
  */
 export function polygonRings(rings: readonly (readonly Point[])[]): number[][] {
   const polygons: number[][] = [];
   let exteriorSign = 0;
   for (let i = 0; i < rings.length; i++) {
-    const area2 = signedArea2(rings[i]!);
-    if (area2 === 0) continue;
+    // Without tile bounds no edge is a cut, so the extent is unused.
+    const area2 = signedArea2(simplifyRing(rings[i]!, 0));
+    if (Math.abs(area2) < 2 * MIN_RING_AREA) continue;
     const sign = area2 > 0 ? 1 : -1;
     if (exteriorSign === 0) exteriorSign = sign;
     if (sign === exteriorSign) polygons.push([i]);

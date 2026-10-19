@@ -3,7 +3,11 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vite-plus/test";
 
 import { cross, type Point, signedArea2 } from "./footprint.ts";
-import { straightSkeleton, type Skeleton } from "./skeleton.ts";
+import {
+  MAX_SKELETON_VERTICES,
+  straightSkeleton,
+  type Skeleton,
+} from "./skeleton.ts";
 
 interface Case {
   name: string;
@@ -123,6 +127,23 @@ describe("straight skeleton", () => {
       checkCoverage(rings, skeletonOf(rings));
     }
   });
+  it("gives footprints over MAX_SKELETON_VERTICES no skeleton", () => {
+    const regular = (n: number): Point[] => {
+      const ring = Array.from({ length: n }, (_, i) => {
+        const a = (2 * Math.PI * i) / n;
+        return {
+          x: Math.round(4096 + 2000 * Math.cos(a)),
+          y: Math.round(4096 + 2000 * Math.sin(a)),
+        };
+      });
+      return signedArea2(ring) < 0 ? ring.reverse() : ring;
+    };
+    const atCap = regular(MAX_SKELETON_VERTICES);
+    expect(straightSkeleton({ outer: atCap, holes: [] })).not.toBeNull();
+    const over = regular(MAX_SKELETON_VERTICES + 1);
+    expect(straightSkeleton({ outer: over, holes: [] })).toBeNull();
+  });
+
   it("rejects degenerate input without emitting partial roofs", () => {
     expect(
       straightSkeleton({

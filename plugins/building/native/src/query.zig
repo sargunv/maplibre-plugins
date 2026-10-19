@@ -15,8 +15,9 @@
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
+const footprint = @import("footprint.zig");
 
-pub const Point = struct { x: f64, y: f64 };
+pub const Point = footprint.Point;
 
 pub const Paint = struct {
     /// building-height and building-base, in meters; clamped at 0 here.
@@ -154,15 +155,19 @@ pub fn intersects(
 
     // Each polygon's top (an exterior and the holes after it), unless part
     // of it is behind the camera: one hidden polygon does not hide the
-    // others.
+    // others. Rings are grouped as classifyRings does, skipping the ones
+    // the layout drops (degenerate once simplified, or under min_ring_area).
     var exterior_sign: f64 = 0;
     var first: usize = 0;
     var first_point: usize = 0;
     offset = 0;
     for (rings, 0..) |ring, r| {
         defer offset += ring.len;
-        const area = signedArea2(ring);
-        if (area == 0) continue;
+        // Without tile bounds no edge is a cut, so the extent is unused.
+        const simplified = try footprint.simplifyRing(allocator, ring, 0, .no_cuts);
+        defer allocator.free(simplified);
+        const area = footprint.signedArea2(simplified);
+        if (@abs(area) < 2 * footprint.min_ring_area) continue;
         if (exterior_sign == 0) exterior_sign = std.math.sign(area);
         if (std.math.sign(area) != exterior_sign or r == first) continue;
         // Ring r starts the next polygon: test the one before it.
@@ -197,19 +202,6 @@ fn topHit(query: []const Point, tops: []const []const Point, points: []const ?Po
     var i: usize = 0;
     while (i < points.len) : (i += 2) if (points[i] == null) return false;
     return queryIntersects(query, tops);
-}
-
-/// Twice the signed area of a ring (a repeated closing point adds nothing).
-fn signedArea2(ring: []const Point) f64 {
-    var area: f64 = 0;
-    if (ring.len < 3) return 0;
-    var j = ring.len - 1;
-    for (ring, 0..) |a, i| {
-        const b = ring[j];
-        area += (b.x - a.x) * (b.y + a.y);
-        j = i;
-    }
-    return area;
 }
 
 // ---------------------------------------------------------------------------

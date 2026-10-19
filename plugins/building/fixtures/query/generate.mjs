@@ -299,6 +299,25 @@ const cases = [
     points: grid(3906.25, 3806.25, 4300, 4300, 12.5, 12.5),
     sameAs: square,
   },
+  {
+    // A first ring the layout drops (under MIN_RING_AREA) and wound the
+    // other way must not set the exterior winding: the courtyard stays a
+    // hole, so the hits are the courtyard footprint's alone.
+    name: "dropped first ring, courtyard",
+    matrix: topDown,
+    rings: [
+      [
+        [3000, 3000],
+        [3001, 3001],
+        [3001, 3000],
+      ],
+      ...courtyard,
+    ],
+    base: 0,
+    height: 20,
+    points: near,
+    sameAs: courtyard,
+  },
 ];
 
 const out = cases.map((c) => {

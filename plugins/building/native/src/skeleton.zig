@@ -243,7 +243,15 @@ fn lessFaceStop(_: void, a: FaceStop, b: FaceStop) bool {
 
 /// Everything allocated here belongs to the caller's per-feature scratch arena.
 /// Null means degenerate topology or an unresolved numerical event.
+/// The most vertices (all rings together) a skeleton is built for, as in the
+/// TypeScript twin: the event search is about cubic, so larger footprints get
+/// a flat roof.
+pub const max_skeleton_vertices = 192;
+
 pub fn straightSkeleton(allocator: Allocator, polygon: Polygon) Allocator.Error!?Skeleton {
+    var total = polygon.outer.len;
+    for (polygon.holes.items) |hole| total += hole.len;
+    if (total > max_skeleton_vertices) return null;
     const all = try allocator.alloc([]const Point, 1 + polygon.holes.items.len);
     all[0] = polygon.outer;
     for (all[1..], polygon.holes.items) |*ring, hole| ring.* = hole;
@@ -340,4 +348,23 @@ pub fn straightSkeleton(allocator: Allocator, polygon: Polygon) Allocator.Error!
         p.time *= scale;
     };
     return .{ .faces = try faces.toOwnedSlice(allocator), .run = time * scale };
+}
+
+/// A regular n-gon of radius 2000 tile units, with positive area.
+fn regularPolygon(points: []Point) Polygon {
+    for (points, 0..) |*p, i| {
+        const a = 2 * std.math.pi * @as(f64, @floatFromInt(i)) / @as(f64, @floatFromInt(points.len));
+        p.* = .{ .x = @round(4096 + 2000 * @cos(a)), .y = @round(4096 + 2000 * @sin(a)) };
+    }
+    if (footprint.signedArea2(points) < 0) std.mem.reverse(Point, points);
+    return .{ .outer = points, .cut = false };
+}
+
+test "footprints over max_skeleton_vertices get no skeleton" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    var at_cap: [max_skeleton_vertices]Point = undefined;
+    try std.testing.expect(try straightSkeleton(arena.allocator(), regularPolygon(&at_cap)) != null);
+    var over: [max_skeleton_vertices + 1]Point = undefined;
+    try std.testing.expect(try straightSkeleton(arena.allocator(), regularPolygon(&over)) == null);
 }

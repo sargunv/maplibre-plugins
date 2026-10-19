@@ -43,6 +43,14 @@ interface Segment {
   parent: number;
 }
 
+/**
+ * The most vertices (all rings together) a skeleton is built for. The event
+ * search is about cubic, and the web layer lays tiles out on the main
+ * thread: 192 vertices take tens of milliseconds, 800 several seconds.
+ * Larger footprints get a flat roof.
+ */
+export const MAX_SKELETON_VERTICES = 192;
+
 // All calculations use a footprint normalized to unit extent. Contact tests
 // tolerate rounding in event times; they never move an event forward in time.
 const CONTACT = 1e-9;
@@ -269,6 +277,8 @@ export function straightSkeleton(
   polygon: Pick<Polygon, "outer" | "holes">,
 ): Skeleton | null {
   const all = [polygon.outer, ...polygon.holes];
+  if (all.reduce((n, ring) => n + ring.length, 0) > MAX_SKELETON_VERTICES)
+    return null;
   let minX = Infinity;
   let minY = Infinity;
   let maxX = -Infinity;

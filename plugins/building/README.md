@@ -208,7 +208,9 @@ cut draw roofless instead, see [Tile copies](#tile-copies)):
 - Footprints with holes for shapes other than hipped and mansard. Courtyard
   walls face into the courtyard.
 - Hipped or mansard footprints whose skeleton cannot resolve a numerical event
-  or cover the footprint, or whose maximum inward run is under 1 tile unit.
+  or cover the footprint, whose maximum inward run is under 1 tile unit, or that
+  have more than 192 vertices in all their rings: the skeleton's event search is
+  about cubic, and the web layer lays tiles out on the main thread.
 - Footprints whose bounding rectangle is thinner than 2 tile units, or a
   skillion whose extent along its direction is less than 2 tile units.
 - Radial shapes whose center is not at least 0.5 tile units inside every edge
