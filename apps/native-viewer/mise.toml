@@ -1,6 +1,7 @@
 # Windowed viewer: loads a native plugin into maplibre-native-c and shows its
 # example layer on a live map. Edit the layer JSON while it runs to tweak
-# paint properties. `weather` opens the animated-icon weather-stations demo.
+# paint properties. `weather` opens the animated-icon weather-stations demo,
+# `building-osm` the building layer on real OSM buildings of Prague.
 # Needs `mise run ffi:build` first.
 
 [tools]
@@ -62,5 +63,22 @@ zig build run-animated-icon \
   --catalog ../../plugins/animated-icon/catalog/weather.mlvc \
   --play-once stations \
   --style https://tiles.openfreemap.org/styles/dark --center 12,28 --zoom 2.6 --bearing 0 --pitch 0 \
+  $usage_args
+'''
+
+[tasks.building-osm]
+description = "Open the viewer on the building layer's Prague demo: OSM buildings of Malá Strana and Hradčany with their roof tagging (© OpenStreetMap contributors, ODbL)."
+usage = '''
+arg "[args]..." var=#true help="Extra viewer flags, e.g. --zoom 18 --bearing 300"
+'''
+run = '''
+zig build run-building \
+  -Dnative-install-dir="$MLN_NATIVE_INSTALL_DIR" \
+  -Ddependency-include-dir="$MLN_FFI_DIR/third_party/maplibre-native/vendor/Vulkan-Headers/include" \
+  -- --layer ../../plugins/building/examples/osm/layer.json \
+  --geojson osm-buildings=../../plugins/building/examples/osm/buildings.geojson \
+  --geojson-options osm-buildings=../../plugins/building/examples/osm/source.json \
+  --style https://tiles.openfreemap.org/styles/positron --before waterway_line_label \
+  --center 50.0885,14.4040 --zoom 16.5 --bearing 0 --pitch 60 \
   $usage_args
 '''

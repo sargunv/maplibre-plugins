@@ -14,6 +14,7 @@ const objc = if (build_options.supports_metal) @import("objc") else struct {};
 const c = @import("c.zig").c;
 const channel = @import("channel.zig");
 const diagnostics = @import("diagnostics.zig");
+const geojson_source = @import("geojson_source.zig");
 const maplibre = @import("maplibre_native_ffi");
 const input = @import("input.zig");
 const layer_file = @import("layer_file.zig");
@@ -50,6 +51,9 @@ fn usage() void {
         \\  --catalog-entry <symbol>
         \\                          The plugin's catalog entry point
         \\  --geojson <id>=<file>   Add a GeoJSON source (<= 16 MiB) with the file inlined; repeatable
+        \\  --geojson-options <id>=<source.json>
+        \\                          GeoJSON source options for that source (maxzoom, buffer, ...),
+        \\                          a source object without data; repeatable
         \\  --clock-symbol <symbol> The plugin's exported clock, double(void)
         \\  --play-once <source-id> Hover a feature of the source to set its feature state
         \\                          {{"start": <clock>}}; click to set it again (needs --clock-symbol)
@@ -69,6 +73,7 @@ fn parseArgs(allocator: std.mem.Allocator, init_args: std.process.Init) !?types.
     var layer_path: ?[]const u8 = null;
     var options = types.Options{ .plugin_path = "", .entry_point = "", .layer_path = "" };
     var geojson_sources: std.ArrayList(types.GeoJsonSource) = .empty;
+    var geojson_options: std.ArrayList(types.GeoJsonSource) = .empty;
     var scripted_inputs: std.ArrayList(types.ScriptedInput) = .empty;
     while (args.next()) |arg| {
         if (std.mem.eql(u8, arg, "--help") or std.mem.eql(u8, arg, "-h")) {
@@ -118,6 +123,14 @@ fn parseArgs(allocator: std.mem.Allocator, init_args: std.process.Init) !?types.
                     break;
                 }
             } else try geojson_sources.append(allocator, source);
+        } else if (std.mem.eql(u8, arg, "--geojson-options")) {
+            const equals = std.mem.indexOfScalar(u8, value, '=') orelse 0;
+            if (equals == 0 or equals + 1 == value.len) {
+                std.debug.print("--geojson-options takes <source-id>=<source.json>, got {s}\n", .{value});
+                return types.AppError.InvalidArguments;
+            }
+            // Kept as (id, path) pairs until every --geojson is known.
+            try geojson_options.append(allocator, .{ .id = try allocator.dupe(u8, value[0..equals]), .path = try allocator.dupe(u8, value[equals + 1 ..]) });
         } else if (std.mem.eql(u8, arg, "--clock-symbol")) {
             options.clock_symbol = try allocator.dupe(u8, value);
         } else if (std.mem.eql(u8, arg, "--play-once")) {
@@ -161,6 +174,18 @@ fn parseArgs(allocator: std.mem.Allocator, init_args: std.process.Init) !?types.
         std.debug.print("--play-once needs --clock-symbol, the plugin's exported clock\n", .{});
         return types.AppError.InvalidArguments;
     }
+    // A later flag for the same id replaces the earlier one.
+    for (geojson_options.items) |entry| {
+        for (geojson_sources.items) |*source| {
+            if (std.mem.eql(u8, source.id, entry.id)) {
+                source.options_path = entry.path;
+                break;
+            }
+        } else {
+            std.debug.print("--geojson-options {s}: no --geojson source has that id\n", .{entry.id});
+            return types.AppError.InvalidArguments;
+        }
+    }
     options.geojson_sources = try geojson_sources.toOwnedSlice(allocator);
     scripted.sort(scripted_inputs.items);
     options.scripted_inputs = try scripted_inputs.toOwnedSlice(allocator);
@@ -178,13 +203,19 @@ fn readInputFile(allocator: std.mem.Allocator, io: std.Io, path: []const u8, lim
     };
 }
 
-/// Inlines each `--geojson` file as its source's data.
+/// Inlines each `--geojson` file as its source's data, beside the source
+/// options of its `--geojson-options` file.
 fn loadGeoJsonSources(allocator: std.mem.Allocator, io: std.Io, sources: []const types.GeoJsonSource) ![]const types.GeoJsonSource {
     const loaded = try allocator.dupe(types.GeoJsonSource, sources);
     for (loaded) |*source| {
         const data = try readInputFile(allocator, io, source.path, max_geojson_bytes);
         defer allocator.free(data);
-        source.json = try std.mem.concat(allocator, u8, &.{ "{\"type\":\"geojson\",\"data\":", data, "}" });
+        const options = if (source.options_path) |path| try readInputFile(allocator, io, path, max_geojson_bytes) else null;
+        defer if (options) |text| allocator.free(text);
+        source.json = geojson_source.compose(allocator, data, options) catch |err| {
+            std.debug.print("--geojson-options {s}: {s} must be a GeoJSON source object without data\n", .{ source.id, source.options_path orelse "" });
+            return err;
+        };
     }
     return loaded;
 }
@@ -283,7 +314,10 @@ pub fn main(init_args: std.process.Init) !void {
     var current_viewport = viewport.get(window);
     viewport.log("initial viewport", current_viewport);
 
-    var gpa = std.heap.DebugAllocator(.{}){};
+    // No allocation stack traces: Zig 0.16's Mach-O unwinder panics ("switch
+    // on corrupt value") on frames of the macOS 27 system libraries, and Debug
+    // builds capture a trace on every allocation.
+    var gpa = std.heap.DebugAllocator(.{ .stack_trace_frames = 0 }){};
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 

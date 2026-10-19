@@ -409,3 +409,27 @@ details.group > summary .count {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
 }
+
+/* Roof inspection popups on the OSM roofs page. */
+.roof-popup .title {
+  font-weight: 600;
+  margin-bottom: 2px;
+}
+
+.roof-popup .roof {
+  margin-bottom: 6px;
+}
+
+.roof-popup table {
+  border-collapse: collapse;
+  margin-bottom: 6px;
+}
+
+.roof-popup td {
+  padding: 1px 8px 1px 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.roof-popup td:first-child {
+  color: #666;
+}
