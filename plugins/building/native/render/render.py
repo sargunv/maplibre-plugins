@@ -258,7 +258,7 @@ for footprint, feature_id in [("l", 104), ("t", 172), ("u", 189), ("courtyard", 
     case(f"shapes-gabled-{footprint}", shapes_style, (*centroid(shape_by_id[feature_id]), 20.0, 30, 55))
     case(f"shapes-gambrel-{footprint}", shapes_style, (*centroid(shape_by_id[feature_id + 5]), 20.0, 30, 55))
 for footprint, feature_id in [("l", 104), ("t", 172), ("u", 189)]:
-    for shape, offset in [("double_saltbox", 7), ("quadruple_saltbox", 11), ("round", 6), ("round_gabled", 12)]:
+    for shape, offset in [("half-hipped", 2), ("saltbox", 8), ("double_saltbox", 7), ("quadruple_saltbox", 11), ("round", 6), ("round_gabled", 12)]:
         case(f"shapes-{shape}-{footprint}", shapes_style, (*centroid(shape_by_id[feature_id + offset]), 20.0, 30, 55))
 case("shapes-opacity", style("shapes-opacity", shapes_sources, [with_paint(shapes_layer, building_opacity=0.55)], default_light),
      (*centroid(shape_by_id[12]), 19.2, 20, 50))
