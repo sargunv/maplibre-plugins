@@ -17,6 +17,7 @@ Layer plugins for MapLibre, each implemented twice from one shared spec:
 | [water](plugins/water)                           | `water-shore`                           | native + web; needs FFI plugin patches |
 | [animated-icon](plugins/animated-icon)           | `animated-icon`                         | native + web; needs FFI plugin patches |
 | [particles](plugins/particles)                   | `particle-emitter`, `particle-features` | native + web; needs FFI plugin patches |
+| [building](plugins/building)                     | `building`                              | native + web; needs FFI plugin patches |
 
 ## Try it
 
@@ -45,18 +46,29 @@ mise run //apps/native-viewer:run particles -- \
   --center 37.788,-122.4075 --zoom 16.5 --bearing 0 --pitch 40
 mise run //apps/native-viewer:run animated-icon -- --center 37.788,-122.4075 --zoom 16
 mise run //apps/native-viewer:weather
+mise run //apps/native-viewer:run building
+mise run //apps/native-viewer:building-osm
 ```
 
-The last one opens the animated-icon weather demo: 240 synthetic weather
-stations drawn from an app-supplied catalog of Meteocons animations. Its icons
-loop out of sync. Add `-- --layer
+`weather` opens the animated-icon weather demo: 240 synthetic weather stations
+drawn from an app-supplied catalog of Meteocons animations. Its icons loop out
+of sync. Add `-- --layer
 ../../plugins/animated-icon/examples/weather/play-once.layer.json` to rest every
 icon until you hover it, which plays it once (a click replays it). The gallery's
 "Weather stations" page shows the same stations on the web.
 
+The building viewer opens on the grid of every roof shape in Prague's Letenské
+sady; `building-osm` opens the building layer on OSM buildings of Malá Strana
+and Hradčany (© OpenStreetMap contributors, ODbL). The gallery's "Buildings" and
+"OSM roofs (Prague)" pages show the same on the web.
+
 The particles viewer opens on snow at the viewer's default camera; the
 [particles presets](plugins/particles/README.md#presets) table gives the flags
 that open each effect, snow included, at its own camera.
+
+[docs/plugin-api-gaps.md](docs/plugin-api-gaps.md) records what the plugin API
+lacks for these plugins, how each works around it, and which carried patch or
+upstream change fills it.
 
 See [AGENTS.md](AGENTS.md) for the repo layout and conventions.
 
@@ -66,4 +78,6 @@ BSD 2-Clause; see [LICENSE](LICENSE). Third-party animations keep their own
 licenses, listed in
 [`plugins/animated-icon/animations/LICENSES.md`](plugins/animated-icon/animations/LICENSES.md).
 The weather demo's stations come from Natural Earth, which is public domain;
-their weather is made up.
+their weather is made up. The building plugin's Prague example is OpenStreetMap
+data, © OpenStreetMap contributors, under the Open Database License; see
+[`plugins/building/examples/osm/buildings.geojson.LICENSE.txt`](plugins/building/examples/osm/buildings.geojson.LICENSE.txt).
