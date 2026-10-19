@@ -194,6 +194,30 @@ const fixtures = {
       }));
     }),
   },
+  profiles: {
+    description:
+      "Unequal L arms: the 40-unit arm disappears before the global cap time (0.3 of the maximum run). Caps and 15-degree arches share event and band vertices with walls, recorded vertex by vertex.",
+    full: true,
+    features: [
+      "double_saltbox",
+      "quadruple_saltbox",
+      "round",
+      "round_gabled",
+    ].map((shape, index) => ({
+      index,
+      shape,
+      rings: [
+        [
+          [1000, 1000],
+          [1040, 1000],
+          [1040, 1200],
+          [1400, 1200],
+          [1400, 1360],
+          [1000, 1360],
+        ],
+      ],
+    })),
+  },
   "rectangle-full": {
     description:
       "A 300 × 160 axis-aligned rectangle with every roof shape, recorded vertex by vertex.",
@@ -224,7 +248,7 @@ const fixtures = {
   },
   "l-shape": {
     description:
-      "An L: gabled and gambrel follow its arms; other frame shapes span the bounding rectangle. Cone, dome and onion sit on circular bases with terraces; pyramidal stays flat (the center is outside the kernel).",
+      "An L: gabled, gambrel, capped and barrel roofs follow its arms; half-hipped and saltbox span the bounding rectangle. Cone, dome and onion sit on circular bases with terraces; pyramidal stays flat (the center is outside the kernel).",
     features: matrix([
       [
         [1000, 1000],
@@ -623,6 +647,112 @@ const fixtures = {
         orientation: "across",
         direction: 200,
       },
+      // Keep the reported skeleton failures in the shared closed-mesh suite.
+      ...[
+        {
+          label: "seed 2: collapsed comb face",
+          rings: [
+            [
+              [723, 4889],
+              [591, 4754],
+              [603, 4742],
+              [603, 4742],
+              [662, 4802],
+              [720, 4861],
+              [732, 4850],
+              [615, 4730],
+              [628, 4718],
+              [744, 4838],
+              [756, 4826],
+              [640, 4706],
+              [652, 4694],
+              [769, 4814],
+              [781, 4802],
+              [664, 4682],
+              [676, 4671],
+              [793, 4790],
+              [805, 4778],
+              [689, 4659],
+              [701, 4647],
+              [817, 4766],
+              [829, 4755],
+              [713, 4635],
+              [725, 4623],
+              [842, 4743],
+              [854, 4731],
+              [869, 4747],
+            ],
+          ],
+        },
+        {
+          label: "seed 3: eight-vertex stationary gable",
+          rings: [
+            [
+              [5936, 6519],
+              [6075, 6602],
+              [5976, 6770],
+              [6085, 6834],
+              [6184, 6666],
+              [6215, 6684],
+              [6279, 6576],
+              [6000, 6411],
+            ],
+          ],
+        },
+        {
+          label: "seed 3: near-coincident wall events",
+          rings: [
+            [
+              [1223, 4367],
+              [1077, 4551],
+              [1032, 4515],
+              [1068, 4469],
+              [842, 4289],
+              [878, 4244],
+              [1104, 4423],
+              [1178, 4331],
+            ],
+          ],
+        },
+        {
+          label: "seed 3: barrel band touches comb event",
+          rings: [
+            [
+              [4331, 4067],
+              [4331, 4063],
+              [4363, 4063],
+              [4363, 4065],
+              [4395, 4065],
+              [4395, 4063],
+              [4427, 4063],
+              [4427, 4065],
+              [4459, 4065],
+              [4459, 4063],
+              [4491, 4063],
+              [4491, 4065],
+              [4523, 4065],
+              [4523, 4063],
+              [4555, 4063],
+              [4555, 4065],
+              [4587, 4065],
+              [4587, 4063],
+              [4619, 4063],
+              [4619, 4065],
+              [4651, 4065],
+              [4651, 4067],
+            ],
+          ],
+        },
+      ].flatMap(({ label, rings }) =>
+        [
+          "gabled",
+          "gambrel",
+          "double_saltbox",
+          "quadruple_saltbox",
+          "round",
+          "round_gabled",
+        ].map((shape) => ({ label: `${label}: ${shape}`, rings, shape })),
+      ),
     ].map((feature, index) => ({ index, ...feature })),
   },
   degenerate: {

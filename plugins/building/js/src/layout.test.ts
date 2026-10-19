@@ -178,7 +178,14 @@ function checkInvariants(
     }
     expect(a.kind === b.kind && b.kind === c.kind).toBe(true);
     const area2 = (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
-    if (a.kind === ROOF) expect(area2).toBeLessThan(0);
+    // As in fuzz.ts, tile-position float32 rounding can flip a sub-ulp sliver.
+    const longest = Math.max(
+      Math.hypot(b.x - a.x, b.y - a.y),
+      Math.hypot(c.x - b.x, c.y - b.y),
+      Math.hypot(a.x - c.x, a.y - c.y),
+    );
+    const sliver = Math.abs(area2) <= 2 ** -9 * longest;
+    if (a.kind === ROOF) expect(area2 < 0 || sliver).toBe(true);
     else expect(area2).toBeGreaterThan(0);
     if (!SMOOTH.has(shape)) {
       // Planar: one gradient per triangle, and n follows it.
@@ -186,7 +193,10 @@ function checkInvariants(
       expect([a.gx, a.gy]).toEqual([c.gx, c.gy]);
       for (const v of [b, c]) {
         const predicted = a.n + a.gx * (v.x - a.x) + a.gy * (v.y - a.y);
-        expect(Math.abs(predicted - v.n)).toBeLessThan(2e-4);
+        // Match fuzz.ts: steep faces amplify float32 tile-position rounding.
+        expect(Math.abs(predicted - v.n)).toBeLessThan(
+          2e-4 + 2e-3 * Math.hypot(a.gx, a.gy),
+        );
       }
     }
     addEdge(a, b);
