@@ -133,9 +133,19 @@ give opaque or translucent buildings (see [Rendering](#rendering)).
      facing the direction travels 70% across an arm, and its opposite 30%; arms
      along the direction are symmetric. An unset direction uses the
      orientation's frame front, following OSM2World's orientation-based choice.
-     Arm saltboxes have level eaves and unequal slopes, unlike the frame's equal
-     slopes and raised back eave. Heights use one wavefront clock and each
-     face's gradient divides by its speed, keeping valleys continuous.
+     Arm saltboxes retain level eaves and unequal slopes. Heights use one
+     wavefront clock and each face's gradient divides by its speed, keeping
+     valleys continuous. This is a limit of the arm model: OSM2World's equal
+     slopes and raised back eaves remain supported only by the frame path.
+     Delaying each back edge by `0.4` times its arm width gives equal slopes and
+     the intended 70/30 ridge, but at a reflex corner a stationary edge can grow
+     into the adjoining arm. Its raised face then meets that arm's lower face
+     with a vertical step inside the footprint. For example, on a T with
+     120-unit-wide arms facing north, the back face starts at time 48 while the
+     symmetric stem face starts at time 0 at their common corner. Boundary wall
+     stops cannot close this interior step; the closure check rejects the
+     result. Supporting this interpretation needs interior step faces and their
+     junctions, beyond the current boundary-wall and roof-facet model.
    - **Frame shapes** are concave height functions over the frame, written as
      the minimum of planes. The footprint is ear-clipped, and every triangle is
      clipped to every plane's facet, so each output triangle is planar. Holes
@@ -168,7 +178,7 @@ The Source column names where each profile's constants come from.
 | skillion          | One plane. A set direction slopes it down exactly that way, over the footprint's extent along it. Otherwise it falls toward `+v` over `2b`.                                  | OSM2World                                                                        |
 | gambrel           | Frame: `min(1 - abs(v)/2b, 2 - 2·abs(v)/b)`; on arms and courtyards, stationary-end skeleton with the mansard profile                                                        | OSM2World `GambrelRoof`                                                          |
 | mansard           | Straight skeleton with `n = min(2t/run, 0.5 + 0.5t/run)`, where `t` is inward distance from an eave.                                                                         | Gambrel slope profile on the straight skeleton                                   |
-| saltbox           | Frame: equal slopes, with the ridge 0.7 of the width from the front eaves. The back eaves stop at `n = 4/7`. Arms use directional speeds and level eaves.                    | OSM2World `SaltboxRoof` (Streets GL uses a back eave at 0.2 instead)             |
+| saltbox           | Frame: equal slopes, ridge at 0.7 of the width from the front, back eaves at `n = 4/7`. Arms: directional 70/30 ridges, unequal slopes and level eaves; see the limit above. | OSM2World `SaltboxRoof` (Streets GL uses a back eave at 0.2 instead)             |
 | round             | Semicircular barrel in 15° strips, with smooth gradients and arc-shaped gable walls. On arms, uses stationary-end skeleton time.                                             | OSM2World / Streets GL (Streets GL uses 10° steps)                               |
 | round_gabled      | Equilateral pointed arch: arcs of radius `2b` centered on opposite eaves, with a crisp ridge. On arms, uses stationary-end skeleton time.                                    | OSM wiki: "gabled, but the 2 roof slopes are rounded"                            |
 | double_saltbox    | Gabled with a flat top: faces rise over `0.3b` in the frame, or `0.3` of the stationary-end skeleton run on arms.                                                            | StreetComplete `roof_double_saltbox` drawing                                     |
