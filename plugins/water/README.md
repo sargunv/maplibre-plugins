@@ -62,6 +62,9 @@ while `wave-speed` is non-zero.
 
 ## Limits and future improvements
 
+The plugin-API gaps behind these limits, across all plugins, are collected in
+[docs/plugin-api-gaps.md](../../docs/plugin-api-gaps.md).
+
 The band is an offset of the shoreline, not a partition of the water, so
 wherever coastline features are shorter than the band width (piers, marinas,
 jagged rock) adjacent strips overlap and the translucent tint doubles up into
@@ -92,22 +95,23 @@ needs render targets and blending controls from the host.
 
 [Native #4685](https://github.com/maplibre/maplibre-native/pull/4685) proposes
 ordered passes across all tiles in a layer, with depth/color writes, culling and
-3D metadata. After API migration, this could make option 2 easier to test:
-finish a layer-wide depth pre-pass before the color pass. The existing
-first-fragment shading and transparent-coverage caveats still apply; ordered
-passes alone do not solve overlapping shoreline geometry.
+3D metadata. The host now carries it as patch `0001`, and the plugin builds
+against its header, but uses none of it yet. Draw passes could make option 2
+easier to test: finish a layer-wide depth pre-pass before the color pass. A
+layer that declares passes gives up the per-drawable depth and stencil fields
+the plugin sets today. The existing first-fragment shading and
+transparent-coverage caveats still apply; ordered passes alone do not solve
+overlapping shoreline geometry.
 
 The proposal also adds evaluated style-light inputs for optional wave shading,
-and IMAGE properties with Metal/Vulkan tile-atlas access for patterned water.
-The implementation admits both backends even though the header comments say
-Vulkan-only. These would require new properties and shader work in both plugin
-implementations. Packed colors and reduced feature-state refills could also
-reduce paint-buffer costs.
+and IMAGE properties with Metal/Vulkan tile-atlas access for patterned water;
+OpenGL would need another path. These would require new properties and shader
+work in both plugin implementations. Packed colors and reduced feature-state
+refills could also reduce paint-buffer costs.
 
 Offscreen accumulation still needs render targets and max blending, which the
-proposal does not provide. It does not replace our carried extensions, and
-adoption requires reconciling its descriptors/render passes with the current
-host ABI and rebuilding the plugin. None of these changes is implemented here.
+proposal does not provide. It does not replace our carried extensions. None of
+these changes is implemented here.
 
 ## Paint properties
 
@@ -137,8 +141,14 @@ on the host.
 ### Native host
 
 Tile layout, animation and default-color premultiplication are upstream Native
-features. Build against the plugin ABI header of the host that loads the
-library, as the native viewer does.
+features; the plugin uses no feature of `patches/maplibre-native-ffi/`. Build
+against the plugin ABI header of the host that loads the library, as the native
+viewer does. Built against this repo's vendored header, the library needs a host
+that carries the whole stack, `0001` to `0006`. The host rejects descriptor
+structs shorter than its own. The plugin in turn rejects host structs shorter
+than the header's: the output bucket ends with `0004`'s frame features, the
+layout context and feature end with `0006`'s tile id and layout values, and
+`0001` grows the uniform context.
 
 ## Web
 

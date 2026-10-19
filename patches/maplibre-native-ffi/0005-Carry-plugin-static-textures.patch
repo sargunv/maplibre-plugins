@@ -1,41 +1,41 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: maplibre-plugins <sync@localhost>
-Date: Mon, 12 Oct 2026 02:35:45 -0700
-Subject: [PATCH 4/4] Carry plugin static textures
+Date: Sun, 18 Oct 2026 15:11:14 -0700
+Subject: [PATCH 5/6] Carry plugin static textures
 
 Static RGBA32F catalog textures for plugin shaders.
 
 Carried by maplibre-plugins until it lands upstream.
 ---
  .mise/bin/sync-submodules                     |    1 +
- .../0045-plugin-static-textures.patch         | 1078 +++++++++++++++++
+ .../0046-plugin-static-textures.patch         | 1092 +++++++++++++++++
  patches/maplibre-native/README.md             |    2 +
- 3 files changed, 1081 insertions(+)
- create mode 100644 patches/maplibre-native/0045-plugin-static-textures.patch
+ 3 files changed, 1095 insertions(+)
+ create mode 100644 patches/maplibre-native/0046-plugin-static-textures.patch
 
 diff --git a/.mise/bin/sync-submodules b/.mise/bin/sync-submodules
-index c65dc034..bc72747c 100755
+index 3b6f2cbb..9a95c2e5 100755
 --- a/.mise/bin/sync-submodules
 +++ b/.mise/bin/sync-submodules
-@@ -82,6 +82,7 @@ mln_patches=(
-   "$repo_root/patches/maplibre-native/0042-source-free-plugin-layers.patch"
-   "$repo_root/patches/maplibre-native/0043-plugin-rotation-properties.patch"
-   "$repo_root/patches/maplibre-native/0044-plugin-frame-queries.patch"
-+  "$repo_root/patches/maplibre-native/0045-plugin-static-textures.patch"
+@@ -83,6 +83,7 @@ mln_patches=(
+   "$repo_root/patches/maplibre-native/0043-source-free-plugin-layers.patch"
+   "$repo_root/patches/maplibre-native/0044-plugin-rotation-properties.patch"
+   "$repo_root/patches/maplibre-native/0045-plugin-frame-queries.patch"
++  "$repo_root/patches/maplibre-native/0046-plugin-static-textures.patch"
  )
  
  # The patches overlap, so no single patch reverses cleanly on its own once the
-diff --git a/patches/maplibre-native/0045-plugin-static-textures.patch b/patches/maplibre-native/0045-plugin-static-textures.patch
+diff --git a/patches/maplibre-native/0046-plugin-static-textures.patch b/patches/maplibre-native/0046-plugin-static-textures.patch
 new file mode 100644
-index 00000000..b030a1c7
+index 00000000..2412dc9b
 --- /dev/null
-+++ b/patches/maplibre-native/0045-plugin-static-textures.patch
-@@ -0,0 +1,1078 @@
++++ b/patches/maplibre-native/0046-plugin-static-textures.patch
+@@ -0,0 +1,1092 @@
 +diff --git a/include/mln/plugin/plugin_api.h b/include/mln/plugin/plugin_api.h
-+index 615691a9..f1d66d1b 100644
++index d7696d54fa8a0a9cb93e9459855537b6b8edd6d9..ccf63c1b72e65f123c6cace1280d4b86fd91859c 100644
 +--- a/include/mln/plugin/plugin_api.h
 ++++ b/include/mln/plugin/plugin_api.h
-+@@ -257,6 +257,56 @@ typedef struct mln_plugin_shader_property_binding_v1 {
++@@ -275,6 +275,56 @@ typedef struct mln_plugin_shader_property_binding_v1 {
 +     uint32_t interpolation_uniform_byte_offset;
 + } mln_plugin_shader_property_binding_v1;
 + 
@@ -92,22 +92,23 @@ index 00000000..b030a1c7
 + typedef struct mln_plugin_shader_descriptor_v1 {
 +     uint32_t struct_size;
 +     mln_plugin_string shader_id;
-+@@ -268,6 +318,10 @@ typedef struct mln_plugin_shader_descriptor_v1 {
-+     size_t uniform_block_count;
-+     const mln_plugin_shader_property_binding_v1* property_bindings;
-+     size_t property_binding_count;
-++    /* Optional; introduced after property_bindings. Static textures the
-++     * fragment stage reads; see mln_plugin_texture_descriptor_v1. */
++@@ -292,6 +342,11 @@ typedef struct mln_plugin_shader_descriptor_v1 {
++      * instance. The vertex shader generates primitive corners using
++      * gl_VertexIndex. Zero retains ordinary indexed vertex attributes. */
++     uint8_t instanced;
+++    /* Optional; introduced after instanced. Static textures the fragment
+++     * stage reads; see mln_plugin_texture_descriptor_v1. A shader with
+++     * tile_pattern_texture cannot use texture_id 0, which the atlas takes. */
 ++    const mln_plugin_texture_descriptor_v1* textures;
 ++    size_t texture_count;
 + } mln_plugin_shader_descriptor_v1;
 + 
 + /* Borrowed render-thread inputs for a host-owned plugin uniform block. */
 +diff --git a/src/mln/plugin/plugin_registry.cpp b/src/mln/plugin/plugin_registry.cpp
-+index 3e86f22c..0653a17c 100644
++index cb9cbd87d3fdc644e7b3ae479ff57bcc705cd497..1ab553f3c411a4bf7ae876644c147df41952ac40 100644
 +--- a/src/mln/plugin/plugin_registry.cpp
 ++++ b/src/mln/plugin/plugin_registry.cpp
-+@@ -47,6 +47,9 @@ bool validOptionalString(const mln_plugin_string& value) {
++@@ -50,6 +50,9 @@ bool validOptionalString(const mln_plugin_string& value) {
 +     return value.size == 0 || value.data;
 + }
 + 
@@ -117,7 +118,7 @@ index 00000000..b030a1c7
 + constexpr uint32_t supportedBackends = MLN_PLUGIN_BACKEND_OPENGL | MLN_PLUGIN_BACKEND_VULKAN | MLN_PLUGIN_BACKEND_METAL;
 + 
 + bool validBackendMask(uint32_t mask) {
-+@@ -307,6 +310,58 @@ bool appendShaders(const std::string& pluginID,
++@@ -338,6 +341,62 @@ bool appendShaders(const std::string& pluginID,
 +                                                binding.interpolation_uniform_id,
 +                                                binding.interpolation_uniform_byte_offset});
 +         }
@@ -140,6 +141,10 @@ index 00000000..b030a1c7
 ++            }
 ++            if (texture.texture_id >= MLN_PLUGIN_MAX_TEXTURES || !textureIDs.emplace(texture.texture_id).second) {
 ++                error = "plugin shader texture id is out of range or duplicated";
+++                return false;
+++            }
+++            if (shader.tilePatternTexture && texture.texture_id == 0) {
+++                error = "plugin shader texture id 0 is taken by the tile pattern texture";
 ++                return false;
 ++            }
 ++            if (!validString(texture.name) || !textureNames.emplace(copyString(texture.name)).second) {
@@ -177,10 +182,10 @@ index 00000000..b030a1c7
 +     }
 +     return true;
 +diff --git a/src/mln/plugin/plugin_registry.hpp b/src/mln/plugin/plugin_registry.hpp
-+index c070ed98..908c8afc 100644
++index 499573623f42f94dccd244634cfc78015b4bf98f..f4920ef9fe368efa5d68d1b3db02f1c065ccccb4 100644
 +--- a/src/mln/plugin/plugin_registry.hpp
 ++++ b/src/mln/plugin/plugin_registry.hpp
-+@@ -65,6 +65,18 @@ struct ShaderPropertyBindingDefinition {
++@@ -66,6 +66,18 @@ struct ShaderPropertyBindingDefinition {
 +     bool operator==(const ShaderPropertyBindingDefinition&) const = default;
 + };
 + 
@@ -199,16 +204,16 @@ index 00000000..b030a1c7
 + struct ShaderDefinition {
 +     std::string pluginID;
 +     std::string id;
-+@@ -72,6 +84,7 @@ struct ShaderDefinition {
-+     std::vector<ShaderAttribute> attributes;
-+     std::vector<UniformBlockDefinition> uniformBlocks;
++@@ -75,6 +87,7 @@ struct ShaderDefinition {
 +     std::vector<ShaderPropertyBindingDefinition> propertyBindings;
++     bool tilePatternTexture = false;
++     bool instanced = false;
 ++    std::vector<TextureDefinition> textures;
 +     bool operator==(const ShaderDefinition&) const = default;
 + };
 + 
 +diff --git a/src/mln/plugin/plugin_shader.cpp b/src/mln/plugin/plugin_shader.cpp
-+index 0829d461..b87676f6 100644
++index 032152ab27b2d130831de9970cddc0b8eb8becda..488d67af59a4112dfdc7833fc91d1e7164cad396 100644
 +--- a/src/mln/plugin/plugin_shader.cpp
 ++++ b/src/mln/plugin/plugin_shader.cpp
 +@@ -2,9 +2,12 @@
@@ -224,7 +229,7 @@ index 00000000..b030a1c7
 + #include <mln/plugin/plugin_registry.hpp>
 + #include <mln/shaders/program_parameters.hpp>
 + #include <mln/shaders/shader_defines.hpp>
-+@@ -60,6 +63,12 @@ std::string resourcePrelude(const ShaderDefinition& shader) {
++@@ -61,6 +64,12 @@ std::string resourcePrelude(const ShaderDefinition& shader) {
 + #endif
 +         output << "#define MLN_PLUGIN_UNIFORM_" << uniform.id << "_IS_ARRAY " << array << '\n';
 +     }
@@ -237,7 +242,7 @@ index 00000000..b030a1c7
 +     return output.str();
 + }
 + 
-+@@ -112,7 +121,12 @@ public:
++@@ -121,7 +130,12 @@ public:
 +         for (const auto& uniform : definition->uniformBlocks) {
 +             uniformBlocks.emplace_back(uniform.name, uniform.bindingID);
 +         }
@@ -250,10 +255,10 @@ index 00000000..b030a1c7
 +         shader = gl::ShaderProgramGL::create(static_cast<gl::Context&>(context),
 +                                              parameters.withProgramType(shaders::BuiltIn::None),
 +                                              definition->attributes.front().name,
-+@@ -137,6 +151,10 @@ public:
-+                 typed->initVertexAttribute({attr.location, attributeType(attr.type), attr.id});
-+             }
++@@ -151,6 +165,10 @@ public:
 +         }
++         if (definition->tilePatternTexture && propertiesAsUniforms.first.contains("__plugin_pattern_enabled"))
++             typed->initTexture({0, 0});
 ++        // The image set writes texture slot id to binding id, so both are the id.
 ++        for (const auto& texture : definition->textures) {
 ++            typed->initTexture({texture.id, texture.id});
@@ -261,17 +266,17 @@ index 00000000..b030a1c7
 +         shader = std::move(typed);
 + #elif MLN_RENDER_BACKEND_METAL
 +         const auto* source = findSource(*definition, MLN_PLUGIN_BACKEND_METAL);
-+@@ -157,6 +175,9 @@ public:
-+                     {attr.location, attributeType(attr.type), shaders::maxUBOCountPerShader + attr.location, attr.id});
-+             }
++@@ -177,6 +195,9 @@ public:
 +         }
++         if (definition->tilePatternTexture && propertiesAsUniforms.first.contains("__plugin_pattern_enabled"))
++             typed->initTexture({0, 0});
 ++        for (const auto& texture : definition->textures) {
 ++            typed->initTexture({texture.id, texture.id});
 ++        }
 +         shader = std::move(typed);
 + #else
 +         (void)context;
-+@@ -168,10 +189,51 @@ public:
++@@ -188,10 +209,51 @@ public:
 +         return shader;
 +     }
 + 
@@ -323,7 +328,7 @@ index 00000000..b030a1c7
 + };
 + 
 + } // namespace
-+@@ -184,6 +246,12 @@ std::string shaderGroupName(const std::string& pluginID, const std::string& laye
++@@ -204,6 +266,12 @@ std::string shaderGroupName(const std::string& pluginID, const std::string& laye
 +     return "plugin/" + encode(pluginID) + encode(layerType) + encode(shaderID);
 + }
 + 
@@ -337,7 +342,7 @@ index 00000000..b030a1c7
 +                                 const ProgramParameters& parameters,
 +                                 const RegisteredLayerPtr& layerType) {
 +diff --git a/src/mln/plugin/plugin_shader.hpp b/src/mln/plugin/plugin_shader.hpp
-+index 70d7ea89..79fc1ad8 100644
++index 70d7ea890bf95e32a402f60f4c421038f0e12c9b..79fc1ad837e5e966c80275598e56d34b2718cdd9 100644
 +--- a/src/mln/plugin/plugin_shader.hpp
 ++++ b/src/mln/plugin/plugin_shader.hpp
 +@@ -6,8 +6,12 @@
@@ -367,23 +372,38 @@ index 00000000..b030a1c7
 ++
 + } // namespace plugin
 + } // namespace mln
++diff --git a/src/mln/renderer/layers/plugin_layer_tweaker.cpp b/src/mln/renderer/layers/plugin_layer_tweaker.cpp
++index e65c6005a3a9a4dffb69de69405469b2b8dd0643..39f0884fb481f679d18317d17c9c5063d9ec729e 100644
++--- a/src/mln/renderer/layers/plugin_layer_tweaker.cpp
+++++ b/src/mln/renderer/layers/plugin_layer_tweaker.cpp
++@@ -80,7 +80,9 @@ void PluginLayerTweaker::execute(LayerGroupBase& layerGroup, const PaintParamete
++             callbackContext.crossfade_from_scale = crossfade.fromScale;
++             callbackContext.crossfade_to_scale = crossfade.toScale;
++             callbackContext.crossfade_t = crossfade.t;
++-            if (const auto& texture = drawable.getTexture(0)) {
+++            // Static plugin textures can occupy slot 0 when the shader has no atlas.
+++            const auto& texture = shader->tilePatternTexture ? drawable.getTexture(0) : nullptr;
+++            if (texture) {
++                 callbackContext.pattern_texture_size[0] = texture->getSize().width;
++                 callbackContext.pattern_texture_size[1] = texture->getSize().height;
++             }
 +diff --git a/src/mln/renderer/layers/render_plugin_style_layer.cpp b/src/mln/renderer/layers/render_plugin_style_layer.cpp
-+index af59d5a0..ad55610d 100644
++index 1d1fb706a570ede42a0e77f579e5f36782cfc0f7..7beba8d937e7e2265f9154f9ecd9ac7b087adbf8 100644
 +--- a/src/mln/renderer/layers/render_plugin_style_layer.cpp
 ++++ b/src/mln/renderer/layers/render_plugin_style_layer.cpp
-+@@ -361,6 +361,10 @@ void RenderPluginStyleLayer::update(gfx::ShaderRegistry& shaders,
-+             builder->setRawVertices({}, vertexCount, firstType);
-+             builder->setSegments(
-+                 gfx::Triangles(), bucket.indices, definition.segments.data(), definition.segments.size());
-++            // A shader whose static textures failed to upload draws nothing.
-++            if (!plugin::attachShaderTextures(shaderGroup, context, *builder)) {
-++                continue;
-++            }
-+             builder->flush(context);
-+             for (auto& drawable : builder->clearDrawables()) {
-+                 drawable->setTileID(tileID);
-+@@ -529,6 +533,9 @@ void RenderPluginStyleLayer::updateFrame(gfx::ShaderRegistry& shaders,
-+         builder->setRawVertices({}, vertexCount, firstType);
++@@ -437,6 +437,10 @@ void RenderPluginStyleLayer::update(gfx::ShaderRegistry& shaders,
++                 builder->setRawVertices({}, definition.primitiveVertexCount, firstType);
++                 builder->setSegments(
++                     gfx::Triangles(), bucket.indices, definition.segments.data(), definition.segments.size());
+++                // A shader whose static textures failed to upload draws nothing.
+++                if (!plugin::attachShaderTextures(shaderGroup, context, *builder)) {
+++                    continue;
+++                }
++                 builder->flush(context);
++                 for (auto& drawable : builder->clearDrawables()) {
++                     drawable->setTileID(tileID);
++@@ -620,6 +624,9 @@ void RenderPluginStyleLayer::updateFrame(gfx::ShaderRegistry& shaders,
++         builder->setRawVertices({}, definition.primitiveVertexCount, firstType);
 +         builder->setSegments(
 +             gfx::Triangles(), frameBucket->indices, definition.segments.data(), definition.segments.size());
 ++        if (!plugin::attachShaderTextures(shaderGroup, context, *builder)) {
@@ -393,10 +413,10 @@ index 00000000..b030a1c7
 +         for (auto& drawable : builder->clearDrawables()) {
 +             drawable->setLayerTweaker(layerTweaker);
 +diff --git a/test/plugin/api.test.cpp b/test/plugin/api.test.cpp
-+index 1a8fd206..e1c44536 100644
++index 6c3835a8623baba1239ba2709982d54c02baa398..1f8cfb490b29319ddaf3fc6e3ffaa2939719da41 100644
 +--- a/test/plugin/api.test.cpp
 ++++ b/test/plugin/api.test.cpp
-+@@ -129,6 +129,11 @@ TEST(PluginApi, RejectsTruncatedDescriptorsBeforeReadingPayload) {
++@@ -141,6 +141,11 @@ TEST(PluginApi, RejectsTruncatedDescriptorsBeforeReadingPayload) {
 +     ShortStruct<mln_plugin_shader_property_binding_v1> binding;
 +     input.shader.property_bindings = binding.get();
 +     input.expectRejected();
@@ -409,16 +429,10 @@ index 00000000..b030a1c7
 + 
 + TEST(PluginApi, RejectsMissingArraysAndStringData) {
 +diff --git a/test/plugin/registry.test.cpp b/test/plugin/registry.test.cpp
-+index dc7ff650..ca897213 100644
++index c74149cab93f5a84d0ab06821f3fbc5da0a734b6..111750a53639f2c990812528cb0c0150274f1824 100644
 +--- a/test/plugin/registry.test.cpp
 ++++ b/test/plugin/registry.test.cpp
-+@@ -1,4 +1,5 @@
-+ #include <mln/plugin/plugin_api.h>
-++#include <mln/plugin/plugin_registry.hpp>
-+ #include <mln/layermanager/layer_manager.hpp>
-+ #include <mln/style/conversion/json.hpp>
-+ #include <mln/style/conversion/layer.hpp>
-+@@ -6,6 +7,11 @@
++@@ -7,6 +7,11 @@
 + #include <mln/style/layers/plugin_style_layer.hpp>
 + #include <gtest/gtest.h>
 + 
@@ -430,7 +444,7 @@ index 00000000..b030a1c7
 + using namespace mln;
 + 
 + namespace {
-+@@ -95,6 +101,162 @@ TEST(PluginRegistry, ValidatesUniformScopes) {
++@@ -96,6 +101,162 @@ TEST(PluginRegistry, ValidatesUniformScopes) {
 +     EXPECT_EQ(MLN_PLUGIN_STATUS_CONFLICT, mln_plugin_register_v1(&descriptor, message, sizeof(message)));
 + }
 + 
@@ -594,7 +608,7 @@ index 00000000..b030a1c7
 +     style::conversion::Error parsingError;
 +     EXPECT_FALSE(style::conversion::convertJSON<std::unique_ptr<style::Layer>>(
 +diff --git a/test/plugin/rendering.test.cpp b/test/plugin/rendering.test.cpp
-+index 0403357d..14c69f43 100644
++index 4fa4f45910315fe76c534ee91f8930225d451e15..4fba67535d7d7bd32e8a19ba80079025e2f38f46 100644
 +--- a/test/plugin/rendering.test.cpp
 ++++ b/test/plugin/rendering.test.cpp
 +@@ -10,8 +10,12 @@
@@ -610,7 +624,7 @@ index 00000000..b030a1c7
 + 
 + using namespace mln;
 + 
-+@@ -523,4 +527,498 @@ TEST(PluginRendering, NormalizedByteColorAttributes) {
++@@ -597,4 +601,498 @@ TEST(PluginRendering, LayerEvaluationFailureInvalidOutputAndRecovery) {
 +     }
 + }
 + 
@@ -1110,12 +1124,12 @@ index 00000000..b030a1c7
 ++
 + } // namespace
 diff --git a/patches/maplibre-native/README.md b/patches/maplibre-native/README.md
-index 6d18573b..4cb2c041 100644
+index 44bbf019..908c2478 100644
 --- a/patches/maplibre-native/README.md
 +++ b/patches/maplibre-native/README.md
-@@ -211,3 +211,5 @@ again.
- `0043-plugin-rotation-properties.patch` Shortest-arc rotation transitions. Carried by maplibre-plugins until it lands upstream.
+@@ -213,3 +213,5 @@ again.
+ `0044-plugin-rotation-properties.patch` Shortest-arc rotation transitions. Carried by maplibre-plugins until it lands upstream.
  
- `0044-plugin-frame-queries.patch` Hit envelopes for source-free rendered features. Carried by maplibre-plugins until it lands upstream.
+ `0045-plugin-frame-queries.patch` Hit envelopes for source-free rendered features. Carried by maplibre-plugins until it lands upstream.
 +
-+`0045-plugin-static-textures.patch` Static RGBA32F catalog textures for plugin shaders. Carried by maplibre-plugins until it lands upstream.
++`0046-plugin-static-textures.patch` Static RGBA32F catalog textures for plugin shaders. Carried by maplibre-plugins until it lands upstream.

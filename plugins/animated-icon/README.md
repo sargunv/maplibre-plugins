@@ -378,20 +378,24 @@ From `patches/maplibre-native-ffi/` this plugin needs:
 
 | Patch                             | Used for                                                                                   |
 | --------------------------------- | ------------------------------------------------------------------------------------------ |
-| `0002` plugin rotation properties | `icon-rotate` transitions along the shortest arc                                           |
-| `0003` plugin frame queries       | the bucket's layout only (see below)                                                       |
-| `0004` plugin static textures     | the catalog texture that holds every frame, so each icon picks its own animation and phase |
+| `0003` plugin rotation properties | `icon-rotate` transitions along the shortest arc                                           |
+| `0004` plugin frame queries       | the bucket's layout only (see below)                                                       |
+| `0005` plugin static textures     | the catalog texture that holds every frame, so each icon picks its own animation and phase |
 
-`0004` is required on every backend. The FFI itself carries the OpenGL large
+`0005` is required on every backend. The FFI itself carries the OpenGL large
 uniform block fix for catalogs whose header exceeds 8 KiB, and attribute-name
 matching for layers that mix data-driven and constant properties. The plugin
-uses no feature of `0001` (source-free layers): the extra `source_free` and
-`build_frame` fields it zeroes are ignored by a host without them. It uses no
-feature of `0003` either and returns no frame features, but the vendored
-header's `mln_plugin_bucket_v1` ends with `0003`'s `frame_features`, so
-`finish_layout` rejects a host's smaller bucket. Default-color premultiplication
-is upstream, as is `should_animate`. The patches form one stacked series, so a
-host carries `0001` to `0004`.
+uses no feature of `0001` (the fill-extrusion rendering API from Native #4685),
+`0002` (source-free layers) or `0006` (feature layout properties); the fields it
+zeroes from them keep the host's previous behavior. It uses no feature of `0004`
+either and returns no frame features, but the vendored header's
+`mln_plugin_bucket_v1` ends with `0004`'s `frame_features`, so `finish_layout`
+rejects a host's smaller bucket. Likewise the layout context and feature end
+with `0006`'s fields and the uniform context with `0001`'s, and the plugin
+rejects shorter ones. Default-color premultiplication is upstream, as is
+`should_animate`. The patches form one stacked series, so a host carries `0001`
+to `0006`, and the library must be built against that host's header: `0001`
+renumbers `ROTATION` and grows the descriptor structs.
 
 ## Weather demo
 
@@ -420,6 +424,8 @@ after the first frame, and `--exit-after <s>` quits.
 
 Most limits come from the plugin API; each item names what would lift it. Frame
 context and uniform-only bindings are planned for M2.
+[docs/plugin-api-gaps.md](../../docs/plugin-api-gaps.md) collects the plugin-API
+gaps of every plugin.
 
 1. **One catalog per native process, registered by the app.** The host keeps one
    descriptor per plugin id and layer type, so a process registers either the
@@ -538,21 +544,20 @@ context and uniform-only bindings are planned for M2.
 ### Upstream API work to watch
 
 [Native #4685](https://github.com/maplibre/maplibre-native/pull/4685) proposes
-API changes that could improve this plugin after migration:
+API changes that could improve this plugin. The host now carries it as patch
+`0001` and the plugin builds against its header, but uses none of it yet:
 
 - **Instance icon quads.** Keep one icon record per instance and generate its
-  four corners in the shader, reducing repeated geometry and paint data. The
-  implementation admits Metal and Vulkan despite Vulkan-only header comments;
-  OpenGL would retain the current path.
+  four corners in the shader, reducing repeated geometry and paint data.
+  Instancing is Metal and Vulkan only; OpenGL would retain the current path.
 - **Reduce color-buffer storage and refills (limit 16).** Packed RGBA8 colors
   and shared equal zoom endpoints could shrink paint buffers. The host also
   skips feature-state updates for bindings whose expressions do not read
   feature-state. State-dependent bindings still update; the proposal does not
   provide a feature-state timestamp or animation-completion events.
-- **Pass controls into layout (limit 9).** Camera-only layout properties could
-  choose tile-local ordering or geometry settings. They do not provide
-  feature-driven `symbol-sort-key`, screen ordering across tiles or collision
-  participation.
+- **Pass controls into layout (limit 9).** Layout properties (data-driven ones
+  through patch `0006`) could choose tile-local ordering or geometry settings.
+  They do not provide screen ordering across tiles or collision participation.
 - **Explore sprite-backed variants.** IMAGE properties and Metal/Vulkan
   tile-atlas access could support raster sprite icons or accents alongside the
   vector animations. The sprite atlas does not replace the arbitrary RGBA32F
@@ -561,10 +566,9 @@ API changes that could improve this plugin after migration:
 The proposal does not address host time, pitch/roll, per-layer catalogs,
 uniform-only paint bindings or collision (limits 1, 4, 7, 8 and 13). Our
 rotation and static-texture extensions remain necessary; the stacked source-free
-and frame-query patches are not replaced either. Adopting the API requires
-reconciling descriptor changes and its BOOLEAN/IMAGE IDs with our
-DOUBLE2/ROTATION IDs, updating shaders/fixtures together, and rebuilding the
-plugin. Paint-buffer improvements and instancing are the first candidates.
+and frame-query patches are not replaced either. Using the API means updating
+the shaders and fixtures of both implementations together. Paint-buffer
+improvements and instancing are the first candidates.
 
 ## Web
 

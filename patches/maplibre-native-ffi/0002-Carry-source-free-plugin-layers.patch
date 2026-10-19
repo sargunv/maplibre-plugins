@@ -1,50 +1,50 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: maplibre-plugins <sync@localhost>
-Date: Mon, 12 Oct 2026 02:35:44 -0700
-Subject: [PATCH 1/4] Carry source-free plugin layers
+Date: Sun, 18 Oct 2026 15:11:14 -0700
+Subject: [PATCH 2/6] Carry source-free plugin layers
 
 Per-frame geometry without a style source.
 
 Carried by maplibre-plugins until it lands upstream.
 ---
- .mise/bin/sync-submodules                     |   1 +
- .../0042-source-free-plugin-layers.patch      | 980 ++++++++++++++++++
- patches/maplibre-native/README.md             |   2 +
- 3 files changed, 983 insertions(+)
- create mode 100644 patches/maplibre-native/0042-source-free-plugin-layers.patch
+ .mise/bin/sync-submodules                     |    1 +
+ .../0043-source-free-plugin-layers.patch      | 1065 +++++++++++++++++
+ patches/maplibre-native/README.md             |    2 +
+ 3 files changed, 1068 insertions(+)
+ create mode 100644 patches/maplibre-native/0043-source-free-plugin-layers.patch
 
 diff --git a/.mise/bin/sync-submodules b/.mise/bin/sync-submodules
-index c470e491..98ef81b8 100755
+index 09f7c417..2348cc11 100755
 --- a/.mise/bin/sync-submodules
 +++ b/.mise/bin/sync-submodules
-@@ -79,6 +79,7 @@ mln_patches=(
-   "$repo_root/patches/maplibre-native/0036-platform-locale-expression-options.patch"
+@@ -80,6 +80,7 @@ mln_patches=(
    "$repo_root/patches/maplibre-native/0038-apple-locale-expressions.patch"
    "$repo_root/patches/maplibre-native/0039-color-ramp-global-state.patch"
-+  "$repo_root/patches/maplibre-native/0042-source-free-plugin-layers.patch"
+   "$repo_root/patches/maplibre-native/0042-vulkan-fill-extrusion-plugin.patch"
++  "$repo_root/patches/maplibre-native/0043-source-free-plugin-layers.patch"
  )
  
  # The patches overlap, so no single patch reverses cleanly on its own once the
-diff --git a/patches/maplibre-native/0042-source-free-plugin-layers.patch b/patches/maplibre-native/0042-source-free-plugin-layers.patch
+diff --git a/patches/maplibre-native/0043-source-free-plugin-layers.patch b/patches/maplibre-native/0043-source-free-plugin-layers.patch
 new file mode 100644
-index 00000000..53cbb795
+index 00000000..4df8ec31
 --- /dev/null
-+++ b/patches/maplibre-native/0042-source-free-plugin-layers.patch
-@@ -0,0 +1,980 @@
++++ b/patches/maplibre-native/0043-source-free-plugin-layers.patch
+@@ -0,0 +1,1065 @@
 +diff --git a/include/mln/plugin/plugin_api.h b/include/mln/plugin/plugin_api.h
-+index 83d15636a56c787d3c20b27644b78bc5e42ed307..2a4ecac20f74e694be21335377dd1b7d8150dfcb 100644
++index d25cfc302cdf6b93f48194155fa8be45c426ed29..fb62ff796806fd29a30839443e80fd7c0693d1ea 100644
 +--- a/include/mln/plugin/plugin_api.h
 ++++ b/include/mln/plugin/plugin_api.h
-+@@ -65,6 +65,8 @@ typedef enum mln_plugin_value_type {
-+     MLN_PLUGIN_VALUE_FLOAT2 = 2,
-+     MLN_PLUGIN_VALUE_COLOR = 3,
-+     MLN_PLUGIN_VALUE_STRING = 4,
++@@ -68,6 +68,8 @@ typedef enum mln_plugin_value_type {
++     MLN_PLUGIN_VALUE_BOOLEAN = 5,
++     /* Sprite image identifier, represented by data.string_value. */
++     MLN_PLUGIN_VALUE_IMAGE = 6,
 ++    /* Two doubles, for properties that carry geographic coordinates. */
-++    MLN_PLUGIN_VALUE_DOUBLE2 = 5,
+++    MLN_PLUGIN_VALUE_DOUBLE2 = 7,
 + } mln_plugin_value_type;
 + 
 + /* Expression dependencies accepted by a plugin property. */
-+@@ -94,6 +96,11 @@ typedef struct mln_plugin_float2 {
++@@ -97,6 +99,11 @@ typedef struct mln_plugin_float2 {
 +     float y;
 + } mln_plugin_float2;
 + 
@@ -56,15 +56,15 @@ index 00000000..53cbb795
 + /* Registration defaults use straight-alpha colors. The host premultiplies
 +  * them when it adopts them into the style system; evaluated paint values
 +  * passed to callbacks use premultiplied colors. */
-+@@ -107,6 +114,7 @@ typedef struct mln_plugin_color {
-+ typedef union mln_plugin_value_data {
-+     float float_value;
++@@ -112,6 +119,7 @@ typedef union mln_plugin_value_data {
++     /* Must be 0 or 1. */
++     uint8_t boolean_value;
 +     mln_plugin_float2 float2_value;
 ++    mln_plugin_double2 double2_value;
 +     mln_plugin_color color_value;
 +     mln_plugin_string string_value;
 + } mln_plugin_value_data;
-+@@ -448,6 +456,71 @@ typedef float (*mln_plugin_query_radius_fn)(const mln_plugin_property_statistics
++@@ -536,6 +544,72 @@ typedef mln_plugin_status (*mln_plugin_evaluate_layer_fn)(const mln_plugin_prope
 +  * maps. */
 + typedef uint8_t (*mln_plugin_should_animate_fn)(const mln_plugin_property_value_v1* properties, size_t property_count);
 + 
@@ -96,7 +96,8 @@ index 00000000..53cbb795
 ++ * callback. */
 ++typedef struct mln_plugin_frame_context_v1 {
 ++    uint32_t struct_size;
-++    /* Camera-evaluated paint values, in property definition order. */
+++    /* Every declared property in definition order: paint values camera-evaluated
+++     * with transitions, layout values evaluated at the camera zoom. */
 ++    const mln_plugin_property_value_v1* properties;
 ++    size_t property_count;
 ++    /* Monotonic frame timestamp in seconds. */
@@ -136,8 +137,8 @@ index 00000000..53cbb795
 + typedef struct mln_plugin_layer_type_v1 {
 +     uint32_t struct_size;
 +     mln_plugin_string layer_type;
-+@@ -483,6 +556,16 @@ typedef struct mln_plugin_layer_type_v1 {
-+      */
++@@ -562,6 +636,16 @@ typedef struct mln_plugin_layer_type_v1 {
++     /* Unaligned projection with near-clip adjustment; translation is host-owned. */
 +     uint8_t enable_near_clipped_matrix;
 +     mln_plugin_should_animate_fn should_animate;
 ++    /* Optional; introduced after should_animate. source_free must be 0 or 1,
@@ -154,13 +155,13 @@ index 00000000..53cbb795
 + 
 + typedef struct mln_plugin_descriptor_v1 {
 +diff --git a/src/mln/layout/plugin_layout.cpp b/src/mln/layout/plugin_layout.cpp
-+index d2a522cd2ffb8dcd529c1173da4e8499db3a7f5c..2f83eac130d8f228709a782bf21077fef2c0fbee 100644
++index 5fe6f0e62d3d9b6bd5979c3ad4b9b92093db80cb..a87cbdb1349c74123fd7003c192075665ca18ba7 100644
 +--- a/src/mln/layout/plugin_layout.cpp
 ++++ b/src/mln/layout/plugin_layout.cpp
-+@@ -79,113 +79,7 @@ void PluginLayout::createBucket(const ImagePositions&,
-+     }
++@@ -129,130 +129,7 @@ void PluginLayout::createBucket(const ImagePositions& imagePositions,
 + 
 +     auto bucket = std::make_shared<PluginBucket>(registration);
++     const auto positions = std::make_shared<const ImagePositions>(imagePositions);
 +-    std::set<uint32_t> streamIDs;
 +-    bool valid = output.struct_size >= sizeof(output) && std::isfinite(output.query_radius) &&
 +-                 output.query_radius >= 0.0f && (output.vertex_stream_count == 0 || output.vertex_streams) &&
@@ -223,6 +224,8 @@ index 00000000..53cbb795
 +-        if (!valid) break;
 +-        std::set<uint32_t> boundAttributeIDs;
 +-        std::optional<std::size_t> drawableVertexCount;
++-        std::size_t availableRecords = std::numeric_limits<std::size_t>::max();
++-        drawable.instanced = shaderIt->instanced;
 +-        for (size_t bindingIndex = 0; valid && bindingIndex < input.attribute_count; ++bindingIndex) {
 +-            const auto& binding = input.attributes[bindingIndex];
 +-            valid = binding.struct_size >= sizeof(binding);
@@ -239,11 +242,14 @@ index 00000000..53cbb795
 +-                    hostAttributeIDs.find(binding.attribute_id) == hostAttributeIDs.end() &&
 +-                    binding.byte_offset <= streamIt->second->getRawSize() &&
 +-                    size <= streamIt->second->getRawSize() - binding.byte_offset &&
++-                    binding.element_offset < streamIt->second->getRawCount() &&
 +-                    boundAttributeIDs.emplace(binding.attribute_id).second &&
 +-                    (!drawableVertexCount || *drawableVertexCount == streamIt->second->getRawCount());
 +-            if (valid) {
 +-                drawableVertexCount = streamIt->second->getRawCount();
-+-                drawable.attributes.push_back({binding.attribute_id, binding.stream_id, binding.byte_offset, type});
++-                availableRecords = std::min(availableRecords, *drawableVertexCount - binding.element_offset);
++-                drawable.attributes.push_back(
++-                    {binding.attribute_id, binding.stream_id, binding.byte_offset, type, binding.element_offset});
 +-            }
 +-        }
 +-        if (drawableVertexCount) drawable.vertexCount = *drawableVertexCount;
@@ -251,7 +257,13 @@ index 00000000..53cbb795
 +-            const auto& segment = input.segments[segmentIndex];
 +-            valid = segment.struct_size >= sizeof(segment) &&
 +-                    validRange(segment.index_offset, segment.index_length, output.index_count) && drawableVertexCount &&
-+-                    validRange(segment.vertex_offset, segment.vertex_length, *drawableVertexCount);
++-                    segment.vertex_length > 0 && segment.vertex_offset <= INT32_MAX &&
++-                    segment.vertex_length <= uint32_t(INT32_MAX) - segment.vertex_offset &&
++-                    (drawable.instanced
++-                         ? segment.instance_count > 0 &&
++-                               validRange(segment.first_instance, segment.instance_count, availableRecords)
++-                         : segment.first_instance == 0 && segment.instance_count == 0 &&
++-                               validRange(segment.vertex_offset, segment.vertex_length, availableRecords));
 +-            if (valid) {
 +-                for (size_t index = segment.index_offset; index < segment.index_offset + segment.index_length;
 +-                     ++index) {
@@ -262,8 +274,14 @@ index 00000000..53cbb795
 +-                }
 +-            }
 +-            if (valid) {
-+-                drawable.segments.emplace_back(
-+-                    segment.vertex_offset, segment.index_offset, segment.vertex_length, segment.index_length);
++-                drawable.primitiveVertexCount = std::max(drawable.primitiveVertexCount,
++-                                                         size_t(segment.vertex_offset) + segment.vertex_length);
++-                drawable.segments.emplace_back(segment.vertex_offset,
++-                                               segment.index_offset,
++-                                               segment.vertex_length,
++-                                               segment.index_length,
++-                                               segment.first_instance,
++-                                               drawable.instanced ? segment.instance_count : 1);
 +-            }
 +-        }
 +-        if (valid) bucket->drawables.push_back(std::move(drawable));
@@ -273,10 +291,10 @@ index 00000000..53cbb795
 +     std::map<uint64_t, std::size_t> drawableVertexCounts;
 +     for (const auto& drawable : bucket->drawables) drawableVertexCounts.emplace(drawable.key, drawable.vertexCount);
 +diff --git a/src/mln/plugin/plugin_registry.cpp b/src/mln/plugin/plugin_registry.cpp
-+index 6dec93fb5a967e6046654ad53ebeae91a7e27db6..301ec3b83476a7fb311c780a05276fe9a74d2ae7 100644
++index 94391043e1bbb1f625fa0ac86c4adf0d655e4bb9..68439fae3de4c58bd3ee1be5c300064ec4399ffb 100644
 +--- a/src/mln/plugin/plugin_registry.cpp
 ++++ b/src/mln/plugin/plugin_registry.cpp
-+@@ -25,6 +25,8 @@ Value copyValue(const mln_plugin_value& value) {
++@@ -27,6 +27,8 @@ Value copyValue(const mln_plugin_value& value) {
 +         case MLN_PLUGIN_VALUE_FLOAT2:
 +             return Value{mapbox::base::ValueArray{static_cast<double>(value.data.float2_value.x),
 +                                                   static_cast<double>(value.data.float2_value.y)}};
@@ -285,17 +303,17 @@ index 00000000..53cbb795
 +         case MLN_PLUGIN_VALUE_COLOR:
 +             return Value{mapbox::base::ValueArray{static_cast<double>(value.data.color_value.r),
 +                                                   static_cast<double>(value.data.color_value.g),
-+@@ -334,7 +336,8 @@ bool appendProperties(const mln_plugin_property_descriptor_v1* properties,
-+         }
++@@ -372,7 +374,8 @@ bool appendProperties(const mln_plugin_property_descriptor_v1* properties,
 +         const bool transitionableType = property.type == MLN_PLUGIN_VALUE_FLOAT ||
 +                                         property.type == MLN_PLUGIN_VALUE_FLOAT2 ||
-+-                                        property.type == MLN_PLUGIN_VALUE_COLOR;
-++                                        property.type == MLN_PLUGIN_VALUE_COLOR ||
++                                         property.type == MLN_PLUGIN_VALUE_COLOR ||
++-                                        property.type == MLN_PLUGIN_VALUE_IMAGE;
+++                                        property.type == MLN_PLUGIN_VALUE_IMAGE ||
 ++                                        property.type == MLN_PLUGIN_VALUE_DOUBLE2;
 +         if (property.supports_transitions && !transitionableType) {
-+             error = "plugin transitions require an interpolatable paint property";
++             error = "plugin transitions require an interpolatable paint property or image";
 +             return false;
-+@@ -436,12 +439,25 @@ mln_plugin_status PluginRegistry::registerPlugin(const mln_plugin_descriptor_v1&
++@@ -479,12 +482,29 @@ mln_plugin_status PluginRegistry::registerPlugin(const mln_plugin_descriptor_v1&
 +             error = "plugin layer type is malformed or has no supported backend";
 +             return MLN_PLUGIN_STATUS_INVALID_ARGUMENT;
 +         }
@@ -321,11 +339,15 @@ index 00000000..53cbb795
 ++            error = "frame callbacks apply only to source-free plugin layers";
 ++            return MLN_PLUGIN_STATUS_INVALID_ARGUMENT;
 ++        }
+++        if (sourceFree && (layerType.is_3d || layerType.draw_pass_count)) {
+++            error = "source-free plugin layers do not support 3D draw passes";
+++            return MLN_PLUGIN_STATUS_INVALID_ARGUMENT;
+++        }
 +         const auto type = copyString(layerType.layer_type);
 +         if (!layerTypeKeys.emplace(type).second) {
 +             error = "plugin descriptor contains duplicate layer types";
-+@@ -462,6 +478,8 @@ mln_plugin_status PluginRegistry::registerPlugin(const mln_plugin_descriptor_v1&
-+         copiedLayerType.enableStencilOverlapDedup = layerType.enable_stencil_overlap_dedup != 0;
++@@ -530,6 +550,8 @@ mln_plugin_status PluginRegistry::registerPlugin(const mln_plugin_descriptor_v1&
++         if (copiedLayerType.drawPasses.empty()) copiedLayerType.drawPasses.emplace_back();
 +         copiedLayerType.enableNearClippedMatrix = layerType.enable_near_clipped_matrix != 0;
 +         copiedLayerType.shouldAnimate = layerType.should_animate;
 ++        copiedLayerType.requiresSource = layerType.source_free == 0;
@@ -333,7 +355,17 @@ index 00000000..53cbb795
 +         if (!appendShaders(pluginID,
 +                            layerType.shaders,
 +                            layerType.shader_count,
-+@@ -503,6 +521,10 @@ mln_plugin_status PluginRegistry::registerPlugin(const mln_plugin_descriptor_v1&
++@@ -574,9 +596,24 @@ mln_plugin_status PluginRegistry::registerPlugin(const mln_plugin_descriptor_v1&
++                 }
++             }
++         }
+++        if (!copiedLayerType.requiresSource &&
+++            std::any_of(copiedLayerType.shaders.begin(), copiedLayerType.shaders.end(), [](const auto& shader) {
+++                return shader.tilePatternTexture;
+++            })) {
+++            error = "source-free plugin layers cannot use tile pattern textures";
+++            return MLN_PLUGIN_STATUS_INVALID_ARGUMENT;
+++        }
 +         for (const auto& property : copiedLayerType.properties) {
 +             const auto dataDependencies = MLN_PLUGIN_EXPRESSION_FEATURE | MLN_PLUGIN_EXPRESSION_COMPOSITE |
 +                                           MLN_PLUGIN_EXPRESSION_FEATURE_STATE;
@@ -341,10 +373,14 @@ index 00000000..53cbb795
 ++                error = "source-free plugin layers cannot declare data-driven properties";
 ++                return MLN_PLUGIN_STATUS_INVALID_ARGUMENT;
 ++            }
+++            if (!copiedLayerType.requiresSource && property.type == MLN_PLUGIN_VALUE_IMAGE) {
+++                error = "source-free plugin layers cannot declare image properties";
+++                return MLN_PLUGIN_STATUS_INVALID_ARGUMENT;
+++            }
 +             if ((property.expressionCapabilities & dataDependencies) == 0) continue;
 +             const bool bound = std::any_of(
 +                 copiedLayerType.shaders.begin(), copiedLayerType.shaders.end(), [&](const auto& shader) {
-+@@ -579,9 +601,10 @@ bool PluginRegistry::valueMatches(mln_plugin_value_type type, const Value& value
++@@ -659,9 +696,10 @@ bool PluginRegistry::valueMatches(mln_plugin_value_type type, const Value& value
 +         case MLN_PLUGIN_VALUE_STRING:
 +             return value.getString() != nullptr;
 +         case MLN_PLUGIN_VALUE_FLOAT2:
@@ -357,11 +393,11 @@ index 00000000..53cbb795
 +                        return item.getDouble() || item.getInt() || item.getUint();
 +                    });
 +diff --git a/src/mln/plugin/plugin_registry.hpp b/src/mln/plugin/plugin_registry.hpp
-+index 8ef294fca1e4b5c4af905bcd4169b6f56629f431..c070ed98407ad1f1092b5b28caa77115fa1faf97 100644
++index 4a066fd3cad35e34a75560b6cdaa16855b1ae650..499573623f42f94dccd244634cfc78015b4bf98f 100644
 +--- a/src/mln/plugin/plugin_registry.hpp
 ++++ b/src/mln/plugin/plugin_registry.hpp
-+@@ -92,6 +92,8 @@ struct LayerType {
-+     bool enableStencilOverlapDedup = false;
++@@ -112,6 +112,8 @@ struct LayerType {
++     mln_plugin_evaluate_layer_fn evaluateLayer = nullptr;
 +     bool enableNearClippedMatrix = false;
 +     mln_plugin_should_animate_fn shouldAnimate = nullptr;
 ++    bool requiresSource = true;
@@ -369,13 +405,13 @@ index 00000000..53cbb795
 +     bool operator==(const LayerType&) const = default;
 + 
 +     const PropertyDefinition* findProperty(const std::string& name) const;
-+@@ -103,12 +105,13 @@ struct RegisteredLayer final : LayerType {
++@@ -123,12 +125,13 @@ struct RegisteredLayer final : LayerType {
 +     explicit RegisteredLayer(LayerType definition)
 +         : LayerType(std::move(definition)),
 +           info{type.c_str(),
 +-               style::LayerTypeInfo::Source::Required,
 ++               requiresSource ? style::LayerTypeInfo::Source::Required : style::LayerTypeInfo::Source::NotRequired,
-+                style::LayerTypeInfo::Pass3D::NotRequired,
++                is3D ? style::LayerTypeInfo::Pass3D::Required : style::LayerTypeInfo::Pass3D::NotRequired,
 +-               style::LayerTypeInfo::Layout::Required,
 ++               requiresSource ? style::LayerTypeInfo::Layout::Required : style::LayerTypeInfo::Layout::NotRequired,
 +                style::LayerTypeInfo::FadingTiles::NotRequired,
@@ -387,7 +423,7 @@ index 00000000..53cbb795
 +     RegisteredLayer(const RegisteredLayer&) = delete;
 +     RegisteredLayer& operator=(const RegisteredLayer&) = delete;
 +diff --git a/src/mln/plugin/plugin_style_layer_factory.cpp b/src/mln/plugin/plugin_style_layer_factory.cpp
-+index b04ffd4adbfce0da8d94449591f22c017aa7c512..07691347a1293c84b3f77cb4254b95b562f4c984 100644
++index 332a549ee9b15cfb77b57abeada0b6b0d06e679b..fec57eb39d3018fb0d718c981d4879dfa3a16938 100644
 +--- a/src/mln/plugin/plugin_style_layer_factory.cpp
 ++++ b/src/mln/plugin/plugin_style_layer_factory.cpp
 +@@ -11,9 +11,12 @@ const style::LayerTypeInfo* PluginStyleLayerFactory::getTypeInfo() const noexcep
@@ -407,7 +443,7 @@ index 00000000..53cbb795
 + 
 + std::unique_ptr<RenderLayer> PluginStyleLayerFactory::createRenderLayer(Immutable<style::Layer::Impl> impl) noexcept {
 +diff --git a/src/mln/renderer/buckets/plugin_bucket.cpp b/src/mln/renderer/buckets/plugin_bucket.cpp
-+index f8a9d131482419c359763d6ae6c9af0ed90bbbdb..60ef5ad4fbc2956f04376b53e9f037c4f5f9bb3e 100644
++index 0c08402416e7e50512345e33027ef1f5f8a53de1..1ff0e6ad331823420f42c98ad63402818c328cd1 100644
 +--- a/src/mln/renderer/buckets/plugin_bucket.cpp
 ++++ b/src/mln/renderer/buckets/plugin_bucket.cpp
 +@@ -1,6 +1,7 @@
@@ -418,8 +454,19 @@ index 00000000..53cbb795
 + #include <mln/renderer/render_layer.hpp>
 + #include <mln/style/plugin_property.hpp>
 + #include <mln/tile/geometry_tile_data.hpp>
-+@@ -510,4 +511,135 @@ PluginPaintPropertyBinders* PluginBucket::paintBinders(const std::string& layerI
-+     return drawable == layer->second.end() ? nullptr : &drawable->second;
++@@ -15,6 +16,10 @@
++ namespace mln {
++ namespace {
++ 
+++bool validRange(std::size_t offset, std::size_t length, std::size_t size) {
+++    return offset <= size && length <= size - offset;
+++}
+++
++ style::PluginPropertyValue propertyValue(const plugin::PropertyDefinition& definition,
++                                          const style::PluginPropertyMap& properties) {
++     const auto it = properties.find(definition.name);
++@@ -608,4 +613,163 @@ PluginPaintPropertyBinders* PluginBucket::paintBinders(const std::string& layerI
++     return drawable == layer->second.end() ? nullptr : drawable->second.get();
 + }
 + 
 ++bool PluginBucket::copyGeometry(const mln_plugin_bucket_v1& output) {
@@ -443,9 +490,9 @@ index 00000000..53cbb795
 ++        }
 ++    }
 ++    if (valid) {
-++        std::vector<uint16_t> indices;
-++        if (output.index_count) indices.assign(output.indices, output.indices + output.index_count);
-++        this->indices = std::make_shared<gfx::IndexVectorBase>(std::move(indices));
+++        std::vector<uint16_t> copiedIndices;
+++        if (output.index_count) copiedIndices.assign(output.indices, output.indices + output.index_count);
+++        indices = std::make_shared<gfx::IndexVectorBase>(std::move(copiedIndices));
 ++    }
 ++
 ++    std::set<uint64_t> drawableKeys;
@@ -466,7 +513,16 @@ index 00000000..53cbb795
 ++                                           [&](const auto& shader) { return shader.id == drawable.shaderID; });
 ++        std::set<uint32_t> hostAttributeIDs;
 ++        if (shaderIt != registration->shaders.end()) {
+++            const auto referencesShaderAttribute = [&](uint32_t attributeID) {
+++                return std::any_of(shaderIt->attributes.begin(),
+++                                   shaderIt->attributes.end(),
+++                                   [&](const auto& attribute) { return attribute.id == attributeID; });
+++            };
 ++            for (const auto& binding : shaderIt->propertyBindings) {
+++                if (!referencesShaderAttribute(binding.minimumAttributeID) &&
+++                    !referencesShaderAttribute(binding.maximumAttributeID)) {
+++                    continue;
+++                }
 ++                hostAttributeIDs.emplace(binding.minimumAttributeID);
 ++                hostAttributeIDs.emplace(binding.maximumAttributeID);
 ++            }
@@ -476,6 +532,8 @@ index 00000000..53cbb795
 ++        if (!valid) break;
 ++        std::set<uint32_t> boundAttributeIDs;
 ++        std::optional<std::size_t> drawableVertexCount;
+++        std::size_t availableRecords = std::numeric_limits<std::size_t>::max();
+++        drawable.instanced = shaderIt->instanced;
 ++        for (size_t bindingIndex = 0; valid && bindingIndex < input.attribute_count; ++bindingIndex) {
 ++            const auto& binding = input.attributes[bindingIndex];
 ++            valid = binding.struct_size >= sizeof(binding);
@@ -492,19 +550,28 @@ index 00000000..53cbb795
 ++                    hostAttributeIDs.find(binding.attribute_id) == hostAttributeIDs.end() &&
 ++                    binding.byte_offset <= streamIt->second->getRawSize() &&
 ++                    size <= streamIt->second->getRawSize() - binding.byte_offset &&
+++                    binding.element_offset < streamIt->second->getRawCount() &&
 ++                    boundAttributeIDs.emplace(binding.attribute_id).second &&
 ++                    (!drawableVertexCount || *drawableVertexCount == streamIt->second->getRawCount());
 ++            if (valid) {
 ++                drawableVertexCount = streamIt->second->getRawCount();
-++                drawable.attributes.push_back({binding.attribute_id, binding.stream_id, binding.byte_offset, type});
+++                availableRecords = std::min(availableRecords, *drawableVertexCount - binding.element_offset);
+++                drawable.attributes.push_back(
+++                    {binding.attribute_id, binding.stream_id, binding.byte_offset, type, binding.element_offset});
 ++            }
 ++        }
 ++        if (drawableVertexCount) drawable.vertexCount = *drawableVertexCount;
 ++        for (size_t segmentIndex = 0; valid && segmentIndex < input.segment_count; ++segmentIndex) {
 ++            const auto& segment = input.segments[segmentIndex];
 ++            valid = segment.struct_size >= sizeof(segment) &&
-++                    (segment.index_offset <= output.index_count && segment.index_length <= output.index_count - segment.index_offset) && drawableVertexCount &&
-++                    (segment.vertex_offset <= *drawableVertexCount && segment.vertex_length <= *drawableVertexCount - segment.vertex_offset);
+++                    validRange(segment.index_offset, segment.index_length, output.index_count) && drawableVertexCount &&
+++                    segment.vertex_length > 0 && segment.vertex_offset <= INT32_MAX &&
+++                    segment.vertex_length <= uint32_t(INT32_MAX) - segment.vertex_offset &&
+++                    (drawable.instanced
+++                         ? segment.instance_count > 0 &&
+++                               validRange(segment.first_instance, segment.instance_count, availableRecords)
+++                         : segment.first_instance == 0 && segment.instance_count == 0 &&
+++                               validRange(segment.vertex_offset, segment.vertex_length, availableRecords));
 ++            if (valid) {
 ++                for (size_t index = segment.index_offset; index < segment.index_offset + segment.index_length;
 ++                     ++index) {
@@ -515,8 +582,14 @@ index 00000000..53cbb795
 ++                }
 ++            }
 ++            if (valid) {
-++                drawable.segments.emplace_back(
-++                    segment.vertex_offset, segment.index_offset, segment.vertex_length, segment.index_length);
+++                drawable.primitiveVertexCount = std::max(drawable.primitiveVertexCount,
+++                                                         size_t(segment.vertex_offset) + segment.vertex_length);
+++                drawable.segments.emplace_back(segment.vertex_offset,
+++                                               segment.index_offset,
+++                                               segment.vertex_length,
+++                                               segment.index_length,
+++                                               segment.first_instance,
+++                                               drawable.instanced ? segment.instance_count : 1);
 ++            }
 ++        }
 ++        if (valid) drawables.push_back(std::move(drawable));
@@ -541,13 +614,15 @@ index 00000000..53cbb795
 ++        const auto& b = other.drawables[i];
 ++        if (a.key != b.key || a.shaderID != b.shaderID || a.attributes != b.attributes ||
 ++            a.depthMode != b.depthMode || a.enableStencilOverlap != b.enableStencilOverlap ||
-++            a.cullBackFaces != b.cullBackFaces ||
+++            a.cullBackFaces != b.cullBackFaces || a.instanced != b.instanced ||
+++            a.primitiveVertexCount != b.primitiveVertexCount ||
 ++            a.vertexCount != b.vertexCount || a.segments.size() != b.segments.size()) return false;
 ++        for (std::size_t j = 0; j < a.segments.size(); ++j) {
 ++            const auto& x = a.segments[j];
 ++            const auto& y = b.segments[j];
 ++            if (x.vertexOffset != y.vertexOffset || x.vertexLength != y.vertexLength ||
-++                x.indexOffset != y.indexOffset || x.indexLength != y.indexLength) return false;
+++                x.indexOffset != y.indexOffset || x.indexLength != y.indexLength ||
+++                x.baseInstance != y.baseInstance || x.instanceCount != y.instanceCount) return false;
 ++        }
 ++    }
 ++    return true;
@@ -555,18 +630,18 @@ index 00000000..53cbb795
 ++
 + } // namespace mln
 +diff --git a/src/mln/renderer/buckets/plugin_bucket.hpp b/src/mln/renderer/buckets/plugin_bucket.hpp
-+index b256d7e376864e1a85038c6fa80346a6477b5b94..c75271bbdf4e339848a857e8a99b0b8f444f308c 100644
++index 3083784f1b18da14dcaa5e8fc9584e513b783db0..b50eb30db8564f92172cf3b64b21b060d9ecda16 100644
 +--- a/src/mln/renderer/buckets/plugin_bucket.hpp
 ++++ b/src/mln/renderer/buckets/plugin_bucket.hpp
-+@@ -170,6 +170,7 @@ struct PluginAttributeBinding {
-+     uint32_t streamID = 0;
++@@ -195,6 +195,7 @@ struct PluginAttributeBinding {
 +     uint32_t byteOffset = 0;
 +     gfx::AttributeDataType type = gfx::AttributeDataType::Invalid;
++     uint32_t elementOffset = 0;
 ++    bool operator==(const PluginAttributeBinding&) const = default;
 + };
 + 
 + enum class PluginDrawableDepthMode : uint8_t {
-+@@ -195,6 +196,10 @@ public:
++@@ -222,6 +223,10 @@ public:
 +         : registration(std::move(registration_)) {}
 +     ~PluginBucket() override = default;
 + 
@@ -578,10 +653,10 @@ index 00000000..53cbb795
 +     bool hasData() const override { return indices && !indices->empty() && !drawables.empty(); }
 +     float getQueryRadius(const RenderLayer&) const override;
 +diff --git a/src/mln/renderer/layers/render_plugin_style_layer.cpp b/src/mln/renderer/layers/render_plugin_style_layer.cpp
-+index 377d9a6a31a47a83209d755c10fe11c263f5c384..5752e102e8d3b273d345e6deb9bca595a0730b5c 100644
++index 0b5958d114bfd8e5efba9a2bd26fb0a9ce8ca043..134612db1e2526b64931c9e6a70d2a84d0267ea7 100644
 +--- a/src/mln/renderer/layers/render_plugin_style_layer.cpp
 ++++ b/src/mln/renderer/layers/render_plugin_style_layer.cpp
-+@@ -16,13 +16,20 @@
++@@ -17,13 +17,20 @@
 + #include <mln/renderer/layer_group.hpp>
 + #include <mln/renderer/layers/plugin_layer_tweaker.hpp>
 + #include <mln/renderer/render_static_data.hpp>
@@ -600,9 +675,9 @@ index 00000000..53cbb795
 ++#include <chrono>
 ++#include <cstring>
 + #include <set>
-+ 
-+ namespace mln {
-+@@ -32,8 +39,37 @@ const style::PluginStyleLayer::Impl& pluginImpl(const Immutable<style::Layer::Im
++ #include <cmath>
++ #include <mln/util/logging.hpp>
++@@ -35,8 +42,37 @@ const style::PluginStyleLayer::Impl& pluginImpl(const Immutable<style::Layer::Im
 +     return static_cast<const style::PluginStyleLayer::Impl&>(*impl);
 + }
 + 
@@ -640,7 +715,7 @@ index 00000000..53cbb795
 + RenderPluginStyleLayer::RenderPluginStyleLayer(Immutable<style::PluginStyleLayer::Impl> impl)
 +     : RenderLayer(makeMutable<style::PluginStyleLayerProperties>(std::move(impl))) {
 +     // Unlike generated layers, a plugin layer has no generated evaluated
-+@@ -142,14 +178,26 @@ void RenderPluginStyleLayer::layerChanged(const TransitionParameters&,
++@@ -192,14 +228,26 @@ void RenderPluginStyleLayer::layerChanged(const TransitionParameters&,
 +     // drawable whose geometry actually changed.
 + }
 + 
@@ -668,7 +743,7 @@ index 00000000..53cbb795
 +     if (!renderTiles || renderTiles->empty()) {
 +         removeAllDrawables();
 +         return;
-+@@ -285,6 +333,168 @@ void RenderPluginStyleLayer::update(gfx::ShaderRegistry& shaders,
++@@ -368,6 +416,178 @@ void RenderPluginStyleLayer::update(gfx::ShaderRegistry& shaders,
 +     }
 + }
 + 
@@ -702,8 +777,9 @@ index 00000000..53cbb795
 ++    }
 ++    auto* localLayerGroup = static_cast<LayerGroup*>(layerGroup.get());
 ++
-++    // The property array mirrors the shape should_animate receives during
-++    // evaluation.
+++    // Every declared property, in declaration order: paint properties as
+++    // evaluated (with transitions), layout properties from the style. Without
+++    // tiles, layout properties evaluate at the camera zoom.
 ++    const auto& definitions = registration->properties;
 ++    const auto& impl = pluginImpl(baseImpl);
 ++    std::vector<style::PluginPropertyValue::EvaluationStorage> storage(definitions.size());
@@ -711,9 +787,10 @@ index 00000000..53cbb795
 ++    properties.reserve(definitions.size());
 ++    auto storageIt = storage.begin();
 ++    for (const auto& definition : definitions) {
-++        const auto propertyIt = evaluatedPluginProperties.find(definition.name);
-++        const auto value = propertyIt == evaluatedPluginProperties.end() ? style::defaultPluginPropertyValue(definition)
-++                                                                         : propertyIt->second;
+++        const auto& source = definition.isLayout ? impl.pluginProperties : evaluatedPluginProperties;
+++        const auto propertyIt = source.find(definition.name);
+++        const auto value = propertyIt == source.end() ? style::defaultPluginPropertyValue(definition)
+++                                                      : propertyIt->second;
 ++        mln_plugin_property_value_v1 property{};
 ++        property.struct_size = sizeof(property);
 ++        property.name = {definition.name.data(), definition.name.size()};
@@ -781,10 +858,12 @@ index 00000000..53cbb795
 ++        const auto shaderIt = std::find_if(registration->shaders.begin(),
 ++                                           registration->shaders.end(),
 ++                                           [&](const auto& shader) { return shader.id == definition.shaderID; });
-++        auto [binder, inserted] = frameBucket->paintPropertyBinders[getID()].try_emplace(
-++            definition.key, registration, *shaderIt, definition.key, definition.vertexCount,
-++            zoom, *evaluatedPaintSnapshot, nullptr);
-++        auto* paintBinders = &binder->second;
+++        auto& binder = frameBucket->paintPropertyBinders[getID()][definition.key];
+++        if (!binder) {
+++            binder = std::make_shared<PluginPaintPropertyBinders>(
+++                registration, *shaderIt, definition.key, definition.vertexCount, zoom, *evaluatedPaintSnapshot, nullptr);
+++        }
+++        auto* paintBinders = binder.get();
 ++
 ++        StringIDSetsPair propertiesAsUniforms;
 ++        auto attributes = context.createVertexAttributeArray();
@@ -803,13 +882,16 @@ index 00000000..53cbb795
 ++            if (stream == frameBucket->vertexStreams.end()) continue;
 ++            const auto type = binding.type;
 ++            if (const auto& attr = attributes->set(binding.attributeID)) {
-++                attr->setSharedRawData(stream->second, binding.byteOffset, 0, stream->second->getRawSize(), type);
+++                attr->setSharedRawData(
+++                    stream->second, binding.byteOffset, binding.elementOffset, stream->second->getRawSize(), type);
 ++            }
 ++            vertexCount = std::max(vertexCount, stream->second->getRawCount());
 ++            if (firstType == gfx::AttributeDataType::Invalid) firstType = type;
 ++        }
 ++        if (!vertexCount || firstType == gfx::AttributeDataType::Invalid) continue;
 ++
+++        // Source-free layers declare no draw passes: one translucent pass with
+++        // read-only depth and no stencil or culling.
 ++        auto builder = context.createDrawableBuilder("plugin/" + registration->type);
 ++        builder->setShader(std::static_pointer_cast<gfx::ShaderProgramBase>(shader));
 ++        builder->setRenderPass(renderPass);
@@ -819,8 +901,11 @@ index 00000000..53cbb795
 ++        builder->setColorMode(gfx::ColorMode::alphaBlended());
 ++        builder->setCullFaceMode(gfx::CullFaceMode::disabled());
 ++        builder->setEnableStencil(false);
-++        builder->setVertexAttributes(std::move(attributes));
-++        builder->setRawVertices({}, vertexCount, firstType);
+++        if (definition.instanced)
+++            builder->setInstanceAttributes(std::move(attributes));
+++        else
+++            builder->setVertexAttributes(std::move(attributes));
+++        builder->setRawVertices({}, definition.primitiveVertexCount, firstType);
 ++        builder->setSegments(
 ++            gfx::Triangles(), frameBucket->indices, definition.segments.data(), definition.segments.size());
 ++        builder->flush(context);
@@ -837,7 +922,7 @@ index 00000000..53cbb795
 + bool RenderPluginStyleLayer::queryIntersectsFeature(const GeometryCoordinates& queryGeometry,
 +                                                     const GeometryTileFeature& feature,
 +                                                     float zoom,
-+@@ -293,7 +503,9 @@ bool RenderPluginStyleLayer::queryIntersectsFeature(const GeometryCoordinates& q
++@@ -376,7 +596,9 @@ bool RenderPluginStyleLayer::queryIntersectsFeature(const GeometryCoordinates& q
 +                                                     const mat4& tileMatrix,
 +                                                     const FeatureState& featureState) const {
 +     const auto& registration = pluginImpl(baseImpl).registration;
@@ -849,7 +934,7 @@ index 00000000..53cbb795
 +     std::vector<mln_plugin_tile_point_v1> query;
 +     query.reserve(queryGeometry.size());
 +diff --git a/src/mln/renderer/layers/render_plugin_style_layer.hpp b/src/mln/renderer/layers/render_plugin_style_layer.hpp
-+index 52d79447b6ee08d2fed719c06528e545bc9d44b1..4da778bb5e4b89cbe2154bdad38a590740a2cb9e 100644
++index 10825590b65e318833a219c6f7dad873f28e2b22..7b8bcf95ffeaffdc3bf338ff37a898346644bcb8 100644
 +--- a/src/mln/renderer/layers/render_plugin_style_layer.hpp
 ++++ b/src/mln/renderer/layers/render_plugin_style_layer.hpp
 +@@ -4,13 +4,19 @@
@@ -873,9 +958,9 @@ index 00000000..53cbb795
 + 
 +     void update(gfx::ShaderRegistry&,
 +                 gfx::Context&,
-+@@ -37,12 +43,24 @@ private:
-+     bool hasTransition() const override;
-+     bool hasCrossfade() const override { return false; }
++@@ -38,12 +44,24 @@ private:
++     bool is3D() const override;
++     bool hasCrossfade() const override;
 + 
 ++    /// The source-free path: geometry arrives from the registration's frame
 ++    /// callback on every update rather than from tile layout.
@@ -912,7 +997,7 @@ index 00000000..53cbb795
 +                                                                                          Error&) const;
 + template std::optional<std::array<float, 3>> Converter<std::array<float, 3>>::operator()(const Convertible&,
 +diff --git a/src/mln/style/conversion/function.cpp b/src/mln/style/conversion/function.cpp
-+index faaf2f928ca85f6969400e18cc8828e9aab1128c..8bf31713857a3c895ca6acf9a838dc88d5eb65e4 100644
++index 0dbb59848cf1c9a2ecb6b13360c931ac93056b6b..e5a3d7b6ed35bc77f8939be3358c593f46e207fd 100644
 +--- a/src/mln/style/conversion/function.cpp
 ++++ b/src/mln/style/conversion/function.cpp
 +@@ -142,6 +142,8 @@ template std::optional<PropertyExpression<Position>> convertFunctionToExpression
@@ -953,10 +1038,10 @@ index 00000000..53cbb795
 + template struct ValueConverter<std::array<float, 4>>;
 + 
 +diff --git a/src/mln/style/plugin_property.cpp b/src/mln/style/plugin_property.cpp
-+index 6fbb451aa9d79f2e5fb9959c4ef46e80594f14f2..4d6031022a6693086290dd1d85c76581df8df492 100644
++index 2cc7bb90d8923c3d28a1794e8fd7a56976f0b4d3..433f71f4e0194c962a5809136f1c1d0731dab6eb 100644
 +--- a/src/mln/style/plugin_property.cpp
 ++++ b/src/mln/style/plugin_property.cpp
-+@@ -69,6 +69,15 @@ std::array<float, 2> defaultValue<std::array<float, 2>>(const plugin::PropertyDe
++@@ -84,6 +84,15 @@ std::array<float, 2> defaultValue<std::array<float, 2>>(const plugin::PropertyDe
 +     return result;
 + }
 + 
@@ -972,7 +1057,7 @@ index 00000000..53cbb795
 + template <>
 + Color defaultValue<Color>(const plugin::PropertyDefinition& definition) {
 +     std::array<float, 4> result{};
-+@@ -92,6 +101,8 @@ auto withPropertyType(mln_plugin_value_type type, Fn&& fn) {
++@@ -111,6 +120,8 @@ auto withPropertyType(mln_plugin_value_type type, Fn&& fn) {
 +             return fn.template operator()<float>();
 +         case MLN_PLUGIN_VALUE_FLOAT2:
 +             return fn.template operator()<std::array<float, 2>>();
@@ -981,7 +1066,7 @@ index 00000000..53cbb795
 +         case MLN_PLUGIN_VALUE_COLOR:
 +             return fn.template operator()<Color>();
 +         case MLN_PLUGIN_VALUE_STRING:
-+@@ -120,6 +131,9 @@ mln_plugin_value toPluginValue(const T& value, PluginPropertyValue::EvaluationSt
++@@ -142,6 +153,9 @@ mln_plugin_value toPluginValue(const T& value, PluginPropertyValue::EvaluationSt
 +     } else if constexpr (std::is_same_v<T, std::array<float, 2>>) {
 +         result.type = MLN_PLUGIN_VALUE_FLOAT2;
 +         result.data.float2_value = {value[0], value[1]};
@@ -992,32 +1077,32 @@ index 00000000..53cbb795
 +         result.type = MLN_PLUGIN_VALUE_COLOR;
 +         result.data.color_value = {value.r, value.g, value.b, value.a};
 +diff --git a/src/mln/style/plugin_property.hpp b/src/mln/style/plugin_property.hpp
-+index 7c11ee74405a77892c37c97aff8f16d984a45662..ebeca5e849c3508fd9f0cc82a48d2a83952304fa 100644
++index 33e2c14351eccd965bc3a18b3d30d2588a5e6fde..054ba00f1b73cdca14fc1ee2c1ddd61a90ab4bc8 100644
 +--- a/src/mln/style/plugin_property.hpp
 ++++ b/src/mln/style/plugin_property.hpp
-+@@ -29,6 +29,7 @@ class PluginPropertyValue {
++@@ -30,6 +30,7 @@ class PluginPropertyValue {
 + public:
 +     using TypedValue = std::variant<PropertyValue<float>,
 +                                     PropertyValue<std::array<float, 2>>,
 ++                                    PropertyValue<std::array<double, 2>>,
 +                                     PropertyValue<Color>,
-+                                     PropertyValue<std::string>>;
-+ 
-+@@ -83,6 +84,7 @@ public:
++                                     PropertyValue<std::string>,
++                                     PropertyValue<bool>,
++@@ -91,6 +92,7 @@ public:
 + private:
 +     using TypedValue = std::variant<Transitioning<PropertyValue<float>>,
 +                                     Transitioning<PropertyValue<std::array<float, 2>>>,
 ++                                    Transitioning<PropertyValue<std::array<double, 2>>>,
 +                                     Transitioning<PropertyValue<Color>>,
-+                                     Transitioning<PropertyValue<std::string>>>;
-+     TypedValue value;
++                                     Transitioning<PropertyValue<std::string>>,
++                                     Transitioning<PropertyValue<bool>>,
 diff --git a/patches/maplibre-native/README.md b/patches/maplibre-native/README.md
-index d345f0a7..a8dcfa51 100644
+index 2c81ea8e..75607d26 100644
 --- a/patches/maplibre-native/README.md
 +++ b/patches/maplibre-native/README.md
-@@ -205,3 +205,5 @@ every listed patch's paths, the sync prints the path first. A forced checkout
- also removes an untracked file that sits where a new pin adds a tracked one, and
- the sync removes a file that a listed patch adds before applying that patch
+@@ -207,3 +207,5 @@ the sync removes a file that a listed patch adds before applying that patch
  again.
+ 
+ `0042-vulkan-fill-extrusion-plugin.patch` Ordered draw passes, 3D and light inputs, layer evaluation, layout, boolean and image properties, pattern atlases and instancing for plugin layers, from maplibre-native#4685. Carried by maplibre-plugins until it lands upstream.
 +
-+`0042-source-free-plugin-layers.patch` Per-frame geometry without a style source. Carried by maplibre-plugins until it lands upstream.
++`0043-source-free-plugin-layers.patch` Per-frame geometry without a style source. Carried by maplibre-plugins until it lands upstream.
