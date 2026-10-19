@@ -219,6 +219,27 @@ const fixtures = {
       ],
     })),
   },
+  "gable-family-arms": {
+    description:
+      "Unequal-width arms exercise local half-hip switch times and directional saltbox speeds, including oblique slopes.",
+    features: ["half-hipped", "saltbox"].flatMap((shape, i) =>
+      [-1, 0, 45, 180].map((direction, j) => ({
+        index: 4 * i + j,
+        shape,
+        direction,
+        rings: [
+          [
+            [1000, 1000],
+            [1040, 1000],
+            [1040, 1200],
+            [1400, 1200],
+            [1400, 1360],
+            [1000, 1360],
+          ],
+        ],
+      })),
+    ),
+  },
   "rectangle-full": {
     description:
       "A 300 × 160 axis-aligned rectangle with every roof shape, recorded vertex by vertex.",
@@ -249,7 +270,7 @@ const fixtures = {
   },
   "l-shape": {
     description:
-      "An L: gabled, gambrel, capped and barrel roofs follow its arms; half-hipped and saltbox span the bounding rectangle. Cone, dome and onion sit on circular bases with terraces; pyramidal stays flat (the center is outside the kernel).",
+      "An L: the gable family follows its arms, with local half hips and directional saltbox slopes. Cone, dome and onion sit on circular bases with terraces; pyramidal stays flat (the center is outside the kernel).",
     features: matrix([
       [
         [1000, 1000],
@@ -263,7 +284,7 @@ const fixtures = {
   },
   "t-shape": {
     description:
-      "A T with three gable ends and two valleys; skeleton arms ignore the frame orientation and direction.",
+      "A T with three gable ends and two valleys; saltbox uses direction, other skeleton arms ignore the frame orientation and direction.",
     features: matrix([
       [
         [1000, 1000],

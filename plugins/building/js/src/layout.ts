@@ -63,6 +63,9 @@ import {
   envelope,
   frameFor,
   FLAT_TOP_INSET,
+  HALF_HIPPED_INSET,
+  RIDGE_OFFSET_CAP,
+  SALTBOX_RIDGE,
   roundProfile,
   roundGabledProfile,
   type StripProfile,
@@ -72,7 +75,12 @@ import {
   type RoofModel,
   stripGradient,
 } from "./roof.ts";
-import { gableEnds, straightSkeleton, type SkeletonPoint } from "./skeleton.ts";
+import {
+  gableEnds,
+  straightSkeleton,
+  type SkeletonPoint,
+  type EdgeMotion,
+} from "./skeleton.ts";
 import {
   ROOF_ORIENTATIONS,
   ROOF_SHAPES,
@@ -976,7 +984,11 @@ function takesArmSkeleton(
   shape: RoofShape,
   rect: BoundingRectangle,
 ): boolean {
-  const gable = shape === "gabled" || shape === "gambrel";
+  const gable =
+    shape === "gabled" ||
+    shape === "gambrel" ||
+    shape === "half-hipped" ||
+    shape === "saltbox";
   const profiled = [
     "double_saltbox",
     "quadruple_saltbox",
@@ -1026,8 +1038,19 @@ function modelFor(
     if (ends.some(Boolean) || polygon.holes.length > 0) {
       const capped =
         shape === "double_saltbox" || shape === "quadruple_saltbox";
-      const skeleton =
-        ends.some(Boolean) && shape !== "quadruple_saltbox"
+      const motions =
+        shape === "half-hipped"
+          ? [halfHipMotions(polygon.outer, ends)]
+          : shape === "saltbox"
+            ? saltboxMotions(
+                polygon,
+                ends,
+                direction ?? frameFor(rect, orientation, null).v,
+              )
+            : undefined;
+      const skeleton = motions
+        ? straightSkeleton(polygon, [], motions)
+        : ends.some(Boolean) && shape !== "quadruple_saltbox"
           ? straightSkeleton(polygon, ends)
           : hips;
       return skeleton && skeleton.run >= MIN_HALF_WIDTH
@@ -1054,6 +1077,49 @@ function modelFor(
     return model;
   const circle = inscribedCircle(polygon, model.center, rect.halfShort);
   return circle ? { ...model, ...circle } : { type: "flat" };
+}
+
+/** A facing eave runs 0.7 of an arm's width; the opposite one runs 0.3. */
+function saltboxMotions(
+  polygon: Polygon,
+  ends: readonly boolean[],
+  front: Point,
+): EdgeMotion[][] {
+  return [polygon.outer, ...polygon.holes].map((ring, r) =>
+    ring.map((a, i) => {
+      if (r === 0 && ends[i]) return { speed: 0 };
+      const b = ring[(i + 1) % ring.length]!;
+      const dx = b.x - a.x,
+        dy = b.y - a.y;
+      const length = Math.sqrt(dx * dx + dy * dy);
+      const facing = (dy * front.x - dx * front.y) / length;
+      return { speed: 1 + (2 * SALTBOX_RIDGE - 1) * facing };
+    }),
+  );
+}
+
+/** Each end uses its own width; short arms cap the inset like OSM2World. */
+function halfHipMotions(
+  outer: readonly Point[],
+  ends: readonly boolean[],
+): EdgeMotion[] {
+  const length = (a: Point, b: Point): number => {
+    const dx = b.x - a.x,
+      dy = b.y - a.y;
+    return Math.sqrt(dx * dx + dy * dy);
+  };
+  return outer.map((a, i) => {
+    if (!ends[i]) return { speed: 1 };
+    const b = outer[(i + 1) % outer.length]!;
+    const width = length(a, b);
+    const arm = Math.min(
+      length(outer[(i + outer.length - 1) % outer.length]!, a),
+      length(b, outer[(i + 2) % outer.length]!),
+    );
+    const inset = Math.min(width * HALF_HIPPED_INSET, RIDGE_OFFSET_CAP * arm);
+    // Time rises from the eaves: the wall is stationary below the small hip.
+    return { speed: 0, changeTime: width / 2 - inset, afterSpeed: 1 };
+  });
 }
 
 /**

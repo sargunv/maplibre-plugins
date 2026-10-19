@@ -1,4 +1,4 @@
-//! Zero/one-speed straight skeleton with courtyard boundaries. The wavefront
+//! Per-edge-speed straight skeleton with courtyard boundaries. The wavefront
 //! keeps the building on its left. At each event its contacts are split and
 //! opposing segments canceled before reconnection, including simultaneous
 //! collapses and hole/outer merges. ../../js/src/skeleton.ts is its twin.
@@ -19,7 +19,12 @@ pub const SkeletonPoint = struct {
 };
 pub const Face = struct { points: []SkeletonPoint, normal: Point };
 pub const Skeleton = struct { faces: []Face, run: f64 };
-const Edge = struct { normal: Point, speed: f64 = 1, start: SkeletonPoint, end: SkeletonPoint };
+pub const EdgeMotion = struct {
+    speed: f64 = 1,
+    change_time: f64 = std.math.inf(f64),
+    after_speed: f64 = 1,
+};
+const Edge = struct { normal: Point, speed: f64 = 1, change_time: f64 = std.math.inf(f64), after_speed: f64 = 1, start: SkeletonPoint, end: SkeletonPoint };
 const Vertex = struct { p: Point, velocity: Point };
 const Loop = struct { edges: []Edge, vertices: []Vertex };
 const Segment = struct { a: usize, b: usize, edge: Edge, parent: usize };
@@ -121,7 +126,12 @@ fn advance(allocator: Allocator, loops: []const Loop, dt: f64, time: f64, faces:
         for (loop.edges, 0..) |edge, i| {
             const a = ids[i];
             const b = ids[(i + 1) % count];
-            try raw.append(allocator, .{ .a = a, .b = b, .edge = edge, .parent = old.items.len });
+            var updated = edge;
+            if (edge.change_time <= time) {
+                updated.speed = edge.after_speed;
+                updated.change_time = std.math.inf(f64);
+            }
+            try raw.append(allocator, .{ .a = a, .b = b, .edge = updated, .parent = old.items.len });
             try old.append(allocator, .{ .edge = edge, .a = points.items[a], .b = points.items[b], .prev = base + (i + count - 1) % count, .next = base + (i + 1) % count });
         }
     }
@@ -203,7 +213,7 @@ fn advance(allocator: Allocator, loops: []const Loop, dt: f64, time: f64, faces:
                 const current = segments.items[id];
                 const a = before.edge.normal;
                 const b = current.edge.normal;
-                if (before.edge.speed == current.edge.speed and @abs(a.x * b.y - a.y * b.x) <= parallel and dot(a, b) > 0) {
+                if (before.edge.speed == current.edge.speed and before.edge.change_time == current.edge.change_time and before.edge.after_speed == current.edge.after_speed and @abs(a.x * b.y - a.y * b.x) <= parallel and dot(a, b) > 0) {
                     before.b = current.b;
                     before.parent = none;
                     _ = cycle.orderedRemove(i);
@@ -220,11 +230,11 @@ fn advance(allocator: Allocator, loops: []const Loop, dt: f64, time: f64, faces:
             const prev = segments.items[cycle.items[(i + cycle.items.len - 1) % cycle.items.len]];
             const next = segments.items[cycle.items[(i + 1) % cycle.items.len]];
             const motion = velocity(prev.edge, s.edge) orelse return null;
-            if (s.parent != none and prev.parent == old.items[s.parent].prev and next.parent == old.items[s.parent].next) {
+            if (s.parent != none and prev.parent == old.items[s.parent].prev and next.parent == old.items[s.parent].next and s.edge.speed == old.items[s.parent].edge.speed and prev.edge.speed == old.items[prev.parent].edge.speed and next.edge.speed == old.items[next.parent].edge.speed) {
                 continued[s.parent] = true;
                 edges[i] = s.edge;
             } else {
-                edges[i] = .{ .normal = s.edge.normal, .speed = s.edge.speed, .start = timed(points.items[s.a], time), .end = timed(points.items[s.b], time) };
+                edges[i] = .{ .normal = s.edge.normal, .speed = s.edge.speed, .change_time = s.edge.change_time, .after_speed = s.edge.after_speed, .start = timed(points.items[s.a], time), .end = timed(points.items[s.b], time) };
             }
             vertices[i] = .{ .p = points.items[s.a], .velocity = motion };
         }
@@ -233,7 +243,7 @@ fn advance(allocator: Allocator, loops: []const Loop, dt: f64, time: f64, faces:
     for (old.items, 0..) |item, i| {
         if (continued[i]) continue;
         const polygon = [_]SkeletonPoint{ item.edge.start, item.edge.end, timed(item.b, time), timed(item.a, time) };
-        if (item.edge.speed > 0 and area2(&polygon) > contact * contact) try faces.append(allocator, .{ .points = try allocator.dupe(SkeletonPoint, &polygon), .normal = item.edge.normal });
+        if (item.edge.speed > 0 and area2(&polygon) > contact * contact) try faces.append(allocator, .{ .points = try allocator.dupe(SkeletonPoint, &polygon), .normal = .{ .x = item.edge.normal.x / item.edge.speed, .y = item.edge.normal.y / item.edge.speed } });
     }
     return try result.toOwnedSlice(allocator);
 }
@@ -255,6 +265,10 @@ pub fn straightSkeleton(allocator: Allocator, polygon: Polygon) Allocator.Error!
 }
 
 pub fn weightedSkeleton(allocator: Allocator, polygon: Polygon, stationary: []const bool) Allocator.Error!?Skeleton {
+    return movingSkeleton(allocator, polygon, stationary, &.{});
+}
+
+pub fn movingSkeleton(allocator: Allocator, polygon: Polygon, stationary: []const bool, motions: []const []const EdgeMotion) Allocator.Error!?Skeleton {
     var total = polygon.outer.len;
     for (polygon.holes.items) |hole| total += hole.len;
     if (total > max_skeleton_vertices) return null;
@@ -286,7 +300,8 @@ pub fn weightedSkeleton(allocator: Allocator, polygon: Polygon, stationary: []co
             const dx = b.x - a.x;
             const dy = b.y - a.y;
             const length = @sqrt(dx * dx + dy * dy);
-            edge.* = .{ .normal = .{ .x = -dy / length, .y = dx / length }, .speed = if (r == 0 and i < stationary.len and stationary[i]) 0 else 1, .start = a, .end = b };
+            const motion: EdgeMotion = if (r < motions.len and i < motions[r].len) motions[r][i] else .{ .speed = if (r == 0 and i < stationary.len and stationary[i]) 0 else 1 };
+            edge.* = .{ .normal = .{ .x = -dy / length, .y = dx / length }, .speed = motion.speed, .change_time = motion.change_time / scale, .after_speed = motion.after_speed, .start = a, .end = b };
         }
         const vertices = try allocator.alloc(Vertex, ring.len);
         for (vertices, 0..) |*v, i| {
@@ -302,7 +317,10 @@ pub fn weightedSkeleton(allocator: Allocator, polygon: Polygon, stationary: []co
     var time: f64 = 0;
     var step: usize = 0;
     while (loops.len > 0 and step < count * 4) : (step += 1) {
-        const dt = nextEvent(loops);
+        var dt = nextEvent(loops);
+        for (loops) |loop| for (loop.edges) |edge| {
+            dt = @min(dt, edge.change_time - time);
+        };
         if (!std.math.isFinite(dt)) return null;
         time += dt;
         loops = (try advance(allocator, loops, dt, time, &faces)) orelse return null;

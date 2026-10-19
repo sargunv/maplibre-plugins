@@ -864,7 +864,7 @@ fn toLocal(scratch: Allocator, ring: []const Point, origin: Point) Allocator.Err
 
 /// Arm profiles keep their frame on near-rectangles and convex capped/barrel outlines.
 fn takesArmSkeleton(polygon: Polygon, shape: RoofShape, rect: footprint.BoundingRectangle) bool {
-    const gable = shape == .gabled or shape == .gambrel;
+    const gable = shape == .gabled or shape == .gambrel or shape == .@"half-hipped" or shape == .saltbox;
     const profiled = shape == .double_saltbox or shape == .quadruple_saltbox or shape == .round or shape == .round_gabled;
     if (!gable and !profiled) return false;
     const courtyard = polygon.holes.items.len > 0;
@@ -900,7 +900,9 @@ fn modelFor(
         const has_ends = std.mem.indexOfScalar(bool, ends, true) != null;
         if (has_ends or polygon.holes.items.len > 0) {
             const capped = shape == .double_saltbox or shape == .quadruple_saltbox;
-            const geometry = if (has_ends and shape != .quadruple_saltbox) (try skeleton.weightedSkeleton(scratch, polygon, ends)) orelse return .flat else hips;
+            const motions = if (shape == .@"half-hipped") try halfHipMotions(scratch, polygon.outer, ends) else null;
+            const saltbox = if (shape == .saltbox) try saltboxMotions(scratch, polygon, ends, direction orelse frameFor(rect, orientation, null).v) else null;
+            const geometry = if (saltbox) |m| (try skeleton.movingSkeleton(scratch, polygon, &.{}, m)) orelse return .flat else if (motions) |m| (try skeleton.movingSkeleton(scratch, polygon, &.{}, &.{m})) orelse return .flat else if (has_ends and shape != .quadruple_saltbox) (try skeleton.weightedSkeleton(scratch, polygon, ends)) orelse return .flat else hips;
             if (geometry.run < min_half_width) return .flat;
             return .{ .skeleton = .{ .geometry = geometry, .stationary = if (shape == .quadruple_saltbox) &.{} else ends, .profile = try skeletonProfile(scratch, shape, geometry.run), .eave_run = if (capped) roof.flat_top_inset * geometry.run else null } };
         }
@@ -915,6 +917,51 @@ fn modelFor(
     model.radial.run = circle.run;
     model.radial.base = circle.base;
     return model;
+}
+
+/// A facing eave runs 0.7 of an arm's width; the opposite one runs 0.3.
+fn saltboxMotions(scratch: Allocator, polygon: Polygon, ends: []const bool, front: Point) Allocator.Error![]const []const skeleton.EdgeMotion {
+    const result = try scratch.alloc([]const skeleton.EdgeMotion, 1 + polygon.holes.items.len);
+    for (result, 0..) |*motions, r| {
+        const ring = if (r == 0) polygon.outer else polygon.holes.items[r - 1];
+        const edges = try scratch.alloc(skeleton.EdgeMotion, ring.len);
+        for (ring, edges, 0..) |a, *motion, i| {
+            if (r == 0 and ends[i]) {
+                motion.* = .{ .speed = 0 };
+                continue;
+            }
+            const b = ring[(i + 1) % ring.len];
+            const dx = b.x - a.x;
+            const dy = b.y - a.y;
+            const length = @sqrt(dx * dx + dy * dy);
+            const facing = (dy * front.x - dx * front.y) / length;
+            motion.* = .{ .speed = 1 + (2 * roof.saltbox_ridge - 1) * facing };
+        }
+        motions.* = edges;
+    }
+    return result;
+}
+
+/// Each end uses its own width; short arms cap the inset like OSM2World.
+fn halfHipMotions(scratch: Allocator, outer: []const Point, ends: []const bool) Allocator.Error![]skeleton.EdgeMotion {
+    const motions = try scratch.alloc(skeleton.EdgeMotion, outer.len);
+    for (outer, motions, 0..) |a, *motion, i| {
+        motion.* = .{};
+        if (!ends[i]) continue;
+        const b = outer[(i + 1) % outer.len];
+        const width = edgeLength(a, b);
+        const arm = @min(edgeLength(outer[(i + outer.len - 1) % outer.len], a), edgeLength(b, outer[(i + 2) % outer.len]));
+        const inset = @min(width * roof.half_hipped_inset, roof.ridge_offset_cap * arm);
+        // Time rises from the eaves: the wall is stationary below the small hip.
+        motion.* = .{ .speed = 0, .change_time = width / 2 - inset, .after_speed = 1 };
+    }
+    return motions;
+}
+
+fn edgeLength(a: Point, b: Point) f64 {
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    return @sqrt(dx * dx + dy * dy);
 }
 
 /// The model of a cut copy: flat where the whole footprint is flat too (a
