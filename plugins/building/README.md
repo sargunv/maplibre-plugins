@@ -133,19 +133,12 @@ give opaque or translucent buildings (see [Rendering](#rendering)).
      facing the direction travels 70% across an arm, and its opposite 30%; arms
      along the direction are symmetric. An unset direction uses the
      orientation's frame front, following OSM2World's orientation-based choice.
-     Arm saltboxes retain level eaves and unequal slopes. Heights use one
-     wavefront clock and each face's gradient divides by its speed, keeping
-     valleys continuous. This is a limit of the arm model: OSM2World's equal
-     slopes and raised back eaves remain supported only by the frame path.
-     Delaying each back edge by `0.4` times its arm width gives equal slopes and
-     the intended 70/30 ridge, but at a reflex corner a stationary edge can grow
-     into the adjoining arm. Its raised face then meets that arm's lower face
-     with a vertical step inside the footprint. For example, on a T with
-     120-unit-wide arms facing north, the back face starts at time 48 while the
-     symmetric stem face starts at time 0 at their common corner. Boundary wall
-     stops cannot close this interior step; the closure check rejects the
-     result. Supporting this interpretation needs interior step faces and their
-     junctions, beyond the current boundary-wall and roof-facet model.
+     Arm saltboxes keep level eaves and unequal slopes: heights use one
+     wavefront clock and each face's gradient divides by its speed. OSM2World's
+     equal slopes and raised back eave stay on the frame path only. On arms,
+     delaying the back edges gives that ridge but leaves a vertical step inside
+     the footprint where a back face meets another arm at a reflex corner, which
+     the roof-facet model cannot draw.
    - **Frame shapes** are concave height functions over the frame, written as
      the minimum of planes. The footprint is ear-clipped, and every triangle is
      clipped to every plane's facet, so each output triangle is planar. Holes
