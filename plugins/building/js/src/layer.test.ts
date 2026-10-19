@@ -121,16 +121,21 @@ function fakeMap(features: TestFeature[]) {
     revision: 0,
     state: {} as Record<string, Record<string, Record<string, unknown>>>,
   };
-  const raw = new ArrayBuffer(8);
+  const tile = { raw: new ArrayBuffer(8) };
+  const coordinates = [COORD];
+  let layoutReads = 0;
   const layers: { id: string }[] = [];
   let stencil = 0;
   let repaints = 0;
   const manager = {
-    getVisibleCoordinates: () => [COORD],
+    getVisibleCoordinates: () => coordinates,
     getTileByID: () => ({
       latestFeatureIndex: {
-        rawTileData: raw,
-        loadVTLayers: () => ({ _geojsonTileLayer: layerOf(features) }),
+        rawTileData: tile.raw,
+        loadVTLayers: () => {
+          layoutReads++;
+          return { _geojsonTileLayer: layerOf(features) };
+        },
         getId: (feature: VectorFeatureLike) => feature.id,
       },
     }),
@@ -164,6 +169,9 @@ function fakeMap(features: TestFeature[]) {
     layers,
     state,
     repaints: () => repaints,
+    coordinates,
+    tile,
+    layoutReads: () => layoutReads,
   };
 }
 
@@ -313,6 +321,77 @@ describe("BuildingLayer", () => {
     expect(() => layer.setLayoutProperty("building-height", 1)).toThrow(
       /Unknown/,
     );
+  });
+
+  it("shares canonical geometry across overscaled ids until the last user releases it", () => {
+    const { layer, gl, calls, coordinates, tile, layoutReads, state, map } =
+      setup({
+        ...example,
+        paint: {
+          ...example.paint,
+          "building-color": [
+            "case",
+            ["boolean", ["feature-state", "hover"], false],
+            "#ff0000",
+            "#e4dccf",
+          ],
+        },
+      });
+    coordinates.push({ ...COORD, key: "17/0/0", overscaledZ: 17 });
+    const geometryUploads = () =>
+      calls.filter(
+        (c) => c.name === "bufferData" && c.args[0] === "ELEMENT_ARRAY_BUFFER",
+      );
+    layer.render(gl, args);
+    expect(layoutReads()).toBe(1);
+    expect(geometryUploads()).toHaveLength(1);
+    const geometryBuffers = calls.flatMap((call, index) => {
+      if (call.name !== "bufferData" || call.args[2] !== "STATIC_DRAW")
+        return [];
+      const binding = calls
+        .slice(0, index)
+        .reverse()
+        .find((c) => c.name === "bindBuffer" && c.args[0] === call.args[0]);
+      return [binding!.args[1]];
+    });
+    const deletedGeometry = () =>
+      calls.filter(
+        (c) => c.name === "deleteBuffer" && geometryBuffers.includes(c.args[0]),
+      ).length;
+    // Each overscaled id owns its paint buffer and receives state refills.
+    state.state = { _geojsonTileLayer: { "2": { hover: true } } };
+    state.revision++;
+    layer.render(gl, args);
+    expect(
+      calls.filter(
+        (c) => c.name === "bufferSubData" && c.args[0] === "ARRAY_BUFFER",
+      ),
+    ).toHaveLength(2);
+    coordinates.shift();
+    for (let frame = 0; frame < 150; frame++) layer.render(gl, args);
+    expect(layoutReads()).toBe(1);
+    expect(deletedGeometry()).toBe(0);
+    tile.raw = new ArrayBuffer(8);
+    layer.render(gl, args);
+    expect(layoutReads()).toBe(2);
+    expect(deletedGeometry()).toBe(2);
+    coordinates.unshift(COORD);
+    layer.setLayoutProperty("building-roof-shape", "hipped");
+    layer.render(gl, args);
+    expect(layoutReads()).toBe(3);
+    expect(geometryUploads()).toHaveLength(3);
+    layer.onRemove(map);
+    // Each shared vertex/index buffer is deleted exactly once.
+    const indexBuffers = calls
+      .filter(
+        (c) => c.name === "bindBuffer" && c.args[0] === "ELEMENT_ARRAY_BUFFER",
+      )
+      .map((c) => c.args[1]);
+    for (const buffer of new Set(indexBuffers)) {
+      expect(
+        calls.filter((c) => c.name === "deleteBuffer" && c.args[0] === buffer),
+      ).toHaveLength(1);
+    }
   });
 
   it("queries the projected prism, nearest first, with the roof it drew", () => {
