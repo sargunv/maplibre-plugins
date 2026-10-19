@@ -22,7 +22,8 @@ export type PaintType =
   | "rotation"
   | "float"
   | "color"
-  | "enum";
+  | "enum"
+  | "boolean";
 
 /**
  * The expressions a property accepts, as the native expression capabilities
@@ -34,7 +35,7 @@ export type ExpressionSupport = "constant" | "camera" | "data-driven";
 
 /** A float, a rotation, a pair of floats or doubles, or a color. */
 export interface NumericPaintPropertySpec {
-  readonly type: Exclude<PaintType, "enum">;
+  readonly type: Exclude<PaintType, "enum" | "boolean">;
   readonly default: number | readonly number[];
   readonly minimum?: number;
   readonly maximum?: number;
@@ -69,9 +70,29 @@ export interface EnumPaintPropertySpec {
   readonly transition?: boolean;
 }
 
+/**
+ * True or false, as the host's MLN_PLUGIN_VALUE_BOOLEAN: it evaluates to [1]
+ * or [0] (the BOOLEAN_FLOAT encoding), never interpolates, and takes no
+ * `<name>-transition` unless `transition` says so, like an enum.
+ */
+export interface BooleanPaintPropertySpec {
+  readonly type: "boolean";
+  readonly default: boolean;
+  /** Defaults to "camera". */
+  readonly expressions?: ExpressionSupport;
+  /**
+   * Whether a data-driven value may read feature-state (the host's
+   * FEATURE_STATE capability). Defaults to true.
+   */
+  readonly featureState?: boolean;
+  /** Whether a `<name>-transition` key is accepted. Defaults to false. */
+  readonly transition?: boolean;
+}
+
 export type PaintPropertySpec =
   | NumericPaintPropertySpec
-  | EnumPaintPropertySpec;
+  | EnumPaintPropertySpec
+  | BooleanPaintPropertySpec;
 
 /**
  * A property's numeric vector: [n] for floats, [x, y] pairs, premultiplied
@@ -159,11 +180,12 @@ export function isFeatureValue(value: unknown): value is FeatureValue {
 
 /**
  * Whether a property takes a `<name>-transition`: the spec's `transition`,
- * which defaults to true for numeric types and false for enums. Enums still
- * follow the layer's default transition (they hold, then switch).
+ * which defaults to true for numeric types and false for enums and booleans
+ * (the host's supports_transitions). Both still follow the layer's default
+ * transition (they hold, then switch).
  */
 export function supportsTransitions(spec: PaintPropertySpec): boolean {
-  return spec.transition ?? spec.type !== "enum";
+  return spec.transition ?? (spec.type !== "enum" && spec.type !== "boolean");
 }
 
 /** Floats per endpoint, as the host encodes a binding (plugin_bucket.cpp componentCount). */
@@ -218,6 +240,13 @@ function propertySpecification(
         default: "black",
         ...dataDriven,
         expression: interpolated,
+      } as unknown as StylePropertySpecification;
+    case "boolean":
+      return {
+        type: "boolean",
+        default: spec.default,
+        ...dataDriven,
+        expression: { interpolated: false, parameters },
       } as unknown as StylePropertySpecification;
     case "enum":
       // A plain string rather than a style-spec enum, as the host parses a
@@ -333,6 +362,8 @@ function checkRange(
  */
 function defaultVector(spec: PaintPropertySpec, name: string): Vector {
   switch (spec.type) {
+    case "boolean":
+      return [spec.default ? 1 : 0];
     case "enum":
       return [enumIndex(spec, name, spec.default)];
     case "rotation":
@@ -365,6 +396,8 @@ function typedVector(
   fallback: Vector,
 ): Vector | null {
   switch (spec.type) {
+    case "boolean":
+      return typeof value === "boolean" ? [value ? 1 : 0] : null;
     case "enum": {
       if (typeof value !== "string") return null;
       const index = spec.values.indexOf(value);
@@ -631,6 +664,8 @@ export function compileValue(
   const fallback = defaultVector(spec, name);
   if (spec.type === "enum") {
     if (typeof raw === "string") return uniform([enumIndex(spec, name, raw)]);
+  } else if (spec.type === "boolean") {
+    if (typeof raw === "boolean") return uniform([raw ? 1 : 0]);
   } else if (spec.type === "color") {
     // Float arrays are this package's own shorthand for straight colors,
     // which spec.json defaults use; the host takes CSS strings.

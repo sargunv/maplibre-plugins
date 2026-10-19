@@ -526,3 +526,65 @@ describe("encode and factor (plugin_bucket.cpp fillRange, plugin_property.cpp in
     ).toBe(0);
   });
 });
+
+describe("boolean", () => {
+  const gradient = {
+    type: "boolean",
+    default: true,
+  } as const satisfies PaintPropertySpec;
+  const lit = {
+    type: "boolean",
+    default: false,
+    expressions: "data-driven",
+  } as const satisfies PaintPropertySpec;
+
+  it("evaluates literals and folded constants to [1] or [0]", () => {
+    expect((compileValue(gradient, "g", true) as UniformValue).at(0)).toEqual([
+      1,
+    ]);
+    expect((compileValue(gradient, "g", false) as UniformValue).at(0)).toEqual([
+      0,
+    ]);
+    expect(
+      (compileValue(gradient, "g", ["!", true]) as UniformValue).at(0),
+    ).toEqual([0]);
+    expect((compileValue(gradient, "g", null) as UniformValue).at(0)).toEqual([
+      1,
+    ]);
+  });
+
+  it("evaluates zoom expressions and rejects other types", () => {
+    const value = compileValue(gradient, "g", [
+      "step",
+      ["zoom"],
+      false,
+      10,
+      true,
+    ]) as UniformValue;
+    expect(value.at(9)).toEqual([0]);
+    expect(value.at(10)).toEqual([1]);
+    expect(() => compileValue(gradient, "g", 1)).toThrow();
+    expect(() => compileValue(gradient, "g", ["get", "x"])).toThrow(
+      /not supported/,
+    );
+  });
+
+  it("binds feature and feature-state values as one float", () => {
+    const value = compileValue(lit, "l", [
+      "boolean",
+      ["feature-state", "on"],
+      false,
+    ]) as FeatureValue;
+    expect(isFeatureValue(value)).toBe(true);
+    expect(value.components).toBe(1);
+    const feature: EvaluationFeature = { type: 3, properties: {} };
+    expect(value.at(10, feature, { on: true })).toEqual([1]);
+    expect(value.at(10, feature, {})).toEqual([0]);
+    expect(componentCount(lit)).toBe(1);
+  });
+
+  it("takes no transition by default", () => {
+    expect(supportsTransitions(gradient)).toBe(false);
+    expect(supportsTransitions({ ...gradient, transition: true })).toBe(true);
+  });
+});

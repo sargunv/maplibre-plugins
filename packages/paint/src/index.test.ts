@@ -437,3 +437,26 @@ describe("PaintState over a larger spec", () => {
     });
   });
 });
+
+describe("boolean in PaintState", () => {
+  const flagSpec = {
+    gradient: { type: "boolean", default: true },
+  } as const satisfies Record<string, PaintPropertySpec>;
+
+  it("holds the prior value until a transition ends, then snaps", () => {
+    const state = new PaintState(
+      flagSpec,
+      ["gradient"],
+      DEFAULT_TRANSITION,
+      {},
+    );
+    expect(state.evaluate(0, 0).gradient).toEqual([1]);
+    state.set("gradient", false, 1000);
+    expect(state.evaluate(0, 1299).gradient).toEqual([1]);
+    expect(state.evaluate(0, 1300).gradient).toEqual([0]);
+    expect(state.toJson()).toEqual({ gradient: false });
+    expect(() => state.set("gradient-transition", { duration: 5 }, 0)).toThrow(
+      /takes no transition/,
+    );
+  });
+});
