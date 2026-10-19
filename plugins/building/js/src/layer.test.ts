@@ -218,6 +218,25 @@ describe("BuildingLayer", () => {
     expect(layers.map((l) => l.id)).toEqual([`${example.id}-tiles`]);
   });
 
+  it("adopts its own helper layer but leaves a style layer of that id alone", () => {
+    const fake = fakeMap(features);
+    const own = `${example.id}-tiles`;
+    fake.layers.push({ id: own });
+    const layer = BuildingLayer.fromLayerJson(example);
+    layer.onAdd(fake.map, fakeGl().gl);
+    expect(fake.layers.map((l) => l.id)).toEqual([own, `${own}-2`]);
+    layer.onRemove(fake.map);
+    expect(fake.layers.map((l) => l.id)).toEqual([own]);
+
+    // A style restored after context loss keeps the marked helper.
+    const restored = fakeMap(features);
+    const first = BuildingLayer.fromLayerJson(example);
+    first.onAdd(restored.map, fakeGl().gl);
+    const again = BuildingLayer.fromLayerJson(example);
+    again.onAdd(restored.map, fakeGl().gl);
+    expect(restored.layers.map((l) => l.id)).toEqual([own]);
+  });
+
   it("draws opaque buildings in one pass with core fill-extrusion's state", () => {
     const { layer, gl, calls } = setup();
     layer.render(gl, args);

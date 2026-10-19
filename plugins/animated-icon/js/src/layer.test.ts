@@ -240,6 +240,7 @@ interface FakeLayer {
   source?: string;
   "source-layer"?: string;
   filter?: unknown;
+  metadata?: unknown;
   layout?: { visibility?: string };
   minzoom?: number;
   maxzoom?: number;
@@ -699,7 +700,12 @@ describe("helper layer", () => {
   it("is adopted from a style restored after context loss", () => {
     const fake = fakeMap({
       layers: [
-        { id: "icons-tiles", type: "circle", source: "points" },
+        {
+          id: "icons-tiles",
+          type: "circle",
+          source: "points",
+          metadata: { "maplibre-plugins:helper-of": "icons" },
+        },
         { id: "icons", type: "custom" },
       ],
     });
@@ -708,6 +714,21 @@ describe("helper layer", () => {
     expect(fake.layers.map((l) => l.id)).toEqual(["icons-tiles", "icons"]);
     layer.onRemove(fake.map);
     expect(fake.layers.map((l) => l.id)).toEqual(["icons"]);
+  });
+
+  it("leaves a style layer that has its id alone", () => {
+    const fake = fakeMap({
+      layers: [{ id: "icons-tiles", type: "circle", source: "points" }],
+    });
+    const layer = pointsLayer({ "icon-animation": firstAnimation.name });
+    addTo(fake, layer);
+    expect(fake.layers.map((l) => l.id)).toEqual([
+      "icons-tiles",
+      "icons-tiles-2",
+      "icons",
+    ]);
+    layer.onRemove(fake.map);
+    expect(fake.layers.map((l) => l.id)).toEqual(["icons-tiles", "icons"]);
   });
 
   it("is added even when a built-in layer reads the source", () => {

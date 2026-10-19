@@ -76,6 +76,8 @@ import {
 } from "./tiles.ts";
 
 const TILE_SIZE = 512;
+/** The helper layer's metadata key, naming the layer that owns it. */
+const HELPER_OF = "maplibre-plugins:helper-of";
 /** Frames a tile's geometry survives after it stops being rendered. */
 const EVICT_AFTER_FRAMES = 120;
 
@@ -679,13 +681,23 @@ export class AnimatedIconLayer implements CustomLayerInterface {
    */
   private addHelperLayer(map: MaplibreMap): void {
     if (!map.getSource(this.source)) return;
-    const id = `${this.id}-tiles`;
     // A style restored after context loss keeps the helper but drops this
-    // layer; adopt it so it goes away with the layer again.
-    if (map.getLayer(id)) {
-      this.helperLayer = id;
-      this.syncHelperLayer(map);
-      return;
+    // layer; adopt it so it goes away with the layer again. A layer of the
+    // same id without this layer's mark belongs to the style, so take the
+    // next free id instead of touching it.
+    let id = `${this.id}-tiles`;
+    for (let n = 2; map.getLayer(id); n++) {
+      const metadata = (map.getLayer(id) as { metadata?: unknown }).metadata;
+      if (
+        typeof metadata === "object" &&
+        metadata !== null &&
+        (metadata as Record<string, unknown>)[HELPER_OF] === this.id
+      ) {
+        this.helperLayer = id;
+        this.syncHelperLayer(map);
+        return;
+      }
+      id = `${this.id}-tiles-${n}`;
     }
     const helper: CircleLayerSpecification = {
       id,
@@ -695,6 +707,7 @@ export class AnimatedIconLayer implements CustomLayerInterface {
       // their raw data still load, since that depends only on the layer
       // not being hidden.
       filter: false,
+      metadata: { [HELPER_OF]: this.id },
       layout: { visibility: this.visibility },
       paint: {
         "circle-radius": 0,

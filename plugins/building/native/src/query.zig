@@ -122,8 +122,10 @@ pub fn intersects(
     if (query.len == 0) return false;
     const shift = translation(paint, camera);
     const m = camera.tile_matrix;
-    const height = @max(paint.height, 0);
     const base = @max(paint.base, 0);
+    // A base above the height collapses the building to its base, as the
+    // shader draws it.
+    const height = @max(paint.height, base);
 
     const projected_query = try allocator.alloc(Point, query.len);
     defer allocator.free(projected_query);
@@ -215,6 +217,17 @@ test "a pitched query hits the walls and roof above the footprint" {
     try std.testing.expect(try hits(&rings, .{ .x = 1500, .y = 1850 }, .{ .height = 20, .base = 10 }, oblique));
     // Negative heights clamp at 0, like the shader.
     try std.testing.expect(!try hits(&rings, north, .{ .height = -20, .base = -5 }, oblique));
+}
+
+test "a base above the height collapses the building to its base" {
+    const rings = [_][]const Point{&square};
+    // 100 tile units north of the footprint, where a 20 m top is drawn: a
+    // 20 m base over a 10 m height is a flat roof at 20 m and still covers it.
+    try std.testing.expect(try hits(&rings, .{ .x = 1500, .y = 900 }, .{ .height = 10, .base = 20 }, oblique));
+    // The south wall from 10 m to 20 m would be drawn 100 to 200 units up the
+    // screen; the collapsed building has none.
+    try std.testing.expect(!try hits(&rings, .{ .x = 1500, .y = 1850 }, .{ .height = 10, .base = 20 }, oblique));
+    try std.testing.expect(try hits(&rings, .{ .x = 1500, .y = 1850 }, .{ .height = 20, .base = 10 }, oblique));
 }
 
 test "holes are not hit from above" {

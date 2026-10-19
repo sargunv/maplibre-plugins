@@ -146,27 +146,31 @@ const COMPARE = ["building", "fill-extrusion", "both"] as const;
 
 /**
  * A dropdown that shows the building layer, a core fill-extrusion layer of
- * the same heights, or both sharing the depth buffer.
+ * the same heights, or both sharing the depth buffer. Returns a function that
+ * gives the core layer the building layer's current paint while it shows;
+ * call it whenever a control changes.
  */
 export function compareRow(
   parent: HTMLElement,
   map: MaplibreMap,
   layer: BuildingLayer,
   coreId: string,
-): void {
+): () => void {
+  let core = false;
+  const refresh = () => {
+    if (!core) return;
+    const fresh = coreExtrusion(layer, coreId).paint ?? {};
+    for (const [name, v] of Object.entries(fresh))
+      map.setPaintProperty(coreId, name as never, v as never);
+  };
   selectRow(parent, {
     name: "draw",
     doc: "building: the plugin layer. fill-extrusion: a core layer with the same height, base, wall color and opacity (flat roofs). both: the two share the depth buffer, so the core boxes poke through the roofs.",
     values: COMPARE,
     initial: "building",
     onInput: (value) => {
-      const core = value !== "building";
-      if (core) {
-        // Pick up the building layer's current paint.
-        const fresh = coreExtrusion(layer, coreId).paint ?? {};
-        for (const [name, v] of Object.entries(fresh))
-          map.setPaintProperty(coreId, name as never, v as never);
-      }
+      core = value !== "building";
+      refresh();
       map.setLayoutProperty(coreId, "visibility", core ? "visible" : "none");
       layer.setLayoutProperty(
         "visibility",
@@ -174,6 +178,7 @@ export function compareRow(
       );
     },
   });
+  return refresh;
 }
 
 interface LightValues {
@@ -277,7 +282,7 @@ export function mountBuilding(
   const changed = () => listeners.forEach((l) => l());
 
   const view = section(panel, "View");
-  compareRow(view, map, layer, coreId);
+  listeners.push(compareRow(view, map, layer, coreId));
   const hint = document.createElement("p");
   hint.className = "hint";
   hint.textContent =

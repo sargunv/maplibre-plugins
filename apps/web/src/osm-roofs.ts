@@ -149,7 +149,7 @@ export function mountOsmRoofs(
   const changed = () => listeners.forEach((l) => l());
 
   const view = section(panel, "View");
-  compareRow(view, map, layer, coreId);
+  listeners.push(compareRow(view, map, layer, coreId));
   const hint = document.createElement("p");
   hint.className = "hint";
   hint.textContent =

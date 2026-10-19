@@ -108,7 +108,7 @@ export function intersectionDistance(
 /**
  * Whether a query point (normalized device coordinates) hits the prism of a
  * footprint (rings in tile units) from `base` to `height` (meters, clamped
- * at 0), moved by `translate` (tile units), under `matrix` (tile units and
+ * at 0, the height at least the base), moved by `translate` (tile units), under `matrix` (tile units and
  * meters to clip space, untranslated). Returns the
  * depth of the nearest face it hits, or null. Like maplibre-gl-js it tests
  * the top polygon (holes included) and every wall quad
@@ -124,12 +124,20 @@ export function prismHit(
   translate: readonly [number, number] = [0, 0],
 ): number | null {
   const b = Math.max(base, 0);
-  const h = Math.max(height, 0);
+  // A base above the height collapses the building to its base, as the
+  // shader draws it.
+  const h = Math.max(height, b);
   const bottom = projectRings(rings, b, matrix, translate);
   const top = projectRings(rings, h, matrix, translate);
   let closest = Infinity;
-  if (insideRings(top, q))
-    closest = intersectionDistance(q, top[0] as Projected[]);
+  if (insideRings(top, q)) {
+    // Every ring of the top lies in one plane, but the first can be
+    // degenerate (the layout drops it), so take the first with a depth.
+    for (const ring of top) {
+      closest = intersectionDistance(q, ring as Projected[]);
+      if (closest !== Infinity) break;
+    }
+  }
   for (let r = 0; r < top.length; r++) {
     const ringTop = top[r]!;
     const ringBase = bottom[r]!;

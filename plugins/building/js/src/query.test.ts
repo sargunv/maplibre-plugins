@@ -98,6 +98,31 @@ describe("prismHit", () => {
     expect(prismHit(square, -10, -5, m, q)).toBe(prismHit(square, 0, 0, m, q));
   });
 
+  it("collapses a building whose base is above its height to the base", () => {
+    const m = tilted();
+    // Halfway up a 10 to 20 m prism: drawn as a flat roof at 20 m, so no hit.
+    const q = ndc(m, 4100, 4200, 15);
+    expect(prismHit(square, 20, 10, m, q)).toBeNull();
+    expect(prismHit(square, 10, 20, m, q)).not.toBeNull();
+    const top = ndc(m, 4100, 4100, 20);
+    expect(prismHit(square, 20, 10, m, top)).toBe(
+      prismHit(square, 20, 20, m, top),
+    );
+  });
+
+  it("takes the top's depth from a ring that is not degenerate", () => {
+    const m = topDown();
+    const q = ndc(m, 4100, 4100, 20);
+    const sliver = [
+      { x: 0, y: 0 },
+      { x: 10, y: 0 },
+      { x: 20, y: 0 },
+    ];
+    expect(prismHit([sliver, ...square], 0, 20, m, q)).toBe(
+      prismHit(square, 0, 20, m, q),
+    );
+  });
+
   it("never hits a face behind the camera", () => {
     const m = topDown();
     const behind = Float64Array.from(m);
