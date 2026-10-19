@@ -496,8 +496,14 @@ function joinRoofLines(props, polygons, nodes, nodeTags, ways) {
     (props.roof_levels !== undefined ? 3 * props.roof_levels : 3);
   if (!(roofHeight > 0)) return;
   const heights = new Map();
+  const heightOrder = new Map();
+  let order = 0;
+  const setHeight = (id, height) => {
+    heights.set(id, height);
+    heightOrder.set(id, order++);
+  };
   for (const id of apexes)
-    heights.set(
+    setHeight(
       id,
       parseLength(nodeTags.get(id)["roof:height"] ?? "") ?? roofHeight,
     );
@@ -512,17 +518,31 @@ function joinRoofLines(props, polygons, nodes, nodeTags, ways) {
             : tags["roof:apex"] === "yes"
               ? roofHeight
               : undefined;
-      if (height !== undefined) heights.set(id, height);
+      if (height !== undefined) setHeight(id, height);
     }
   for (const s of segments.filter((s) => !s.edge))
     for (const id of [s.a, s.b])
-      heights.set(
+      setHeight(
         id,
         s.tags["roof:height"] !== undefined
           ? parseLength(s.tags["roof:height"])
           : roofHeight,
       );
   const ids = [...new Set([...segments.flatMap((s) => [s.a, s.b]), ...apexes])];
+  // Coincident copies are listed in OSM2World write order: last wins (ridges after edges).
+  const coincident = new Map();
+  for (const [i, id] of ids.entries()) {
+    const key = nodes.get(id).join(",");
+    const group = coincident.get(key) ?? [];
+    group.push(i);
+    coincident.set(key, group);
+  }
+  for (const group of coincident.values()) {
+    const sorted = group
+      .map((i) => ids[i])
+      .sort((a, b) => (heightOrder.get(a) ?? -1) - (heightOrder.get(b) ?? -1));
+    group.forEach((i, k) => (ids[i] = sorted[k]));
+  }
   props.roof_lines = {
     vertices: ids.map((id) => [
       ...nodes.get(id),

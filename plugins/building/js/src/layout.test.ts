@@ -921,7 +921,7 @@ describe("explicit roof graphs", () => {
     const mesh = layOut(quantized.extent, quantized.features);
     expect(mesh.vertex(0).run).toBeGreaterThan(0);
   });
-  it("keeps both heights of a vertical graph face and rejects ambiguous sides", () => {
+  it("keeps unambiguous steps and collapses ambiguous graph positions", () => {
     const fixture = fixtures.find(
       (f) => f.name === "roof-lines-steps.json",
     )!.fixture;
@@ -950,7 +950,40 @@ describe("explicit roof graphs", () => {
           x: copy.exactVertex(v).x - (i === 0 ? 1 : -1) * fixture.extent,
         }).toEqual(base.exactVertex(v));
     }
-    for (const mesh of meshes.slice(3, 6)) expect(mesh.vertex(0).run).toBe(0);
+    for (const mesh of meshes.slice(3, 6)) {
+      expect(mesh.vertex(0).run).toBeGreaterThan(0);
+      const seam = roofOf(mesh).filter(
+        (v) => (v.x + fixture.extent) % fixture.extent === 1150,
+      );
+      expect(seam.length).toBeGreaterThan(0);
+      expect(seam.every((v) => v.n === Math.fround(0.8))).toBe(true);
+      expect(
+        triangles(mesh).filter((tri) =>
+          tri.every((i) => mesh.vertex(i).kind === WALL_TOP),
+        ),
+      ).toHaveLength(0);
+    }
+    for (const mesh of meshes.slice(15, 21)) {
+      const center = roofOf(mesh).filter((v) => v.y === 1080 && v.n > 0);
+      expect(center.length).toBeGreaterThan(0);
+      expect(center.every((v) => v.n === Math.fround(0.3))).toBe(true);
+      expect(
+        triangles(mesh).filter((tri) =>
+          tri.every((i) => mesh.vertex(i).kind === WALL_TOP),
+        ),
+      ).toHaveLength(0);
+    }
+    for (const mesh of meshes.slice(21, 24)) {
+      expect(mesh.vertex(0).run).toBeGreaterThan(0);
+      expect(
+        triangles(mesh).filter((tri) =>
+          tri.every((i) => mesh.vertex(i).kind === WALL_TOP),
+        ),
+      ).toHaveLength(2);
+      const center = roofOf(mesh).filter((v) => v.y === 1080);
+      expect(center.length).toBeGreaterThan(0);
+      expect(center.every((v) => v.n === Math.fround(0.4))).toBe(true);
+    }
     const tapered = meshes[6]!;
     expect(
       triangles(tapered).filter((tri) =>

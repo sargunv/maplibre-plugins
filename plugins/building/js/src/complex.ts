@@ -375,7 +375,7 @@ export function complexStops(
 
 /** Coincident graph nodes retain their identity. Duplicate projected edges cut
  * the triangle fans into sectors; the ordinary graph edges in each sector
- * specify its height. Ambiguous sectors fail instead of guessing a side. */
+ * specify its height. Ambiguous positions collapse to the last-listed copy. */
 function splitHeights(
   points: RoofPoint[],
   triangles: number[],
@@ -438,7 +438,6 @@ function splitHeights(
           )
             values.push(pair);
         }
-        if (values.length > 2) return null;
         edge = { corners: [], values };
         edges.set(key, edge);
       }
@@ -449,11 +448,16 @@ function splitHeights(
       for (const k of [0, 1])
         parent[root(edge.corners[1]![k]!)] = root(edge.corners[0]![k]!);
     }
+  const ambiguous = new Set<number>();
   const heights = new Map<number, number>();
   const assign = (corner: number, n: number): boolean => {
     const r = root(corner),
       previous = heights.get(r);
-    if (previous !== undefined && Math.abs(previous - n) > EPS) return false;
+    if (previous !== undefined && Math.abs(previous - n) > EPS) {
+      const id = triangles[corner]!;
+      if (variants[id]!.length === 1) return false;
+      ambiguous.add(id);
+    }
     heights.set(r, n);
     return true;
   };
@@ -466,8 +470,30 @@ function splitHeights(
       for (const pair of edge.corners)
         for (const k of [0, 1])
           if (!assign(pair[k]!, edge.values[0]![k]!)) return null;
-  if (triangles.some((_, c) => !heights.has(root(c)))) return null;
-  for (const edge of edges.values())
+  for (let c = 0; c < triangles.length; c++)
+    if (!heights.has(root(c))) {
+      const id = triangles[c]!;
+      if (variants[id]!.length === 1) return null;
+      ambiguous.add(id);
+    }
+  if (ambiguous.size) {
+    // ids already remaps every copy's edges to one projected vertex. Rewrite
+    // only ambiguous endpoints, then rebuild sectors with those heights. Each
+    // retry removes at least one position with multiple height variants.
+    return splitHeights(
+      points,
+      triangles,
+      {
+        ...graph,
+        vertices: graph.vertices.map((v, i) =>
+          ambiguous.has(ids[i]!) ? { ...v, n: points[ids[i]!]!.n } : v,
+        ),
+      },
+      ids,
+    );
+  }
+  for (const edge of edges.values()) {
+    if (edge.values.length > 2) return null;
     if (edge.values.length === 2) {
       if (edge.corners.length > 2) return null;
       const used = edge.corners.map((pair) =>
@@ -486,6 +512,7 @@ function splitHeights(
       )
         return null;
     }
+  }
   const output: RoofPoint[] = [];
   const mapped = new Map<string, number>();
   const result = triangles.map((id, c) => {

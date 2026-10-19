@@ -1121,7 +1121,7 @@ fixtures["saltbox-steps"] = {
 
 fixtures["roof-lines-steps"] = {
   description:
-    "Coincident graph nodes define both sides of a vertical face; missing side connections are ambiguous and fall back. Copies retain the same surface.",
+    "Coincident graph nodes define both sides of a vertical face; ambiguous positions collapse to the last-listed height. Copies retain the same surface.",
   full: true,
   features: [
     {
@@ -1190,6 +1190,50 @@ fixtures["roof-lines-steps"] = {
           i === 6 || i === 7 ? 0.1 : v[2],
         ]),
         stepEdges,
+      ),
+    },
+    {
+      label: "mixed-copy wedge collapses to last height 0.3",
+      rings: [rectangle],
+      lines: graph(
+        [
+          [1000, 1080, 0],
+          [1150, 1080, 0.8],
+          [1300, 1080, 0],
+          [1150, 1080, 0.3],
+        ],
+        [
+          [0, 1],
+          [3, 2],
+        ],
+      ),
+    },
+    {
+      label: "interleaved copies collapse to last height 0.3",
+      rings: [rectangle],
+      lines: graph(
+        [
+          [1000, 1000, 0],
+          [1300, 1000, 0],
+          [1300, 1160, 0],
+          [1000, 1160, 0],
+          [1150, 1080, 0.8],
+          [1150, 1080, 0.3],
+        ],
+        [
+          [0, 4],
+          [2, 4],
+          [1, 5],
+          [3, 5],
+        ],
+      ),
+    },
+    {
+      label: "ambiguous point beside an unambiguous step",
+      rings: [rectangle],
+      lines: graph(
+        [...stepVertices, [1075, 1080, 0.9], [1075, 1080, 0.4]],
+        [...stepEdges, [0, 8], [9, 3]],
       ),
     },
   ].flatMap((f, i) =>
