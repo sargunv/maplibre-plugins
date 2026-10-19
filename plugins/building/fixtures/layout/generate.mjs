@@ -1180,6 +1180,18 @@ fixtures["roof-lines-steps"] = {
         ],
       ),
     },
+    {
+      label: "crossing roof-line step",
+      rings: [rectangle],
+      lines: graph(
+        stepVertices.map((v, i) => [
+          v[0],
+          v[1],
+          i === 6 || i === 7 ? 0.1 : v[2],
+        ]),
+        stepEdges,
+      ),
+    },
   ].flatMap((f, i) =>
     [0, 1, -1].map((offset, k) => ({
       ...f,

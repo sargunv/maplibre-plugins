@@ -261,6 +261,8 @@ pub const BuildingLayout = struct {
     origin: Point = .{ .x = 0, .y = 0 },
     /// Dry-run sink for the arm skeleton's emitted roof and wall-top edges.
     closure: ?*Closure = null,
+    /// Roof seam edges subdivided by crossing step walls, in the dry run only.
+    closure_splits: std.AutoHashMapUnmanaged(ClosureEdge, [3]i64) = .empty,
     vertices: std.ArrayList(Vertex) = .empty,
     /// Segment-relative triangle indices.
     indices: std.ArrayList(u16) = .empty,
@@ -483,6 +485,25 @@ pub const BuildingLayout = struct {
                     try self.addStepWall(scratch, a.point(), b.point(), .{ c.n, d.n }, .{ a.n, b.n }, run, false);
                 } else if (c.n >= a.n - 1e-9 and d.n >= b.n - 1e-9) {
                     try self.addStepWall(scratch, d.point(), c.point(), .{ b.n, a.n }, .{ d.n, c.n }, run, false);
+                } else {
+                    // Linear height difference, in the polygon's local frame.
+                    const t = (a.n - c.n) / (a.n - c.n - (b.n - d.n));
+                    const p: P = .{ .x = a.x + t * (b.x - a.x), .y = a.y + t * (b.y - a.y), .n = a.n + t * (b.n - a.n) };
+                    if (self.closure != null) {
+                        const mid = closureKey(vertex(p.x, p.y, run, p.n, roof_kind, 0, 0));
+                        for ([_][2]P{ .{ a, b }, .{ d, c } }) |edge| {
+                            const from = closureKey(vertex(edge[0].x, edge[0].y, run, edge[0].n, roof_kind, 0, 0));
+                            const to = closureKey(vertex(edge[1].x, edge[1].y, run, edge[1].n, roof_kind, 0, 0));
+                            try self.closure_splits.put(scratch, .{ .from = from, .to = to }, mid);
+                        }
+                    }
+                    if (a.n > c.n) {
+                        try self.addStepWall(scratch, a.point(), p.point(), .{ c.n, p.n }, .{ a.n, p.n }, run, false);
+                        try self.addStepWall(scratch, d.point(), p.point(), .{ b.n, p.n }, .{ d.n, p.n }, run, false);
+                    } else {
+                        try self.addStepWall(scratch, p.point(), b.point(), .{ p.n, d.n }, .{ p.n, b.n }, run, false);
+                        try self.addStepWall(scratch, p.point(), c.point(), .{ p.n, a.n }, .{ p.n, c.n }, run, false);
+                    }
                 }
             } else try edges.put(scratch, .{ ka[0], ka[1], kb[0], kb[1] }, .{ a, b });
         };
@@ -718,11 +739,19 @@ pub const BuildingLayout = struct {
                     const from = closureKey(a);
                     const to = closureKey(b);
                     if (std.meta.eql(from, to)) continue;
-                    const forward = std.mem.order(i64, &from, &to) == .lt;
-                    const edge: ClosureEdge = if (forward) .{ .from = from, .to = to } else .{ .from = to, .to = from };
-                    const entry = try closure.getOrPut(scratch, edge);
-                    if (!entry.found_existing) entry.value_ptr.* = 0;
-                    entry.value_ptr.* += if (forward) @as(i32, 1) else -1;
+                    // Roof triangles retain the full seam; walls meet it in two pieces.
+                    const split = self.closure_splits.get(.{ .from = from, .to = to });
+                    const ends = [_][3]i64{ from, split orelse to, to };
+                    for (1..if (split != null) @as(usize, 3) else 2) |i| {
+                        const p = ends[i - 1];
+                        const q = ends[i];
+                        if (std.meta.eql(p, q)) continue;
+                        const forward = std.mem.order(i64, &p, &q) == .lt;
+                        const edge: ClosureEdge = if (forward) .{ .from = p, .to = q } else .{ .from = q, .to = p };
+                        const entry = try closure.getOrPut(scratch, edge);
+                        if (!entry.found_existing) entry.value_ptr.* = 0;
+                        entry.value_ptr.* += if (forward) @as(i32, 1) else -1;
+                    }
                 }
             }
             return;

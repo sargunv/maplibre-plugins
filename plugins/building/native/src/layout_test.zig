@@ -226,6 +226,46 @@ fn checkInvariants(allocator: Allocator, result: *const BuildingLayout, shape_of
         try edges.add(c, a);
     }
 
+    // Crossing steps split wall edges while roof triangles retain the full
+    // seam. Subdivide unmatched roof edges at unmatched wall endpoints.
+    var unmatched: std.ArrayList(struct { key: EdgeKey, count: u32, ends: [2]Vertex }) = .empty;
+    defer unmatched.deinit(allocator);
+    var remaining = edges.counts.iterator();
+    while (remaining.next()) |entry| {
+        if (entry.value_ptr.* > 0) try unmatched.append(allocator, .{ .key = entry.key_ptr.*, .count = entry.value_ptr.*, .ends = edges.ends.get(entry.key_ptr.*).? });
+    }
+    for (unmatched.items) |edge| {
+        const a = edge.ends[0];
+        const b = edge.ends[1];
+        if (a.kind != roof_kind or b.kind != roof_kind) continue;
+        const dx = @as(f64, b.x) - a.x;
+        const dy = @as(f64, b.y) - a.y;
+        const length2 = dx * dx + dy * dy;
+        var cuts: std.ArrayList(struct { t: f64, p: Vertex }) = .empty;
+        defer cuts.deinit(allocator);
+        for (unmatched.items) |other| for (other.ends) |p| {
+            const t = ((@as(f64, p.x) - a.x) * dx + (@as(f64, p.y) - a.y) * dy) / length2;
+            if (t <= 0 or t >= 1 or p.kind != wall_top) continue;
+            if (std.math.hypot(@as(f64, p.x) - a.x - t * dx, @as(f64, p.y) - a.y - t * dy) < 0.01 and
+                @abs(@as(f64, p.n) - a.n - t * (@as(f64, b.n) - a.n)) < 1e-4)
+            {
+                var i: usize = 0;
+                while (i < cuts.items.len and cuts.items[i].t < t) : (i += 1) {}
+                if (i == cuts.items.len or !std.meta.eql(vertexKey(cuts.items[i].p), vertexKey(p))) try cuts.insert(allocator, i, .{ .t = t, .p = p });
+            }
+        };
+        if (cuts.items.len == 0) continue;
+        try edges.counts.put(allocator, edge.key, 0);
+        for (0..edge.count) |_| {
+            var previous = a;
+            for (cuts.items) |cut| {
+                try edges.add(previous, cut.p);
+                previous = cut.p;
+            }
+            try edges.add(previous, b);
+        }
+    }
+
     // Closed surface: every roof edge meets another roof edge or a wall top
     // running the other way, except along tile cuts, which have no walls.
     var it = edges.counts.iterator();

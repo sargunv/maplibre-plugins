@@ -213,6 +213,8 @@ export class BuildingLayout {
   private origin: Point = { x: 0, y: 0 };
   /** Dry-run sink for the arm skeleton's emitted roof and wall-top edges. */
   private closure?: Map<string, number>;
+  /** Roof seam edges subdivided by crossing step walls, in the dry run only. */
+  private closureSplits = new Map<string, string>();
 
   /**
    * `bounds` covers every point of every feature the tile lays out
@@ -606,7 +608,28 @@ export class BuildingLayout {
           this.addStepWall(a, b, [c.n, d.n], [a.n, b.n], run);
         else if (c.n >= a.n - 1e-9 && d.n >= b.n - 1e-9)
           this.addStepWall(d, c, [b.n, a.n], [d.n, c.n], run);
-        // Crossing heights are malformed; closure rejects the remaining seam.
+        else {
+          // The difference is linear along the seam, in the polygon's local frame.
+          const t = (a.n - c.n) / (a.n - c.n - (b.n - d.n));
+          const p = {
+            x: a.x + t * (b.x - a.x),
+            y: a.y + t * (b.y - a.y),
+            n: a.n + t * (b.n - a.n),
+          };
+          if (this.closure) {
+            const key = (v: P) =>
+              `${Math.round(v.x * 1e3)},${Math.round(v.y * 1e3)},${Math.round(v.n * 1e6)}`;
+            this.closureSplits.set(`${key(a)}>${key(b)}`, key(p));
+            this.closureSplits.set(`${key(d)}>${key(c)}`, key(p));
+          }
+          if (a.n > c.n) {
+            this.addStepWall(a, p, [c.n, p.n], [a.n, p.n], run);
+            this.addStepWall(d, p, [b.n, p.n], [d.n, p.n], run);
+          } else {
+            this.addStepWall(p, b, [p.n, d.n], [p.n, b.n], run);
+            this.addStepWall(p, c, [p.n, a.n], [p.n, c.n], run);
+          }
+        }
       }
     for (const [a, b] of edges.values()) {
       const boundary = [polygon.outer, ...polygon.holes].some((ring) =>
@@ -1054,11 +1077,19 @@ export class BuildingLayout {
           const from = key(a),
             to = key(b);
           if (from === to) continue;
-          const edge = from < to ? `${from}>${to}` : `${to}>${from}`;
-          this.closure.set(
-            edge,
-            (this.closure.get(edge) ?? 0) + (from < to ? 1 : -1),
-          );
+          // Roof triangles retain the full seam; walls meet it in two pieces.
+          const split = this.closureSplits.get(`${from}>${to}`);
+          const ends = split ? [from, split, to] : [from, to];
+          for (let i = 1; i < ends.length; i++) {
+            const a = ends[i - 1]!,
+              b = ends[i]!;
+            if (a === b) continue;
+            const edge = a < b ? `${a}>${b}` : `${b}>${a}`;
+            this.closure.set(
+              edge,
+              (this.closure.get(edge) ?? 0) + (a < b ? 1 : -1),
+            );
+          }
         }
       }
       return;
