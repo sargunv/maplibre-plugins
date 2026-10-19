@@ -731,7 +731,6 @@ would close them. The ones that limit this layer are under
    terminal hips identify their ends, but irregular outlines without a clear end
    keep the frame. End selection is a geometric inference, not a reading of roof
    ridges from the source. Hipped and mansard always use the skeleton.
-   [Geometry decisions](geometry-notes.md) records the choices and measurements.
 2. **Radial shapes copy the footprint.** A dome or onion on a rectangle is a
    rectangular bulb, and on footprints whose center is outside their kernel (an
    L) radial shapes fall back to flat. Fix: blend the profile toward a circle
@@ -773,7 +772,9 @@ would close them. The ones that limit this layer are under
    not repaired: the triangulator terminates, but the roof may overlap itself or
    leave gaps. Where several break lines meet on very thin footprints (a few
    tile units across), facets can compute their meeting point up to about 0.01
-   tile units apart, leaving a crack far below a pixel.
+   tile units apart, leaving a crack far below a pixel. Very thin roof triangles
+   retain the existing float32 limitation: rounding after tile translation can
+   collapse or flip a subpixel strip.
 8. **Hit tests.** Natively, tall buildings in pitched views are hard to hit:
    queries miss about half of the drawn points in pitched views of the shapes
    grid and a quarter in Bamberg. Native orders hits by source order, not depth

@@ -100,6 +100,50 @@ function matrix(rings, options = {}) {
 }
 
 const fixtures = {
+  comb: {
+    description:
+      "Fuzz seed 2: a comb collapse coincides with the mansard/gambrel slope break. Both bands must retain collinear event vertices so the roof stays closed.",
+    features: ["gambrel", "mansard"].flatMap((shape, i) =>
+      [
+        ["along", -1],
+        ["along", 0],
+        ["across", -1],
+        ["across", 90],
+      ].map(([orientation, direction], j) => ({
+        index: i * 4 + j,
+        label: `${shape} ${orientation} ${direction}`,
+        rings: [
+          [
+            [1877, 4210],
+            [1877, 4126],
+            [1916, 4126],
+            [1916, 4197],
+            [1955, 4197],
+            [1955, 4126],
+            [1994, 4126],
+            [1994, 4197],
+            [2033, 4197],
+            [2033, 4126],
+            [2072, 4126],
+            [2072, 4197],
+            [2111, 4197],
+            [2111, 4126],
+            [2150, 4126],
+            [2150, 4197],
+            [2189, 4197],
+            [2189, 4126],
+            [2228, 4126],
+            [2228, 4197],
+            [2267, 4197],
+            [2267, 4210],
+          ],
+        ],
+        shape,
+        orientation,
+        direction,
+      })),
+    ),
+  },
   skeleton: {
     description:
       "Straight-skeleton event regressions, including stationary gable ends, simultaneous collapses and touching courtyard boundaries.",

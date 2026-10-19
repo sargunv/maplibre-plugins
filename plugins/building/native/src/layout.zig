@@ -66,6 +66,9 @@ const RoofShape = spec.RoofShape;
 const triangulate = @import("triangulate.zig").triangulate;
 const skeleton = @import("skeleton.zig");
 
+/// Keep frame roofs on rectangles despite tile-grid rounding.
+const rectangle_fill = 0.98;
+
 pub const Point = footprint.Point;
 
 /// One vertex as uploaded: a_pos (x, y, run), a_roof (n, kind, gx, gy).
@@ -378,7 +381,6 @@ pub const BuildingLayout = struct {
                 const points = if (model.mansard) try clipSkeletonFace(scratch, face.points, run / 3, band == 0) else face.points;
                 if (points.len < 3) continue;
                 const slope: f64 = if (model.mansard) (if (band == 0) 2 else 0.5) else 1;
-                const intercept: f64 = if (model.mansard and band == 1) 0.5 else 0;
                 var mesh: Mesh = .init(scratch);
                 // Preserve collinear event vertices; triangles need no extra center.
                 var center: skeleton.SkeletonPoint = .{ .x = 0, .y = 0, .time = 0 };
@@ -390,8 +392,8 @@ pub const BuildingLayout = struct {
                 }
                 const gx = slope * face.normal.x / run;
                 const gy = slope * face.normal.y / run;
-                _ = try mesh.add(vertex(center.x, center.y, run, std.math.clamp(slope * center.time / run + intercept, 0, 1), roof_kind, gx, gy));
-                for (points) |p| _ = try mesh.add(vertex(p.x, p.y, run, std.math.clamp(slope * p.time / run + intercept, 0, 1), roof_kind, gx, gy));
+                _ = try mesh.add(vertex(center.x, center.y, run, skeletonHeight(center.time, run, model.mansard), roof_kind, gx, gy));
+                for (points) |p| _ = try mesh.add(vertex(p.x, p.y, run, skeletonHeight(p.time, run, model.mansard), roof_kind, gx, gy));
                 if (points.len == 3) {
                     if (triangleArea2(f32Point(.{ .x = points[0].x, .y = points[0].y }), f32Point(.{ .x = points[1].x, .y = points[1].y }), f32Point(.{ .x = points[2].x, .y = points[2].y })) > 0)
                         try mesh.triangle(1, 2, 3);
@@ -714,7 +716,7 @@ fn wallStops(scratch: Allocator, a: Point, b: Point, model: RoofModel, stationar
         }
         std.mem.sort(TimedStop, stops.items, {}, TimedStop.less);
         const result = try scratch.alloc(Stop, stops.items.len);
-        for (result, stops.items) |*s, p| s.* = .{ .x = p.x, .y = p.y, .n = std.math.clamp(if (m.mansard) @min(2 * p.time / run, 0.5 + 0.5 * p.time / run) else p.time / run, 0, 1) };
+        for (result, stops.items) |*s, p| s.* = .{ .x = p.x, .y = p.y, .n = skeletonHeight(p.time, run, m.mansard) };
         return result;
     }
     const planes = switch (model) {
@@ -783,7 +785,7 @@ fn modelFor(
         return .{ .skeleton = .{ .geometry = geometry, .mansard = shape == .mansard } };
     }
     if ((shape == .gabled or shape == .gambrel) and
-        (polygon.holes.items.len > 0 or footprint.signedArea2(polygon.outer) < 0.98 * 8 * rect.half_long * rect.half_short))
+        (polygon.holes.items.len > 0 or footprint.signedArea2(polygon.outer) < rectangle_fill * 8 * rect.half_long * rect.half_short))
     {
         const hips = (try skeleton.straightSkeleton(scratch, polygon)) orelse return .flat;
         const ends = try skeleton.gableEnds(scratch, polygon.outer, hips);
@@ -822,14 +824,19 @@ fn cutModel(
     return .{ .roofless = if (model == .flat) rect.half_short else model.run() };
 }
 
+fn skeletonHeight(time: f64, run: f64, mansard: bool) f64 {
+    return std.math.clamp(if (mansard) @min(2 * time / run, 0.5 + 0.5 * time / run) else time / run, 0, 1);
+}
+
 fn clipSkeletonFace(scratch: Allocator, points: []const skeleton.SkeletonPoint, time: f64, below: bool) Allocator.Error![]const skeleton.SkeletonPoint {
     var result: std.ArrayList(skeleton.SkeletonPoint) = .empty;
     for (points, 0..) |a, i| {
         const b = points[(i + 1) % points.len];
-        const inside_a = if (below) a.time <= time else a.time >= time;
-        const inside_b = if (below) b.time <= time else b.time >= time;
-        if (inside_a) try result.append(scratch, a);
-        if (inside_a != inside_b) {
+        // Retain event vertices on the break in both bands, including collinear ones.
+        const sa = side((a.time - time) / time);
+        const sb = side((b.time - time) / time);
+        if (if (below) sa <= 0 else sa >= 0) try result.append(scratch, a);
+        if (sa * sb < 0) {
             const t = (time - a.time) / (b.time - a.time);
             try result.append(scratch, .{ .x = a.x + t * (b.x - a.x), .y = a.y + t * (b.y - a.y), .time = time });
         }

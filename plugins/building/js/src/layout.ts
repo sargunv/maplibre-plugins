@@ -87,6 +87,8 @@ export const MAX_SEGMENT_VERTICES = 65535;
  * every edge of the footprint.
  */
 export const MIN_KERNEL_DISTANCE = 0.5;
+/** Keep frame roofs on rectangles despite tile-grid rounding. */
+const RECTANGLE_FILL = 0.98;
 /** Clipped roof pieces with less area (tile units²) are dropped. */
 const MIN_PIECE_AREA = 1e-6;
 /**
@@ -351,7 +353,6 @@ export class BuildingLayout {
           : face.points;
         if (points.length < 3) continue;
         const slope = model.mansard ? (band === 0 ? 2 : 0.5) : 1;
-        const intercept = model.mansard && band === 1 ? 0.5 : 0;
         const mesh = new Mesh();
         // A center fan preserves collinear event vertices shared with adjacent
         // faces. Triangles need no extra center, which can collapse in float32.
@@ -366,10 +367,7 @@ export class BuildingLayout {
             x: p.x,
             y: p.y,
             run: model.run,
-            n: Math.max(
-              0,
-              Math.min(1, (slope * p.time) / model.run + intercept),
-            ),
+            n: skeletonHeight(p.time, model.run, model.mansard),
             kind: ROOF,
             gx: (slope * face.normal.x) / model.run,
             gy: (slope * face.normal.y) / model.run,
@@ -469,18 +467,7 @@ export class BuildingLayout {
       return stops.map((p) => ({
         x: p.x,
         y: p.y,
-        n: Math.max(
-          0,
-          Math.min(
-            1,
-            model.mansard
-              ? Math.min(
-                  (2 * p.time) / model.run,
-                  0.5 + (0.5 * p.time) / model.run,
-                )
-              : p.time / model.run,
-          ),
-        ),
+        n: skeletonHeight(p.time, model.run, model.mansard),
       }));
     }
     if (model.type !== "planes") {
@@ -856,7 +843,8 @@ function modelFor(
   if (
     (shape === "gabled" || shape === "gambrel") &&
     (polygon.holes.length > 0 ||
-      signedArea2(polygon.outer) < 0.98 * 8 * rect.halfLong * rect.halfShort)
+      signedArea2(polygon.outer) <
+        RECTANGLE_FILL * 8 * rect.halfLong * rect.halfShort)
   ) {
     const hips = straightSkeleton(polygon);
     if (!hips) return { type: "flat" };
@@ -875,11 +863,7 @@ function modelFor(
         : { type: "flat" };
     }
   }
-  if (
-    polygon.holes.length > 0 &&
-    ["pyramidal", "cone", "dome", "onion"].includes(shape)
-  )
-    return { type: "flat" };
+  if (polygon.holes.length > 0 && isRadial(shape)) return { type: "flat" };
   const frame = frameFor(rect, orientation, direction);
   return roofModel(shape, rect, frame, polygon.outer, direction);
 }
@@ -900,8 +884,7 @@ function cutModel(
   if (
     shape === "flat" ||
     shape === "many" ||
-    (polygon.holes.length > 0 &&
-      ["pyramidal", "cone", "dome", "onion"].includes(shape))
+    (polygon.holes.length > 0 && isRadial(shape))
   )
     return { type: "flat" };
   const rect = minimumAreaRectangle(polygon.outer);
@@ -914,6 +897,22 @@ function cutModel(
   };
 }
 
+function isRadial(shape: RoofShape): boolean {
+  return ["pyramidal", "cone", "dome", "onion"].includes(shape);
+}
+
+function skeletonHeight(time: number, run: number, mansard: boolean): number {
+  return Math.max(
+    0,
+    Math.min(
+      1,
+      mansard
+        ? Math.min((2 * time) / run, 0.5 + (0.5 * time) / run)
+        : time / run,
+    ),
+  );
+}
+
 function clipSkeletonFace(
   points: readonly SkeletonPoint[],
   time: number,
@@ -923,10 +922,11 @@ function clipSkeletonFace(
   for (let i = 0; i < points.length; i++) {
     const a = points[i]!;
     const b = points[(i + 1) % points.length]!;
-    const insideA = below ? a.time <= time : a.time >= time;
-    const insideB = below ? b.time <= time : b.time >= time;
-    if (insideA) result.push(a);
-    if (insideA !== insideB) {
+    // Retain event vertices on the break in both bands, including collinear ones.
+    const sa = side((a.time - time) / time);
+    const sb = side((b.time - time) / time);
+    if (below ? sa <= 0 : sa >= 0) result.push(a);
+    if (sa * sb < 0) {
       const t = (time - a.time) / (b.time - a.time);
       result.push({ x: a.x + t * (b.x - a.x), y: a.y + t * (b.y - a.y), time });
     }
