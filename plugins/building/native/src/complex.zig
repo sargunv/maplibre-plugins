@@ -17,6 +17,8 @@ pub const RoofPoint = struct {
 };
 pub const ComplexRoof = struct { points: []const RoofPoint, triangles: []const usize, run: f64 };
 const eps = 1e-7;
+// 4096→8192 footprints err by 1 unit/axis, graph rounding by 0.5: √2 × 1.5 < 2.2.
+const snap_tolerance = 2.2;
 fn along(a: Point, b: Point, p: Point) f64 {
     return ((p.x - a.x) * (b.x - a.x) + (p.y - a.y) * (b.y - a.y)) / ((b.x - a.x) * (b.x - a.x) + (b.y - a.y) * (b.y - a.y));
 }
@@ -43,7 +45,7 @@ fn same(a: [2]usize, b: [2]usize) bool {
 pub const RoofGraph = struct { vertices: std.ArrayList(RoofPoint) = .empty, edges: std.ArrayList([2]usize) = .empty };
 
 fn snap(p: RoofPoint, polygon: Polygon) RoofPoint {
-    var nearest: f64 = 0.75 * 0.75;
+    var nearest: f64 = snap_tolerance * snap_tolerance;
     var snapped = p;
     var r: usize = 0;
     while (r <= polygon.holes.items.len) : (r += 1) {
@@ -233,12 +235,22 @@ pub fn complexRoof(scratch: Allocator, polygon: Polygon, graph: ?RoofGraph, orig
         try points.append(scratch, p);
         try ids.append(scratch, id);
     }
-    var fixed: std.ArrayList([2]usize) = .empty;
+    var constraints: std.ArrayList([2]usize) = .empty;
+    var seen: std.AutoHashMapUnmanaged([2]usize, void) = .empty;
+    defer seen.deinit(scratch);
     for (data.edges.items) |edge| {
         if (edge.len != 2 or edge[0] >= ids.items.len or edge[1] >= ids.items.len) return null;
         const a = ids.items[edge[0]];
         const b = ids.items[edge[1]];
         if (a == b) continue;
+        const entry = try seen.getOrPut(scratch, key(a, b));
+        if (!entry.found_existing) try constraints.append(scratch, .{ a, b });
+    }
+    var fixed: std.AutoHashMapUnmanaged([2]usize, void) = .empty;
+    defer fixed.deinit(scratch);
+    for (constraints.items) |constraint| {
+        const a = constraint[0];
+        const b = constraint[1];
         var stops: std.ArrayList(Stop) = .empty;
         for (points.items, 0..) |p, i| if (on(points.items[a].point(), points.items[b].point(), p.point())) {
             try stops.append(scratch, .{ .i = i, .t = along(points.items[a].point(), points.items[b].point(), p.point()) });
@@ -249,6 +261,7 @@ pub fn complexRoof(scratch: Allocator, polygon: Polygon, graph: ?RoofGraph, orig
             const u = stops.items[s - 1].i;
             const v = stops.items[s].i;
             const target = key(u, v);
+            if (fixed.contains(target)) continue;
             const Pair = struct { first: usize, second: ?usize = null, count: usize = 1 };
             var edges: std.AutoHashMapUnmanaged([2]usize, Pair) = .empty;
             defer edges.deinit(scratch);
@@ -299,7 +312,7 @@ pub fn complexRoof(scratch: Allocator, polygon: Polygon, graph: ?RoofGraph, orig
                         const pair = edges.get(pair_key).?;
                         if (pair.count != 2) return null;
                         const second = pair.second orelse return null;
-                        for (fixed.items) |f| if (same(f, pair_key)) return null;
+                        if (fixed.contains(pair_key)) return null;
                         for ([_]usize{ a1, b1 }) |id| {
                             const side = if (cross(ps[u].point(), ps[v].point(), ps[id].point()) > 0) &left else &right;
                             if (side.items[side.items.len - 1] != id) try side.append(scratch, id);
@@ -323,7 +336,7 @@ pub fn complexRoof(scratch: Allocator, polygon: Polygon, graph: ?RoofGraph, orig
                 try next.appendSlice(scratch, replacement.items);
                 triangles = next;
             }
-            try fixed.append(scratch, target);
+            try fixed.put(scratch, target, {});
         }
     }
     return .{ .points = points.items, .triangles = triangles.items, .run = run };

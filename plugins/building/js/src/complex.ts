@@ -15,6 +15,8 @@ export interface ComplexRoof {
   run: number;
 }
 const EPS = 1e-7;
+// 4096→8192 footprints err by 1 unit/axis, graph rounding by 0.5: √2 × 1.5 < 2.2.
+const SNAP_TOLERANCE = 2.2;
 
 function along(a: Point, b: Point, p: Point): number {
   return (
@@ -39,7 +41,7 @@ export interface RoofGraph {
 }
 
 function snap(p: RoofPoint, polygon: Polygon): RoofPoint {
-  let nearest = 0.75 ** 2;
+  let nearest = SNAP_TOLERANCE ** 2;
   let snapped = p;
   for (const ring of [polygon.outer, ...polygon.holes])
     for (let i = 0; i < ring.length; i++) {
@@ -256,7 +258,7 @@ export function complexRoof(
     ids.push(id);
   }
   const edgeKey = (a: number, b: number) => (a < b ? `${a},${b}` : `${b},${a}`);
-  const fixed = new Set<string>();
+  const constraints = new Map<string, [number, number]>();
   for (const edge of data.edges) {
     if (
       !Array.isArray(edge) ||
@@ -267,6 +269,11 @@ export function complexRoof(
     const a = ids[edge[0]!]!,
       b = ids[edge[1]!]!;
     if (a === b) continue;
+    const key = edgeKey(a, b);
+    if (!constraints.has(key)) constraints.set(key, [a, b]);
+  }
+  const fixed = new Set<string>();
+  for (const [a, b] of constraints.values()) {
     const stops = points
       .map((p, i) => ({ i, t: along(points[a]!, points[b]!, p) }))
       .filter((s) => on(points[a]!, points[b]!, points[s.i]!))
@@ -275,6 +282,7 @@ export function complexRoof(
       const u = stops[s - 1]!.i,
         v = stops[s]!.i,
         key = edgeKey(u, v);
+      if (fixed.has(key)) continue;
       const edges = new Map<string, number[]>();
       for (let t = 0; t < triangles.length; t += 3)
         for (let k = 0; k < 3; k++) {

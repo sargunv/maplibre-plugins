@@ -858,6 +858,20 @@ describe("explicit roof graphs", () => {
     const mesh = layOut(dense.extent, dense.features);
     expect(allVertices(mesh).every((v) => v.run === 500)).toBe(true);
   });
+  it("deduplicates repeated edges and already recovered collinear subsegments", () => {
+    const repeated = fixtures.find(
+      (f) => f.name === "roof-lines-repeated.json",
+    )!.fixture;
+    const mesh = layOut(repeated.extent, repeated.features);
+    expect(allVertices(mesh).every((v) => v.run === 500)).toBe(true);
+  });
+  it("snaps graph boundaries to footprints quantized through extent 4096", () => {
+    const quantized = fixtures.find(
+      (f) => f.name === "roof-lines-quantized.json",
+    )!.fixture;
+    const mesh = layOut(quantized.extent, quantized.features);
+    expect(mesh.vertex(0).run).toBeGreaterThan(0);
+  });
   const fixture = fixtures.find((f) => f.name === "roof-lines.json")!.fixture;
   it("keeps gable peaks, mapped apex heights and the same graph in adjacent tiles", () => {
     for (let start = 0; start < 12; start += 3) {

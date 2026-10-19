@@ -11,18 +11,18 @@
     }
   ],
   "expected": {
-    "vertex_count": 1150,
-    "index_count": 1158,
-    "segments": [[0, 0, 1150, 1158]],
-    "ranges": [[0, 0, 1150]],
+    "vertex_count": 1148,
+    "index_count": 1164,
+    "segments": [[0, 0, 1148, 1164]],
+    "ranges": [[0, 0, 1148]],
     "summaries": [
       {
-        "vertices": 1150,
-        "triangles": 386,
-        "sum_pos": [618048, 560824, 575000],
-        "sum_roof": [996, 2276, -168.353453767, -131.525093401],
-        "weighted": 984229.730199,
-        "moment": 342010649
+        "vertices": 1148,
+        "triangles": 388,
+        "sum_pos": [618034, 559937, 574000],
+        "sum_roof": [995, 2266, -173.736959529, -131.568569549],
+        "weighted": 982900.88366,
+        "moment": 343750625
       }
     ]
   }

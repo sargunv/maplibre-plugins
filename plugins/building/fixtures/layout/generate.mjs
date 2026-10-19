@@ -936,16 +936,23 @@ function rounded(expected) {
 // Real ridge/hip graph and small cases that isolate graph recovery and fallbacks.
 const tile = { z: 16, x: 34748, y: 22254 };
 const scale = EXTENT * 2 ** tile.z;
-const project = ([lon, lat]) => {
-  const sin = Math.sin((lat * Math.PI) / 180);
-  return [
-    Math.round((lon / 360 + 0.5) * scale) - tile.x * EXTENT,
-    Math.round(
-      (0.5 - Math.log((1 + sin) / (1 - sin)) / (4 * Math.PI)) * scale,
-    ) -
-      tile.y * EXTENT,
-  ];
-};
+const projectForExtent =
+  (extent) =>
+  ([lon, lat]) => {
+    const scale = extent * 2 ** tile.z;
+    const sin = Math.sin((lat * Math.PI) / 180);
+    return [
+      ((Math.round((lon / 360 + 0.5) * scale) - tile.x * extent) * EXTENT) /
+        extent,
+      ((Math.round(
+        (0.5 - Math.log((1 + sin) / (1 - sin)) / (4 * Math.PI)) * scale,
+      ) -
+        tile.y * extent) *
+        EXTENT) /
+        extent,
+    ];
+  };
+const project = projectForExtent(EXTENT);
 const geographic = ([x, y, n]) => [
   ((x + tile.x * EXTENT) / scale) * 360 - 180,
   (Math.atan(Math.sinh(Math.PI * (1 - (2 * (y + tile.y * EXTENT)) / scale))) *
@@ -1073,6 +1080,22 @@ fixtures["roof-lines"] = {
       rings: f.rings.map((r) => r.map(([x, y]) => [x + offset * EXTENT, y])),
     })),
   ),
+};
+
+fixtures["roof-lines-quantized"] = {
+  description:
+    "Bamberg way/36941229 from a 4096-extent vector tile, doubled to the 8192 layout grid; geographic graph vertices round directly to 8192. Real data © OpenStreetMap contributors, ODbL; see ../../examples/osm/buildings.geojson.LICENSE.txt.",
+  features: [
+    {
+      index: 0,
+      tile,
+      shape: "complex",
+      rings: real.geometry.coordinates.map((ring) =>
+        ring.map(projectForExtent(4096)).reverse(),
+      ),
+      lines: JSON.stringify(real.properties.roof_lines),
+    },
+  ],
 };
 
 // Review repros share their geometry and expected mesh with the Zig twin.
@@ -1211,6 +1234,43 @@ fixtures["roof-lines-dense"] = {
       ),
     },
   ],
+};
+
+const collinear = Array.from({ length: 188 }, (_, i) => [100 + 4 * i, 500, 1]);
+fixtures["roof-lines-repeated"] = {
+  description:
+    "PR12 review: 576 repeated unordered constraints over 188 collinear vertices, duplicate endpoints after remapping, and overlapping constraints whose subsegments are already fixed.",
+  features: [
+    {
+      label: "576 repeated long edges",
+      vertices: collinear,
+      edges: Array.from({ length: 576 }, (_, i) =>
+        i % 2 ? [187, 0] : [0, 187],
+      ),
+    },
+    {
+      label: "duplicate endpoints after remapping",
+      vertices: [...collinear.slice(0, 186), collinear[0], collinear[185]],
+      edges: Array.from({ length: 576 }, (_, i) =>
+        i % 2 ? [187, 186] : [0, 185],
+      ),
+    },
+    {
+      label: "long edge with already recovered subsegments",
+      vertices: collinear,
+      edges: [
+        ...Array.from({ length: 187 }, (_, i) => [i, i + 1]),
+        ...Array.from({ length: 389 }, () => [0, 187]),
+      ],
+    },
+  ].map(({ label, vertices, edges }, index) => ({
+    index,
+    label,
+    tile,
+    shape: "complex",
+    rings: fixtures["roof-lines-dense"].features[0].rings,
+    lines: graph(vertices, edges),
+  })),
 };
 
 // Bounds beyond the copies: these two degenerate points emit no geometry.
