@@ -233,6 +233,16 @@ const Cut = struct {
     }
 };
 
+fn surfaceKey(p: Point) [2]i64 {
+    return .{ @intFromFloat(@floor(p.x * 1e7 + 0.5)), @intFromFloat(@floor(p.y * 1e7 + 0.5)) };
+}
+fn surfaceOn(p: Point, q: Point, v: Point) bool {
+    const length2 = (q.x - p.x) * (q.x - p.x) + (q.y - p.y) * (q.y - p.y);
+    return @abs(footprint.cross(p, q, v)) < 1e-7 * length2 and
+        (v.x - p.x) * (q.x - p.x) + (v.y - p.y) * (q.y - p.y) >= -1e-7 and
+        (v.x - q.x) * (p.x - q.x) + (v.y - q.y) * (p.y - q.y) >= -1e-7;
+}
+
 const ClosureEdge = struct { from: [3]i64, to: [3]i64 };
 const Closure = std.AutoHashMapUnmanaged(ClosureEdge, i32);
 
@@ -378,8 +388,28 @@ pub const BuildingLayout = struct {
     /// wall.
     fn build(self: *BuildingLayout, scratch: Allocator, polygon: Polygon, model: RoofModel, walls: []const []const bool) Allocator.Error!void {
         const run = model.run();
-        try self.addWalls(scratch, polygon.outer, walls[0], model, run, if (model == .skeleton) model.skeleton.stationary else &.{});
-        for (polygon.holes.items, walls[1..]) |hole, flags| try self.addWalls(scratch, hole, flags, model, run, &.{});
+        if (model == .skeleton and model.skeleton.stepped) {
+            const m = model.skeleton;
+            const faces = try scratch.alloc([]const complex.RoofPoint, m.geometry.faces.len);
+            for (faces, m.geometry.faces) |*out, face| {
+                const points = try scratch.alloc(complex.RoofPoint, face.points.len);
+                for (points, face.points) |*q, p| q.* = .{ .x = p.x, .y = p.y, .n = p.time / m.geometry.run };
+                out.* = points;
+            }
+            try self.addSurfaceWalls(scratch, polygon, faces, run);
+        } else if (model == .complex and model.complex.stepped) {
+            const m = model.complex;
+            const faces = try scratch.alloc([]const complex.RoofPoint, m.triangles.len / 3);
+            for (faces, 0..) |*face, t| {
+                const points = try scratch.alloc(complex.RoofPoint, 3);
+                for (points, 0..) |*p, k| p.* = m.points[m.triangles[t * 3 + k]];
+                face.* = points;
+            }
+            try self.addSurfaceWalls(scratch, polygon, faces, run);
+        } else {
+            try self.addWalls(scratch, polygon.outer, walls[0], model, run, if (model == .skeleton) model.skeleton.stationary else &.{});
+            for (polygon.holes.items, walls[1..]) |hole, flags| try self.addWalls(scratch, hole, flags, model, run, &.{});
+        }
         switch (model) {
             .flat => try self.addFlatRoof(scratch, polygon, 1, 0),
             .roofless => try self.addFlatRoof(scratch, polygon, 0, run),
@@ -416,6 +446,61 @@ pub const BuildingLayout = struct {
     }
 
     // ---- Walls ---------------------------------------------------------------
+
+    /// a→b follows the upper face: its right is the lower side. Kind 1 on
+    /// both edges gives steps wall material and wall-top gradient lighting.
+    fn addStepWall(self: *BuildingLayout, scratch: Allocator, a: Point, b: Point, lower: [2]f64, upper: [2]f64, run: f64, base: bool) Allocator.Error!void {
+        const dx = b.x - a.x;
+        const dy = b.y - a.y;
+        const length = @sqrt(dx * dx + dy * dy);
+        // Avoid strips that collapse after float32 tile translation.
+        if (length < 1e-3 or (!base and @as(f32, @floatCast(upper[0])) <= @as(f32, @floatCast(lower[0])) and @as(f32, @floatCast(upper[1])) <= @as(f32, @floatCast(lower[1])))) return;
+        var mesh = Mesh.init(scratch);
+        for ([_]Point{ a, b }, 0..) |p, i| {
+            _ = try mesh.add(vertex(p.x, p.y, run, lower[i], if (base) wall_bottom else wall_top, dy / length, -dx / length));
+            _ = try mesh.add(vertex(p.x, p.y, run, upper[i], wall_top, dy / length, -dx / length));
+        }
+        if (base or @as(f32, @floatCast(upper[0])) > @as(f32, @floatCast(lower[0]))) try mesh.triangle(0, 2, 1);
+        if (base or @as(f32, @floatCast(upper[1])) > @as(f32, @floatCast(lower[1]))) try mesh.triangle(1, 2, 3);
+        try self.emit(scratch, &mesh);
+    }
+
+    /// Match projected facet boundaries, retaining the height on each side.
+    fn addSurfaceWalls(self: *BuildingLayout, scratch: Allocator, polygon: Polygon, faces: []const []const complex.RoofPoint, run: f64) Allocator.Error!void {
+        const P = complex.RoofPoint;
+        var edges: std.AutoArrayHashMapUnmanaged([4]i64, [2]P) = .empty;
+        for (faces) |face| for (face, 0..) |a, i| {
+            const b = face[(i + 1) % face.len];
+            const ka = surfaceKey(a.point());
+            const kb = surfaceKey(b.point());
+            if (std.meta.eql(ka, kb)) continue;
+            const reverse = [4]i64{ kb[0], kb[1], ka[0], ka[1] };
+            if (edges.get(reverse)) |other| {
+                _ = edges.orderedRemove(reverse);
+                const d = other[0];
+                const c = other[1];
+                if (a.n >= c.n - 1e-9 and b.n >= d.n - 1e-9) {
+                    try self.addStepWall(scratch, a.point(), b.point(), .{ c.n, d.n }, .{ a.n, b.n }, run, false);
+                } else if (c.n >= a.n - 1e-9 and d.n >= b.n - 1e-9) {
+                    try self.addStepWall(scratch, d.point(), c.point(), .{ b.n, a.n }, .{ d.n, c.n }, run, false);
+                }
+            } else try edges.put(scratch, .{ ka[0], ka[1], kb[0], kb[1] }, .{ a, b });
+        };
+        for (edges.values()) |edge| {
+            const a = edge[0];
+            const b = edge[1];
+            var boundary = false;
+            var r: usize = 0;
+            while (r <= polygon.holes.items.len) : (r += 1) {
+                const ring = if (r == 0) polygon.outer else polygon.holes.items[r - 1];
+                for (ring, 0..) |p, i| {
+                    const q = ring[(i + 1) % ring.len];
+                    if (surfaceOn(p, q, a.point()) and surfaceOn(p, q, b.point())) boundary = true;
+                }
+            }
+            if (boundary) try self.addStepWall(scratch, a.point(), b.point(), .{ 0, 0 }, .{ a.n, b.n }, run, true);
+        }
+    }
 
     fn addWalls(self: *BuildingLayout, scratch: Allocator, ring: []const Point, walls: []const bool, model: RoofModel, run: f64, stationary: []const bool) Allocator.Error!void {
         for (ring, walls, 0..) |a, wall, i| {
@@ -619,6 +704,16 @@ pub const BuildingLayout = struct {
                 for (0..3) |e| {
                     const a = mesh.vertices.items[mesh.triangles.items[t + e]];
                     const b = mesh.vertices.items[mesh.triangles.items[t + (e + 1) % 3]];
+                    if (@abs(a.x - b.x) < 1e-9 and @abs(a.y - b.y) < 1e-9) {
+                        for ([_]Local{ a, b }, [_]i32{ 1, -1 }) |v, sign| {
+                            var k = closureKey(v);
+                            if (v.kind == wall_bottom) k[2] = -1;
+                            const entry = try closure.getOrPut(scratch, .{ .from = k, .to = k });
+                            if (!entry.found_existing) entry.value_ptr.* = 0;
+                            entry.value_ptr.* += sign;
+                        }
+                        continue;
+                    }
                     if (!((a.kind == roof_kind and b.kind == roof_kind) or (a.kind == wall_top and b.kind == wall_top))) continue;
                     const from = closureKey(a);
                     const to = closureKey(b);
@@ -904,7 +999,7 @@ fn modelFor(
             const saltbox = if (shape == .saltbox) try saltboxMotions(scratch, polygon, ends, direction orelse frameFor(rect, orientation, null).v) else null;
             const geometry = if (saltbox) |m| (try skeleton.movingSkeleton(scratch, polygon, &.{}, m)) orelse return .flat else if (motions) |m| (try skeleton.movingSkeleton(scratch, polygon, &.{}, &.{m})) orelse return .flat else if (has_ends and shape != .quadruple_saltbox) (try skeleton.weightedSkeleton(scratch, polygon, ends)) orelse return .flat else hips;
             if (geometry.run < min_half_width) return .flat;
-            return .{ .skeleton = .{ .geometry = geometry, .stationary = if (shape == .quadruple_saltbox) &.{} else ends, .profile = try skeletonProfile(scratch, shape, geometry.run), .eave_run = if (capped) roof.flat_top_inset * geometry.run else null } };
+            return .{ .skeleton = .{ .geometry = geometry, .stepped = shape == .saltbox, .stationary = if (shape == .quadruple_saltbox) &.{} else ends, .profile = try skeletonProfile(scratch, shape, geometry.run), .eave_run = if (capped) roof.flat_top_inset * geometry.run else null } };
         }
     }
     if (polygon.holes.items.len > 0 and shape == .pyramidal) return .flat;
@@ -935,7 +1030,29 @@ fn saltboxMotions(scratch: Allocator, polygon: Polygon, ends: []const bool, fron
             const dy = b.y - a.y;
             const length = @sqrt(dx * dx + dy * dy);
             const facing = (dy * front.x - dx * front.y) / length;
-            motion.* = .{ .speed = 1 + (2 * roof.saltbox_ridge - 1) * facing };
+            motion.* = .{};
+            if (facing >= -1e-9) continue;
+            const nx = -dy / length;
+            const ny = dx / length;
+            const mid: Point = .{ .x = (a.x + b.x) / 2, .y = (a.y + b.y) / 2 };
+            var width = std.math.inf(f64);
+            for ([_]Point{ a, mid, b }) |sample| {
+                var br: usize = 0;
+                while (br <= polygon.holes.items.len) : (br += 1) {
+                    const boundary = if (br == 0) polygon.outer else polygon.holes.items[br - 1];
+                    for (boundary, 0..) |c, j| {
+                        const d = boundary[(j + 1) % boundary.len];
+                        const ex = d.x - c.x;
+                        const ey = d.y - c.y;
+                        const det = nx * ey - ny * ex;
+                        if (@abs(det) < 1e-9) continue;
+                        const t = ((c.x - sample.x) * ey - (c.y - sample.y) * ex) / det;
+                        const u = ((c.x - sample.x) * ny - (c.y - sample.y) * nx) / det;
+                        if (t > 1e-7 and u >= -1e-9 and u <= 1 + 1e-9) width = @min(width, t);
+                    }
+                }
+            }
+            if (std.math.isFinite(width)) motion.* = .{ .speed = 0, .change_time = (2 * roof.saltbox_ridge - 1) * -facing * width, .after_speed = 1 };
         }
         motions.* = edges;
     }

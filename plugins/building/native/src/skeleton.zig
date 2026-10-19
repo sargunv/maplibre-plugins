@@ -331,7 +331,8 @@ pub fn movingSkeleton(allocator: Allocator, polygon: Polygon, stationary: []cons
     if (@abs(covered - area) > @max(area, 1) * 1e-7) return null;
 
     // Continuing faces need their neighbors' event vertices too: conforming
-    // boundaries avoid T-junctions in the final roof mesh.
+    // boundaries avoid T-junctions in the final roof mesh. Keep each face's
+    // own time where delayed eaves meet it at a different height.
     var corners: std.ArrayList(SkeletonPoint) = .empty;
     for (faces.items) |face| try corners.appendSlice(allocator, face.points);
     // Zero-time hole merges can remove collinear eave vertices needed by walls.
@@ -351,7 +352,7 @@ pub fn movingSkeleton(allocator: Allocator, polygon: Polygon, stationary: []cons
             for (corners.items) |p| {
                 const u = ((p.x - a.x) * dx + (p.y - a.y) * dy) / (length * length);
                 if (u <= contact or u >= 1 - contact) continue;
-                if (@abs(footprint.cross(a.point(), b.point(), p.point())) > contact * length or @abs(p.time - (a.time + u * (b.time - a.time))) > contact) continue;
+                if (@abs(footprint.cross(a.point(), b.point(), p.point())) > contact * length) continue;
                 var found = false;
                 for (stops.items) |s| {
                     if (@abs(s.u - u) * length <= contact) {
@@ -359,7 +360,7 @@ pub fn movingSkeleton(allocator: Allocator, polygon: Polygon, stationary: []cons
                         break;
                     }
                 }
-                if (!found) try stops.append(allocator, .{ .u = u, .p = p });
+                if (!found) try stops.append(allocator, .{ .u = u, .p = .{ .x = p.x, .y = p.y, .time = a.time + u * (b.time - a.time) } });
             }
             std.mem.sort(FaceStop, stops.items, {}, lessFaceStop);
             for (stops.items) |s| try boundary.append(allocator, s.p);

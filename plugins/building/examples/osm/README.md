@@ -163,7 +163,10 @@ The layer serializes the object with `to-string` into `building-roof-lines`. The
 plugin projects coordinates into the canonical tile and builds constrained
 triangles with planar gradients. Points without heights stay at the eaves;
 unmapped edges inside a face come from triangulation. Invalid graphs fall back
-to flat. Four of the 97 graphs fall back at zoom 16. Roof graphs with heights
+to flat. Four of the 97 graphs fall back at zoom 16: ways 36906271, 36906272,
+36941239 and 766466977 have graph endpoints outside their footprints. None of
+these graphs, or the other 93, has coincident nodes at different heights, so
+vertical-step support does not change this count. Roof graphs with heights
 outside `[0,1]` also fall back rather than changing the building's tagged
 height.
 

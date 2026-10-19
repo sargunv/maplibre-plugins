@@ -68,7 +68,7 @@ function problems(layout: BuildingLayout, shape: string): string[] {
   const edges = new Map<string, number>();
   const ends = new Map<string, [Vertex, Vertex]>();
   const addEdge = (a: Vertex, b: Vertex): void => {
-    if (key(a) === key(b)) return;
+    if (key(a) === key(b) || (a.x === b.x && a.y === b.y)) return;
     const forward = `${key(a)}>${key(b)}`;
     const backward = `${key(b)}>${key(a)}`;
     const reverse = edges.get(backward) ?? 0;
@@ -88,7 +88,11 @@ function problems(layout: BuildingLayout, shape: string): string[] {
       const ny = u[2] * w[0] - u[0] * w[2];
       if (nx * a.gx + ny * a.gy >= 0) out.add("wall faces inward");
       const tops = [a, b, c].filter((v) => v.kind === WALL_TOP);
-      if (tops.length === 2) {
+      if (tops.length === 3) {
+        addEdge(a, b);
+        addEdge(b, c);
+        addEdge(c, a);
+      } else if (tops.length === 2) {
         const i = [a, b, c].findIndex((v) => v.kind !== WALL_TOP);
         const [p, q] = (
           [

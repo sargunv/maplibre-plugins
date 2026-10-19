@@ -408,15 +408,31 @@ export class BuildingLayout {
         : model.type === "skeleton"
           ? (model.eaveRun ?? model.run)
           : model.run;
-    [polygon.outer, ...polygon.holes].forEach((ring, r) =>
-      this.addWalls(
-        ring,
-        walls[r]!,
-        model,
+    if (model.type === "skeleton" && model.stepped) {
+      this.addSurfaceWalls(
+        polygon,
+        model.faces.map((face) =>
+          face.points.map((p) => ({ ...p, n: p.time / model.run })),
+        ),
         run,
-        model.type === "skeleton" && r === 0 ? model.stationary : undefined,
-      ),
-    );
+      );
+    } else if (model.type === "complex" && model.stepped) {
+      const faces = [];
+      for (let t = 0; t < model.triangles.length; t += 3)
+        faces.push(
+          model.triangles.slice(t, t + 3).map((i) => model.points[i]!),
+        );
+      this.addSurfaceWalls(polygon, faces, run);
+    } else
+      [polygon.outer, ...polygon.holes].forEach((ring, r) =>
+        this.addWalls(
+          ring,
+          walls[r]!,
+          model,
+          run,
+          model.type === "skeleton" && r === 0 ? model.stationary : undefined,
+        ),
+      );
     switch (model.type) {
       case "flat":
         return this.addFlatRoof(polygon, 1, 0);
@@ -511,6 +527,102 @@ export class BuildingLayout {
   }
 
   // ---- Walls ---------------------------------------------------------------
+
+  /** A vertical strip. a→b follows the upper face, so its right is the lower side.
+   * Both edges use kind 1 for a step: wall material, with the wall-top gradient. */
+  private addStepWall(
+    a: Point,
+    b: Point,
+    lower: [number, number],
+    upper: [number, number],
+    run: number,
+    base = false,
+  ): void {
+    const dx = b.x - a.x,
+      dy = b.y - a.y,
+      length = Math.hypot(dx, dy);
+    // Tiny strips can collapse after float32 tile translation.
+    if (
+      length < 1e-3 ||
+      (!base &&
+        Math.fround(upper[0]) <= Math.fround(lower[0]) &&
+        Math.fround(upper[1]) <= Math.fround(lower[1]))
+    )
+      return;
+    const mesh = new Mesh();
+    for (const [p, i] of [
+      [a, 0],
+      [b, 1],
+    ] as const) {
+      mesh.add({
+        ...p,
+        run,
+        n: lower[i],
+        kind: base ? WALL_BOTTOM : WALL_TOP,
+        gx: dy / length,
+        gy: -dx / length,
+      });
+      mesh.add({
+        ...p,
+        run,
+        n: upper[i],
+        kind: WALL_TOP,
+        gx: dy / length,
+        gy: -dx / length,
+      });
+    }
+    if (base || Math.fround(upper[0]) > Math.fround(lower[0]))
+      mesh.triangle(0, 2, 1);
+    if (base || Math.fround(upper[1]) > Math.fround(lower[1]))
+      mesh.triangle(1, 2, 3);
+    this.emit(mesh);
+  }
+
+  /** Match projected facet boundaries, retaining the height on each side. */
+  private addSurfaceWalls(
+    polygon: Polygon,
+    faces: { x: number; y: number; n: number }[][],
+    run: number,
+  ): void {
+    type P = { x: number; y: number; n: number };
+    const edges = new Map<string, [P, P]>();
+    const key = (p: Point) =>
+      `${Math.round(p.x * 1e7)},${Math.round(p.y * 1e7)}`;
+    for (const face of faces)
+      for (let i = 0; i < face.length; i++) {
+        const a = face[i]!,
+          b = face[(i + 1) % face.length]!;
+        const ka = key(a),
+          kb = key(b);
+        if (ka === kb) continue;
+        const other = edges.get(`${kb}>${ka}`);
+        if (!other) {
+          edges.set(`${ka}>${kb}`, [a, b]);
+          continue;
+        }
+        edges.delete(`${kb}>${ka}`);
+        const [d, c] = other;
+        if (a.n >= c.n - 1e-9 && b.n >= d.n - 1e-9)
+          this.addStepWall(a, b, [c.n, d.n], [a.n, b.n], run);
+        else if (c.n >= a.n - 1e-9 && d.n >= b.n - 1e-9)
+          this.addStepWall(d, c, [b.n, a.n], [d.n, c.n], run);
+        // Crossing heights are malformed; closure rejects the remaining seam.
+      }
+    for (const [a, b] of edges.values()) {
+      const boundary = [polygon.outer, ...polygon.holes].some((ring) =>
+        ring.some((p, i) => {
+          const q = ring[(i + 1) % ring.length]!;
+          const length2 = (q.x - p.x) ** 2 + (q.y - p.y) ** 2;
+          const on = (v: Point) =>
+            Math.abs(cross(p, q, v)) < 1e-7 * length2 &&
+            (v.x - p.x) * (q.x - p.x) + (v.y - p.y) * (q.y - p.y) >= -1e-7 &&
+            (v.x - q.x) * (p.x - q.x) + (v.y - q.y) * (p.y - q.y) >= -1e-7;
+          return on(a) && on(b);
+        }),
+      );
+      if (boundary) this.addStepWall(a, b, [0, 0], [a.n, b.n], run, true);
+    }
+  }
 
   private addWalls(
     ring: readonly Point[],
@@ -916,6 +1028,22 @@ export class BuildingLayout {
           const b = mesh.triangles[t + ((e + 1) % 3)]!;
           const ka = mesh.data[a * FLOATS_PER_VERTEX + 4]!;
           const kb = mesh.data[b * FLOATS_PER_VERTEX + 4]!;
+          const oa = a * FLOATS_PER_VERTEX,
+            ob = b * FLOATS_PER_VERTEX;
+          if (
+            Math.abs(mesh.data[oa]! - mesh.data[ob]!) < 1e-9 &&
+            Math.abs(mesh.data[oa + 1]! - mesh.data[ob + 1]!) < 1e-9
+          ) {
+            for (const [i, kind, sign] of [
+              [a, ka, 1],
+              [b, kb, -1],
+            ]) {
+              const o = i! * FLOATS_PER_VERTEX;
+              const k = `v:${Math.round(mesh.data[o]! * 1e3)},${Math.round(mesh.data[o + 1]! * 1e3)},${kind === WALL_BOTTOM ? -1 : Math.round(mesh.data[o + 3]! * 1e6)}`;
+              this.closure.set(k, (this.closure.get(k) ?? 0) + sign!);
+            }
+            continue;
+          }
           if (
             !(
               (ka === ROOF && kb === ROOF) ||
@@ -1057,6 +1185,7 @@ function modelFor(
         ? {
             type: "skeleton",
             stationary: shape === "quadruple_saltbox" ? [] : ends,
+            stepped: shape === "saltbox",
             ...skeleton,
             profile: skeletonProfile(shape, skeleton.run),
             eaveRun: capped ? FLAT_TOP_INSET * skeleton.run : undefined,
@@ -1093,7 +1222,32 @@ function saltboxMotions(
         dy = b.y - a.y;
       const length = Math.sqrt(dx * dx + dy * dy);
       const facing = (dy * front.x - dx * front.y) / length;
-      return { speed: 1 + (2 * SALTBOX_RIDGE - 1) * facing };
+      if (facing >= -1e-9) return { speed: 1 };
+      // Local arm width: nearest boundary along the inward end and midpoint rays.
+      const nx = -dy / length,
+        ny = dx / length;
+      let width = Infinity;
+      for (const mid of [a, { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }, b])
+        for (const boundary of [polygon.outer, ...polygon.holes])
+          for (let j = 0; j < boundary.length; j++) {
+            const c = boundary[j]!,
+              d = boundary[(j + 1) % boundary.length]!;
+            const ex = d.x - c.x,
+              ey = d.y - c.y;
+            const det = nx * ey - ny * ex;
+            if (Math.abs(det) < 1e-9) continue;
+            const t = ((c.x - mid.x) * ey - (c.y - mid.y) * ex) / det;
+            const u = ((c.x - mid.x) * ny - (c.y - mid.y) * nx) / det;
+            if (t > 1e-7 && u >= -1e-9 && u <= 1 + 1e-9)
+              width = Math.min(width, t);
+          }
+      return Number.isFinite(width)
+        ? {
+            speed: 0,
+            changeTime: (2 * SALTBOX_RIDGE - 1) * -facing * width,
+            afterSpeed: 1,
+          }
+        : { speed: 1 };
     }),
   );
 }

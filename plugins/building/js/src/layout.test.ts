@@ -137,7 +137,7 @@ function checkInvariants(
   const edges = new Map<string, number>();
   const edgeEnds = new Map<string, [Vertex, Vertex]>();
   const addEdge = (a: Vertex, b: Vertex): void => {
-    if (key(a) === key(b)) return;
+    if (key(a) === key(b) || (a.x === b.x && a.y === b.y)) return;
     const forward = `${key(a)}>${key(b)}`;
     const backward = `${key(b)}>${key(a)}`;
     const reverse = edges.get(backward) ?? 0;
@@ -165,7 +165,11 @@ function checkInvariants(
       expect(nx * a.gx + ny * a.gy).toBeLessThan(0);
       // Only the top edge joins the roof.
       const tops = [a, b, c].filter((v) => v.kind === WALL_TOP);
-      if (tops.length === 2) {
+      if (tops.length === 3) {
+        addEdge(a, b);
+        addEdge(b, c);
+        addEdge(c, a);
+      } else if (tops.length === 2) {
         const i = [a, b, c].findIndex((v) => v.kind !== WALL_TOP);
         const [p, q] = [
           [b, c],
@@ -418,7 +422,7 @@ describe("roof shapes", () => {
     ).toBeCloseTo(160 / 3, 4);
   });
 
-  it("weights saltbox T arms by direction and keeps their height continuous", () => {
+  it("raises saltbox back eaves with equal slopes and closes interior steps", () => {
     const rings: [number, number][][] = [
       [
         [1000, 1000],
@@ -434,16 +438,28 @@ describe("roof shapes", () => {
     for (const direction of [0, 180]) {
       const layout = lay(rings, { shape: "saltbox", direction });
       const roof = roofOf(layout);
-      const tops = wallTopsOf(layout).filter((v) => v.n === 1);
-      expect(
-        tops.filter((v) => v.x === 1000 || v.x === 1400).map((v) => v.y),
-      ).toEqual([direction === 0 ? 1084 : 1036, direction === 0 ? 1084 : 1036]);
-      expect(tops.find((v) => v.y === 1320)?.x).toBe(1200);
+      const tops = wallTopsOf(layout);
+      expect([
+        ...new Set(
+          tops
+            .filter((v) => (v.x === 1000 || v.x === 1400) && v.n === 1)
+            .map((v) => v.y),
+        ),
+      ]).toEqual([direction === 0 ? 1084 : 1036]);
+      expect(tops.some((v) => v.y === 1320 && v.x === 1200)).toBe(true);
       for (const v of roof) {
-        const speed =
-          v.gy === 0 ? 1 : v.gy > 0 === (direction === 0) ? 1.4 : 0.6;
-        expect(Math.hypot(v.gx, v.gy) * v.run * speed).toBeCloseTo(1, 6);
+        expect(Math.hypot(v.gx, v.gy) * v.run).toBeCloseTo(1, 6);
       }
+      const back = direction === 0 ? 1120 : 1000;
+      expect(
+        tops.some((v) => v.y === back && Math.abs(v.n - 4 / 7) < 1e-6),
+      ).toBe(true);
+      if (direction === 0)
+        expect(
+          triangles(layout).some((tri) =>
+            tri.every((i) => layout.vertex(i).kind === WALL_TOP),
+          ),
+        ).toBe(true);
     }
   });
 
@@ -871,6 +887,46 @@ describe("explicit roof graphs", () => {
     )!.fixture;
     const mesh = layOut(quantized.extent, quantized.features);
     expect(mesh.vertex(0).run).toBeGreaterThan(0);
+  });
+  it("keeps both heights of a vertical graph face and rejects ambiguous sides", () => {
+    const fixture = fixtures.find(
+      (f) => f.name === "roof-lines-steps.json",
+    )!.fixture;
+    const meshes = fixture.features.map((f) => {
+      const layout = new BuildingLayout(fixture.extent, NO_CUTS, f.tile);
+      layout.addFeature(toRings(f.rings), 0, {
+        shape: f.shape,
+        lines: f.lines,
+      });
+      return layout;
+    });
+    const base = meshes[0]!;
+    const steps = triangles(base)
+      .map((tri) => tri.map((i) => base.vertex(i)))
+      .filter((tri) => tri.every((v) => v.kind === WALL_TOP));
+    expect(steps).toHaveLength(2);
+    expect([...new Set(steps.flat().map((v) => v.n))]).toEqual([
+      Math.fround(0.3),
+      Math.fround(0.8),
+    ]);
+    for (const [i, copy] of meshes.slice(1, 3).entries()) {
+      expect(copy.indices()).toEqual(base.indices());
+      for (let v = 0; v < base.vertexCount; v++)
+        expect({
+          ...copy.exactVertex(v),
+          x: copy.exactVertex(v).x - (i === 0 ? 1 : -1) * fixture.extent,
+        }).toEqual(base.exactVertex(v));
+    }
+    for (const mesh of meshes.slice(3, 6)) expect(mesh.vertex(0).run).toBe(0);
+    const tapered = meshes[6]!;
+    expect(
+      triangles(tapered).filter((tri) =>
+        tri.every((i) => tapered.vertex(i).kind === WALL_TOP),
+      ),
+    ).toHaveLength(1);
+    const outline = meshes[9]!;
+    expect(outline.vertex(0).run).toBeGreaterThan(0);
+    expect(wallTopsOf(outline).every((v) => v.n === 0.5)).toBe(true);
   });
   const fixture = fixtures.find((f) => f.name === "roof-lines.json")!.fixture;
   it("keeps gable peaks, mapped apex heights and the same graph in adjacent tiles", () => {

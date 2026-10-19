@@ -1,5 +1,5 @@
 {
-  "description": "Unequal-width arms exercise local half-hip switch times and directional saltbox speeds, including oblique slopes.",
+  "description": "Unequal-width arms exercise local half-hip switch times and delayed saltbox eaves, including oblique slopes.",
   "extent": 8192,
   "features": [
     {
@@ -124,18 +124,18 @@
     }
   ],
   "expected": {
-    "vertex_count": 620,
-    "index_count": 1320,
-    "segments": [[0, 0, 620, 1320]],
+    "vertex_count": 680,
+    "index_count": 1386,
+    "segments": [[0, 0, 680, 1386]],
     "ranges": [
       [0, 0, 95],
       [1, 95, 95],
       [2, 190, 95],
       [3, 285, 95],
-      [4, 380, 60],
-      [5, 440, 60],
-      [6, 500, 60],
-      [7, 560, 60]
+      [4, 380, 71],
+      [5, 451, 79],
+      [6, 530, 79],
+      [7, 609, 71]
     ],
     "summaries": [
       {
@@ -171,36 +171,36 @@
         "moment": 931391
       },
       {
-        "vertices": 60,
-        "triangles": 41,
-        "sum_pos": [68782, 71829.4000244, 4800],
-        "sum_roof": [10.974999994, 75, 8.05000000075, -5.84523809142],
-        "weighted": 74786.0226015,
-        "moment": 207904
+        "vertices": 71,
+        "triangles": 44,
+        "sum_pos": [79649.5999756, 84959.8665771, 7952],
+        "sum_roof": [18.1333336905, 85, 8.08928571828, -15.0178571437],
+        "weighted": 89254.0191777,
+        "moment": 296407
       },
       {
-        "vertices": 60,
-        "triangles": 41,
-        "sum_pos": [68782, 72556.5999756, 4800],
-        "sum_roof": [10.974999994, 75, 8.05000000075, -6.03571428545],
-        "weighted": 75322.4713866,
-        "moment": 207904
+        "vertices": 79,
+        "triangles": 49,
+        "sum_pos": [90298.1999512, 96905.5999756, 8848],
+        "sum_roof": [18.3535717651, 92, 12.0803571464, 0.0535714309663],
+        "weighted": 100799.941078,
+        "moment": 406477
       },
       {
-        "vertices": 60,
-        "triangles": 41,
-        "sum_pos": [68625.8707886, 72450.104126, 4800],
-        "sum_roof": [10.974999994, 75, 8.10814942233, -6.0071397163],
-        "weighted": 75121.5937469,
-        "moment": 207904
+        "vertices": 79,
+        "triangles": 49,
+        "sum_pos": [89789.9248657, 96819.4172363, 8107.56606293],
+        "sum_roof": [18.8602811843, 92, 12.0876958631, 0.0584639087319],
+        "weighted": 99977.5302943,
+        "moment": 406477
       },
       {
-        "vertices": 60,
-        "triangles": 41,
-        "sum_pos": [68782, 71829.4000244, 4800],
-        "sum_roof": [10.974999994, 75, 8.05000000075, -5.84523809142],
-        "weighted": 74786.0226015,
-        "moment": 207904
+        "vertices": 71,
+        "triangles": 44,
+        "sum_pos": [79649.5999756, 84959.8665771, 7952],
+        "sum_roof": [18.1333336905, 85, 8.08928571828, -15.0178571437],
+        "weighted": 89254.0191777,
+        "moment": 296407
       }
     ]
   }
