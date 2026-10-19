@@ -60,6 +60,7 @@ describe("LayoutEvaluator", () => {
       shape: "hipped",
       orientation: "across",
       direction: 90,
+      lines: "",
     });
   });
 
@@ -68,12 +69,34 @@ describe("LayoutEvaluator", () => {
       shape: "flat",
       orientation: "along",
       direction: -1,
+      lines: "",
     });
     expect(at({ "roof:shape": "pitched", o: 3, d: "north" })).toEqual({
       shape: "flat",
       orientation: "along",
       direction: -1,
+      lines: "",
     });
+  });
+
+  it("serializes roof graphs and rejects state-dependent strings", () => {
+    const value = { vertices: [[10, 50, 1]], edges: [] };
+    const evaluator = new LayoutEvaluator({
+      "building-roof-lines": ["to-string", ["get", "roof_lines"]],
+    });
+    expect(
+      JSON.parse(
+        evaluator.evaluate(16, { type: 3, properties: { roof_lines: value } })
+          .lines,
+      ),
+    ).toEqual(value);
+    expect(
+      () =>
+        new LayoutEvaluator({
+          "building-roof-lines": ["to-string", ["feature-state", "roof_lines"]],
+        }),
+    ).toThrow();
+    expect(() => new LayoutEvaluator({ "building-roof-lines": 42 })).toThrow();
   });
 
   it("rejects feature-state, bad constants and unknown keys", () => {
@@ -96,6 +119,7 @@ describe("LayoutEvaluator", () => {
       "building-roof-shape": "flat",
       "building-roof-orientation": "along",
       "building-roof-direction": -1,
+      "building-roof-lines": "",
     });
   });
 });

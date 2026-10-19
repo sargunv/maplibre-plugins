@@ -32,6 +32,7 @@ export const ROOF_SHAPES = [
   "onion",
   "cone",
   "many",
+  "complex",
 ] as const;
 
 export type RoofShape = (typeof ROOF_SHAPES)[number];
@@ -42,7 +43,7 @@ export type RoofOrientation = (typeof ROOF_ORIENTATIONS)[number];
 
 /** A property in either table of spec.json. */
 export interface BuildingPropertySpec {
-  readonly type: "float" | "float2" | "color" | "enum" | "boolean";
+  readonly type: "float" | "float2" | "color" | "enum" | "boolean" | "string";
   readonly default: number | boolean | string | readonly number[];
   readonly values?: readonly string[];
   readonly minimum?: number;
@@ -86,6 +87,7 @@ export const layoutSpec = {
     units: "degrees",
     ...layoutOnly,
   },
+  "building-roof-lines": { type: "string", default: "", ...layoutOnly },
 } as const satisfies Record<string, BuildingPropertySpec>;
 
 export const paintSpec = {

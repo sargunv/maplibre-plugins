@@ -1,4 +1,4 @@
-// The OSM roofs page: 3,091 real OpenStreetMap buildings and building parts
+// The OSM roofs page: 4,341 real OpenStreetMap buildings and building parts
 // of Bamberg's old town (plugins/building/examples/osm) drawn by the building
 // layer with the Simple 3D Buildings rules of its layer.json, roofs with a
 // roof:shape tag in one color and untagged ones in another. Hovering highlights a building through feature-state, and a

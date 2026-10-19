@@ -29,7 +29,7 @@ fn str(comptime text: []const u8) c.mln_plugin_string {
 // "descriptors match the shared spec" test enforces it.
 // ---------------------------------------------------------------------------
 
-const Kind = enum { float, float2, color, enumeration, boolean };
+const Kind = enum { float, float2, color, enumeration, boolean, string };
 
 const Property = struct {
     name: []const u8,
@@ -59,6 +59,7 @@ const properties = [_]Property{
     .{ .name = "building-roof-shape", .kind = .enumeration, .values = enumNames(spec.RoofShape), .data_driven = true, .is_layout = true },
     .{ .name = "building-roof-orientation", .kind = .enumeration, .values = enumNames(spec.RoofOrientation), .data_driven = true, .is_layout = true },
     .{ .name = "building-roof-direction", .kind = .float, .default = .{ -1, 0, 0, 0 }, .minimum = -1, .maximum = 360, .data_driven = true, .is_layout = true },
+    .{ .name = "building-roof-lines", .kind = .string, .data_driven = true, .is_layout = true },
     .{ .name = "building-height", .kind = .float, .minimum = 0, .data_driven = true },
     .{ .name = "building-base", .kind = .float, .minimum = 0, .data_driven = true },
     .{ .name = "building-roof-height", .kind = .float, .default = .{ 3, 0, 0, 0 }, .minimum = 0, .data_driven = true },
@@ -76,7 +77,7 @@ fn valueType(kind: Kind) c.mln_plugin_value_type {
         .float => c.MLN_PLUGIN_VALUE_FLOAT,
         .float2 => c.MLN_PLUGIN_VALUE_FLOAT2,
         .color => c.MLN_PLUGIN_VALUE_COLOR,
-        .enumeration => c.MLN_PLUGIN_VALUE_STRING,
+        .enumeration, .string => c.MLN_PLUGIN_VALUE_STRING,
         .boolean => c.MLN_PLUGIN_VALUE_BOOLEAN,
     };
 }
@@ -97,6 +98,7 @@ fn descriptor(comptime property: Property) c.mln_plugin_property_descriptor_v1 {
         .float => .{ .float_value = d[0] },
         .float2 => .{ .float2_value = .{ .x = d[0], .y = d[1] } },
         .color => .{ .color_value = .{ .r = d[0], .g = d[1], .b = d[2], .a = d[3] } },
+        .string => .{ .string_value = str("") },
         .enumeration => .{ .string_value = str(property.values[0]) },
         .boolean => .{ .boolean_value = @intFromFloat(d[0]) },
     };
@@ -165,6 +167,7 @@ fn enumTag(comptime E: type, text: []const u8) []const u8 {
 /// expressions) or a feature's own.
 fn layoutValues(props: []const c.mln_plugin_property_value_v1) layout.LayoutValues {
     return .{
+        .lines = stringValue(props, "building-roof-lines"),
         .shape = enumTag(spec.RoofShape, stringValue(props, "building-roof-shape")),
         .orientation = enumTag(spec.RoofOrientation, stringValue(props, "building-roof-orientation")),
         .direction = floatValue(props, "building-roof-direction", -1),
@@ -217,6 +220,8 @@ const TileLayout = struct {
         self.geometry.deinit();
         self.points.deinit(a);
         self.ring_ends.deinit(a);
+        for (self.pending.items) |feature| a.free(feature.values.lines);
+        a.free(self.tile_values.lines);
         self.pending.deinit(a);
         self.rings.deinit(a);
         self.segments.deinit(a);
@@ -232,6 +237,11 @@ fn createLayout(context: [*c]const c.mln_plugin_layout_context_v1, instance: [*c
     const props = if (context.*.property_count > 0) context.*.properties[0..context.*.property_count] else &[_]c.mln_plugin_property_value_v1{};
     const tile = allocator.create(TileLayout) catch return c.MLN_PLUGIN_STATUS_CALLBACK_ERROR;
     tile.* = .{ .geometry = layout.BuildingLayout.init(allocator, context.*.extent), .tile_values = layoutValues(props) };
+    tile.geometry.tile = .{ .x = context.*.tile_x, .y = context.*.tile_y, .z = context.*.tile_z };
+    tile.tile_values.lines = allocator.dupe(u8, tile.tile_values.lines) catch {
+        allocator.destroy(tile);
+        return c.MLN_PLUGIN_STATUS_CALLBACK_ERROR;
+    };
     instance.* = tile;
     return c.MLN_PLUGIN_STATUS_OK;
 }
@@ -252,7 +262,7 @@ fn layoutFeature(instance: ?*anyopaque, feature: [*c]const c.mln_plugin_feature_
     if (offsets[f.path_count] != f.point_count) return c.MLN_PLUGIN_STATUS_INVALID_ARGUMENT;
     for (0..f.path_count) |i| if (offsets[i] > offsets[i + 1]) return c.MLN_PLUGIN_STATUS_INVALID_ARGUMENT;
     if (tile.laid_out) return c.MLN_PLUGIN_STATUS_INVALID_ARGUMENT;
-    const values = if (hasLayoutProperties(feature))
+    var values = if (hasLayoutProperties(feature))
         layoutValues(if (f.layout_property_count > 0) f.layout_properties[0..f.layout_property_count] else &.{})
     else
         tile.tile_values;
@@ -261,6 +271,7 @@ fn layoutFeature(instance: ?*anyopaque, feature: [*c]const c.mln_plugin_feature_
     tile.points.ensureUnusedCapacity(allocator, f.point_count) catch return c.MLN_PLUGIN_STATUS_CALLBACK_ERROR;
     tile.ring_ends.ensureUnusedCapacity(allocator, f.path_count) catch return c.MLN_PLUGIN_STATUS_CALLBACK_ERROR;
     tile.pending.ensureUnusedCapacity(allocator, 1) catch return c.MLN_PLUGIN_STATUS_CALLBACK_ERROR;
+    values.lines = allocator.dupe(u8, if (values.lines.len <= 65536) values.lines else "") catch return c.MLN_PLUGIN_STATUS_CALLBACK_ERROR;
     for (f.points[0..f.point_count]) |p| {
         const point: layout.Point = .{ .x = @floatFromInt(p.x), .y = @floatFromInt(p.y) };
         tile.points.appendAssumeCapacity(point);
@@ -538,6 +549,10 @@ fn expectDescriptor(name: []const u8, entry: std.json.ObjectMap, d: c.mln_plugin
         try std.testing.expectApproxEqAbs(@as(f32, @floatCast(jsonNumber(rgba[1]))), actual.color_value.g, 1e-6);
         try std.testing.expectApproxEqAbs(@as(f32, @floatCast(jsonNumber(rgba[2]))), actual.color_value.b, 1e-6);
         try std.testing.expectApproxEqAbs(@as(f32, @floatCast(jsonNumber(rgba[3]))), actual.color_value.a, 1e-6);
+    } else if (std.mem.eql(u8, type_name, "string")) {
+        transitionable = false;
+        try std.testing.expectEqual(@as(c_uint, c.MLN_PLUGIN_VALUE_STRING), d.type);
+        try std.testing.expectEqualStrings(default.string, actual.string_value.data[0..actual.string_value.size]);
     } else if (std.mem.eql(u8, type_name, "enum")) {
         transitionable = false;
         try std.testing.expectEqual(@as(c_uint, c.MLN_PLUGIN_VALUE_STRING), d.type);

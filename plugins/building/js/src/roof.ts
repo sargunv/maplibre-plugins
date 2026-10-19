@@ -30,6 +30,7 @@
 // The constants follow OSM2World (tordanik/OSM2World, core/.../building/
 // roof/*.java) unless noted.
 
+import type { ComplexRoof } from "./complex.ts";
 import { type BoundingRectangle, type Point, TIE } from "./footprint.ts";
 import type { Skeleton } from "./skeleton.ts";
 import type { RoofOrientation, RoofShape } from "./spec.ts";
@@ -66,6 +67,7 @@ export interface StripProfile {
 }
 
 export type RoofModel =
+  | ({ type: "complex" } & ComplexRoof)
   | { type: "flat" }
   | ({
       type: "skeleton";
@@ -436,6 +438,7 @@ export function roofModel(
       return radial(ONION_STEPS, true, true);
     case "flat":
     case "many":
+    case "complex":
       return { type: "flat" };
   }
 }

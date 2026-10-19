@@ -22,6 +22,10 @@ import {
   type TransitionOptions,
   type Vector,
 } from "@maplibre-plugins/paint";
+import {
+  createPropertyExpression,
+  type StylePropertyExpression,
+} from "@maplibre/maplibre-gl-style-spec";
 
 import type { LayoutValues } from "./layout.ts";
 import {
@@ -70,6 +74,7 @@ export function uniformNumber(
 
 /** The layer's layout properties: raw values and their compiled forms. */
 export class LayoutEvaluator {
+  private lines: string | StylePropertyExpression = "";
   private readonly raw = new Map<LayoutName, unknown>();
   private readonly compiled = new Map<LayoutName, CompiledValue>();
 
@@ -80,7 +85,7 @@ export class LayoutEvaluator {
   constructor(layout: Partial<Record<string, unknown>> = {}) {
     for (const name of layoutNames) this.set(name, layout[name]);
     for (const key of Object.keys(layout)) {
-      if (key !== "visibility" && !this.compiled.has(key as LayoutName))
+      if (key !== "visibility" && !this.raw.has(key as LayoutName))
         throw new Error(`Unknown layout property ${key}`);
     }
   }
@@ -91,6 +96,30 @@ export class LayoutEvaluator {
 
   /** Sets a property; undefined or null restores its default. Invalid values throw and keep the old one. */
   set(name: LayoutName, value: unknown): void {
+    if (name === "building-roof-lines") {
+      const raw = value ?? "";
+      if (typeof raw === "string") this.lines = raw;
+      else {
+        const result = createPropertyExpression(raw, `layout.${name}`, {
+          type: "string",
+          default: "",
+          "property-type": "data-driven",
+          expression: { interpolated: false, parameters: ["zoom", "feature"] },
+          transition: false,
+        });
+        if (result.result === "error")
+          throw new Error(result.value.map((e) => e.message).join("; "));
+        if (
+          result.value.kind !== "constant" &&
+          result.value.kind !== "camera" &&
+          result.value.isStateDependent
+        )
+          throw new Error("building-roof-lines cannot read feature-state");
+        this.lines = result.value;
+      }
+      this.raw.set(name, raw);
+      return;
+    }
     const spec: PaintPropertySpec = layoutSpec[name];
     const raw = value === undefined || value === null ? spec.default : value;
     const compiled = compileValue(spec, name, raw);
@@ -122,7 +151,23 @@ export class LayoutEvaluator {
         : value.at(zoom);
       return vector[0] ?? 0;
     };
+    let lines = "";
+    try {
+      const value =
+        typeof this.lines === "string"
+          ? this.lines
+          : this.lines.evaluate(
+              { zoom },
+              feature as never,
+              {},
+              canonical as never,
+            );
+      if (typeof value === "string") lines = value;
+    } catch {
+      /* Invalid per-feature values use the empty default. */
+    }
     return {
+      lines,
       shape: ROOF_SHAPES[at("building-roof-shape")] ?? "flat",
       orientation:
         ROOF_ORIENTATIONS[at("building-roof-orientation")] ?? "along",

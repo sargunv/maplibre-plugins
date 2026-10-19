@@ -2,11 +2,12 @@
 
 A `building` layer: a replacement for `fill-extrusion` that draws walls and OSM
 roofs (`roof:shape`), for StreetComplete-style views of OSM roof tagging. Each
-building gets one of the 17 roof shapes of StreetComplete's roof quest, chosen
-by its own tags, and is drawn like core fill-extrusion: lit by the style's light
-(anchor, position, color and intensity), with the vertical gradient,
-`translate`, opacity that never shows internal faces, a depth buffer shared with
-other 3D layers, and 3D hit tests on the projected building.
+building gets one of the 17 roof shapes of StreetComplete's roof quest or an
+explicit roof-line graph, chosen by its own tags, and is drawn like core
+fill-extrusion: lit by the style's light (anchor, position, color and
+intensity), with the vertical gradient, `translate`, opacity that never shows
+internal faces, a depth buffer shared with other 3D layers, and 3D hit tests on
+the projected building.
 
 The layer is tile-driven: point it at a polygon layer of a vector or GeoJSON
 source. The native plugin renders on Metal, Vulkan and OpenGL ES, checked pixel
@@ -27,7 +28,11 @@ labels.
       ["get", "roof:orientation"],
       "along"
     ],
-    "building-roof-direction": ["coalesce", ["get", "roof:direction"], -1]
+    "building-roof-direction": ["coalesce", ["get", "roof:direction"], -1],
+    "building-roof-lines": [
+      "to-string",
+      ["coalesce", ["get", "roof_lines"], ""]
+    ]
   },
   "paint": {
     "building-height": ["get", "height"],
@@ -73,7 +78,7 @@ mesh, built with that feature's roof shape, orientation and direction. The
 vertices carry relative roof elevations rather than heights: the shared vertex
 shader (`shaders/building.glsl`) turns them into meters from the paint
 properties, so heights, colors and roof angles change without a new layout, and
-only the three layout properties lay tiles out again. The shader lights every
+only the four layout properties lay tiles out again. The shader lights every
 vertex exactly as core fill-extrusion does, and three draw passes give opaque or
 translucent buildings (see [Rendering](#rendering)).
 
@@ -97,6 +102,14 @@ translucent buildings (see [Rendering](#rendering)).
    - Without a direction, `+v` is `u` turned 90° clockwise on the map, with `u`
      pointing toward +x (or +y when vertical).
 4. The roof is built from these families:
+   - **Complex roofs** triangulate a mapped graph of ridges, hips, valleys and
+     apexes. Vertices are inserted into the footprint triangulation, then
+     crossed diagonals are flipped until every mapped segment is a triangle
+     edge. Each triangle carries its own planar gradient. Eaves default to `n =
+     0`; graph vertices carry `n` in `[0, 1]`, including gable peaks on the
+     outline. Walls split at graph vertices on their boundary. Input is capped
+     at 192 total vertices and 576 constraints, and the emitted roof and
+     wall-top edges must pair before the mesh is accepted.
    - **Skeleton shapes** (hipped and mansard) move every eave inward at equal
      speed, including courtyard boundaries, which expand into the building. Edge
      collapses and contacts split or merge wavefront loops. The swept faces form
@@ -150,6 +163,7 @@ The Source column names where each profile's constants come from.
 
 | Shape             | Definition                                                                                                                                  | Source                                                                           |
 | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| complex           | Mapped roof graph, with planar triangles and explicit relative elevations.                                                                  | OSM2World `ComplexRoof` height rules; constrained triangulation                  |
 | flat, many        | `n = 1`                                                                                                                                     |                                                                                  |
 | gabled            | Frame: `1 - abs(v)/b`; on arms and courtyards, stationary-end skeleton                                                                      | OSM2World                                                                        |
 | hipped            | Equal slopes over the straight skeleton of the footprint, including courtyard eaves.                                                        | [Straight skeleton](https://en.wikipedia.org/wiki/Straight_skeleton)             |
@@ -236,12 +250,10 @@ whose square it reaches. Only a building larger than the buffer can be cut in
 all of them and draw roofless everywhere. The examples load their GeoJSON with
 `maxzoom` 15, `buffer` 256 and `tolerance` 0 (the OSM example's
 [Source options](examples/osm/README.md#source-options)): half a tile, 390 m at
-zoom 15 in Bamberg. Tiled as maplibre-gl-js does, each of the Bamberg example's
-1,318 sloped roofs is whole in every tile whose square it reaches, the 49 that
-cross a zoom-15 tile edge included; the 280 cut copies lie in farther tiles'
-buffers. With `buffer` 64 one of them, a 111 m hall, is cut in a tile it
-crosses, and another tile draws it whole. The shapes example is laid out so that
-no tile edge up to zoom 18 crosses a building.
+zoom 15 in Bamberg. The Bamberg example's largest footprint is about 110 m, well
+within that buffer. With `buffer` 64 the 111 m university hall can be cut in a
+tile it crosses, while another tile draws it whole. The shapes example is laid
+out so that no tile edge up to zoom 18 crosses a building.
 
 ### Fallbacks
 
@@ -249,6 +261,10 @@ These cases get a flat roof, and their walls are still drawn (copies the source
 cut draw roofless instead, see [Tile copies](#tile-copies)):
 
 - `flat`, `many`, and unknown shape values. Unknown orientations mean `along`.
+- `complex` with missing or invalid JSON, out-of-range coordinates or heights,
+  points outside the footprint, intersecting constraints without a shared
+  vertex, an exhausted triangulation budget, or an open emitted mesh. Cut copies
+  remain roofless. The plugin does not repair or clip roof graphs.
 - Footprints with holes for pyramidal roofs. Other shapes keep courtyards open,
   with walls facing into them.
 - Footprints using a skeleton that cannot resolve a numerical event or cover the
@@ -593,11 +609,30 @@ docs. Geometry and topology are layout properties, evaluated per feature when a
 tile is laid out (no transitions, no feature-state). Everything else is paint,
 as for `fill-extrusion`.
 
-| Layout                      | Default | Meaning                                                                     |
-| --------------------------- | ------- | --------------------------------------------------------------------------- |
-| `building-roof-shape`       | `flat`  | One of StreetComplete's 17 `roof:shape` values. `many` draws a flat roof.   |
-| `building-roof-orientation` | `along` | `along` puts the ridge along the longer side of the bounding rectangle.     |
-| `building-roof-direction`   | `-1`    | `roof:direction` in degrees. Negative means unset, and orientation decides. |
+| Layout                      | Default | Meaning                                                                                                   |
+| --------------------------- | ------- | --------------------------------------------------------------------------------------------------------- |
+| `building-roof-shape`       | `flat`  | One of StreetComplete's 17 `roof:shape` values or `complex`. `many` draws a flat roof.                    |
+| `building-roof-orientation` | `along` | `along` puts the ridge along the longer side of the bounding rectangle.                                   |
+| `building-roof-direction`   | `-1`    | `roof:direction` in degrees. Negative means unset, and orientation decides.                               |
+| `building-roof-lines`       | `""`    | JSON graph used by `complex`: `vertices` of `[longitude, latitude, n]` and `edges` of two vertex indices. |
+
+`building-roof-lines` is a string because plugin layout values are scalars. The
+OSM example stores a `roof_lines` object on each feature and uses `["to-string",
+["get", "roof_lines"]]`. Both engines support this with patch `0006`; no extra
+host patch is needed. The native plugin copies the borrowed string before the
+layout callback returns. Both twins project longitude and latitude with the
+canonical tile id, round to the tile grid, and subtract the footprint's origin.
+Thus a whole copy in a neighboring tile gets the same roof. `run` for complex
+roofs is half the bounding rectangle's short side: an angle scales all relative
+heights together, while explicit roof height scales them in meters. This angle
+convention is ours; OSM2World does not infer an angle for `ComplexRoof`.
+
+The [OSM example](examples/osm/README.md#roof-lines) resolves OSM height tags
+before layout. A graph is already normalized: changing paint height or angle
+scales it without reparsing the graph. The graph supports holes, shared
+junctions, boundary peaks and isolated apex points, but crossings must have an
+explicit shared vertex. Vertices on a cleaned-up eave snap to it within 0.75
+tile units; points farther outside cause a flat fallback.
 
 Paint properties follow `fill-extrusion`'s:
 
@@ -804,8 +839,9 @@ would close them. The ones that limit this layer are under
    given. Simple 3D Buildings' rules for `building:part` (drop the outline that
    has parts; parts do not inherit the outline's tags) and `type=building`
    relations must be applied when the data is written, as the OSM example does.
-   `roof:ridge` and `roof:edge` ways are not used. Coplanar faces of overlapping
-   parts z-fight.
+   The source also joins `roof:ridge`, `roof:edge` and `roof:apex` elements into
+   `building-roof-lines`; the tile layout cannot look up neighboring OSM ways.
+   Coplanar faces of overlapping parts z-fight.
 7. **Triangulation.** Rings that touch at a point triangulate correctly: an ear
    is never clipped across a copy of one of its corners whose boundary runs into
    it, and zero-width spikes are dropped first. Chains of courtyards touching

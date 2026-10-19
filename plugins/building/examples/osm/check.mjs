@@ -36,6 +36,9 @@ const PROPERTIES = new Set([
   "building:levels",
   "building:min_level",
   "roof:shape",
+  "roof:lines",
+  "roof_lines",
+  "roof_lines_height_m",
   "roof:height",
   "roof:angle",
   "roof:levels",
@@ -191,6 +194,7 @@ function styleSpecOf(entry) {
     color: "color",
     enum: "enum",
     boolean: "boolean",
+    string: "string",
   }[entry.type];
   const dataDriven = entry.expressions === "data-driven";
   return {
@@ -313,7 +317,12 @@ for (const [key, r] of Object.entries(results)) {
   if (Array.isArray(r))
     console.log(`${key}: ${r.length} features ${r.slice(0, 10).join(" ")}`);
   else if (Object.keys(r.values).length > 0)
-    console.log(`${key}:`, JSON.stringify(sorted(r.values)));
+    console.log(
+      `${key}:`,
+      key === "building-roof-lines"
+        ? `${Object.keys(r.values).length} distinct strings`
+        : JSON.stringify(sorted(r.values)),
+    );
   else if (r.max >= r.min) console.log(`${key}: ${r.min} .. ${r.max}`);
 }
 if (errors.length > 0) {

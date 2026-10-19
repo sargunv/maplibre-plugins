@@ -89,7 +89,8 @@ function matrix(rings, options = {}) {
       direction,
     });
   if (options.along !== false)
-    for (const shape of ROOF_SHAPES) add(shape, "along", -1, `${shape}`);
+    for (const shape of ROOF_SHAPES.filter((shape) => shape !== "complex"))
+      add(shape, "along", -1, `${shape}`);
   if (options.across !== false)
     for (const shape of FRAME_SHAPES)
       add(shape, "across", -1, `${shape} across`);
@@ -910,6 +911,161 @@ function rounded(expected) {
     }),
   };
 }
+
+// Real ridge/hip graph and small cases that isolate graph recovery and fallbacks.
+const tile = { z: 16, x: 34748, y: 22254 };
+const scale = EXTENT * 2 ** tile.z;
+const project = ([lon, lat]) => {
+  const sin = Math.sin((lat * Math.PI) / 180);
+  return [
+    Math.round((lon / 360 + 0.5) * scale) - tile.x * EXTENT,
+    Math.round(
+      (0.5 - Math.log((1 + sin) / (1 - sin)) / (4 * Math.PI)) * scale,
+    ) -
+      tile.y * EXTENT,
+  ];
+};
+const geographic = ([x, y, n]) => [
+  ((x + tile.x * EXTENT) / scale) * 360 - 180,
+  (Math.atan(Math.sinh(Math.PI * (1 - (2 * (y + tile.y * EXTENT)) / scale))) *
+    180) /
+    Math.PI,
+  n,
+];
+const graph = (vertices, edges) =>
+  JSON.stringify({ vertices: vertices.map(geographic), edges });
+const real = JSON.parse(
+  readFileSync(join(here, "../../examples/osm/buildings.geojson"), "utf8"),
+).features.find((f) => f.id === 36941229);
+const realRings = real.geometry.coordinates.map((r) =>
+  r.map(project).reverse(),
+);
+const ridge = graph(
+  [
+    [1000, 1080, 1],
+    [1300, 1080, 1],
+  ],
+  [[0, 1]],
+);
+const cases = [
+  {
+    label: "Bamberg way/36941229",
+    rings: realRings,
+    lines: JSON.stringify(real.properties.roof_lines),
+  },
+  { label: "ridge reaching gable walls", rings: [rectangle], lines: ridge },
+  {
+    label: "edge apex at mapped relative height",
+    rings: [rectangle],
+    lines: graph(
+      [
+        [1000, 1000, 0],
+        [1300, 1000, 0],
+        [1300, 1160, 0],
+        [1000, 1160, 0],
+        [1130, 1070, 0.75],
+      ],
+      [
+        [0, 4],
+        [1, 4],
+        [2, 4],
+        [3, 4],
+      ],
+    ),
+  },
+  {
+    label: "isolated apex",
+    rings: [rectangle],
+    lines: graph([[1130, 1070, 1]], []),
+  },
+  { label: "missing lines", rings: [rectangle] },
+  { label: "malformed JSON", rings: [rectangle], lines: "{" },
+  {
+    label: "outside footprint",
+    rings: [rectangle],
+    lines: graph([[900, 900, 1]], []),
+  },
+  {
+    label: "invalid height",
+    rings: [rectangle],
+    lines: graph([[1100, 1100, 2]], []),
+  },
+  {
+    label: "crossing without a junction",
+    rings: [rectangle],
+    lines: graph(
+      [
+        [1000, 1080, 1],
+        [1300, 1080, 1],
+        [1150, 1000, 0],
+        [1150, 1160, 0],
+      ],
+      [
+        [0, 1],
+        [2, 3],
+      ],
+    ),
+  },
+];
+cases.push({
+  label: "courtyard with a closed ridge ring",
+  rings: [
+    [
+      [1000, 1000],
+      [1400, 1000],
+      [1400, 1400],
+      [1000, 1400],
+    ],
+    [
+      [1150, 1150],
+      [1150, 1250],
+      [1250, 1250],
+      [1250, 1150],
+    ],
+  ],
+  lines: graph(
+    [
+      [1075, 1075, 1],
+      [1325, 1075, 1],
+      [1325, 1325, 1],
+      [1075, 1325, 1],
+    ],
+    [
+      [0, 1],
+      [1, 2],
+      [2, 3],
+      [3, 0],
+    ],
+  ),
+});
+
+fixtures["roof-lines"] = {
+  description:
+    "Explicit roof graphs: OSM Bamberg way/36941229, gables, apex heights, invalid input and whole tile copies. Real data © OpenStreetMap contributors, ODbL; see ../../examples/osm/buildings.geojson.LICENSE.txt.",
+  full: true,
+  features: cases.flatMap((f, i) =>
+    [0, 1, -1].map((offset, k) => ({
+      ...f,
+      index: i * 3 + k,
+      shape: "complex",
+      tile: { ...tile, x: tile.x - offset },
+      rings: f.rings.map((r) => r.map(([x, y]) => [x + offset * EXTENT, y])),
+    })),
+  ),
+};
+
+// Bounds beyond the copies: these two degenerate points emit no geometry.
+fixtures["roof-lines"].features.push({
+  index: 99,
+  label: "tile bounds",
+  shape: "flat",
+  rings: [
+    [
+      [-20000, -20000],
+      [30000, 30000],
+    ],
+  ],
+});
 
 for (const [name, { description, features, full = false }] of Object.entries(
   fixtures,

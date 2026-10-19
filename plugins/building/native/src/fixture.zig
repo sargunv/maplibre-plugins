@@ -32,6 +32,8 @@ pub const FixtureFeature = struct {
     shape: []const u8,
     orientation: []const u8 = "along",
     direction: f64 = -1,
+    lines: []const u8 = "",
+    tile: ?@import("complex.zig").Tile = null,
     /// Lays the feature out this many times, with consecutive indices.
     repeat: u32 = 1,
     label: ?[]const u8 = null,
@@ -83,6 +85,7 @@ pub fn layOut(allocator: Allocator, extent: u32, features: []const FixtureFeatur
     var rings: std.ArrayList([]const Point) = .empty;
     defer rings.deinit(allocator);
     for (features) |feature| {
+        result.tile = feature.tile;
         points.clearRetainingCapacity();
         rings.clearRetainingCapacity();
         for (feature.rings) |ring| for (ring) |p| try points.append(allocator, .{ .x = p[0], .y = p[1] });
@@ -96,6 +99,7 @@ pub fn layOut(allocator: Allocator, extent: u32, features: []const FixtureFeatur
                 .shape = feature.shape,
                 .orientation = feature.orientation,
                 .direction = feature.direction,
+                .lines = feature.lines,
             });
         }
     }

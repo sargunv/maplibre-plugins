@@ -1,7 +1,8 @@
 // Generates buildings.geojson and buildings.geojson.LICENSE.txt: real
 // OpenStreetMap buildings with their roof tagging, for the building plugin's
 // demo. The area is Bamberg's old town (the cathedral hill, the old town hall
-// and the island town), 1.2 km x 1.2 km, picked because roof:shape is mapped
+// and the island town), extended north-west to include mapped roof lines.
+// The original box was picked because roof:shape is mapped
 // on about half of its buildings, with more gambrel and mansard roofs than
 // anywhere else surveyed.
 //
@@ -37,8 +38,8 @@ const OUTPUT = join(HERE, "buildings.geojson");
 const NOTICE = join(HERE, "buildings.geojson.LICENSE.txt");
 
 const AREA = "Bamberg: old town";
-/** [south, west, north, east]: 1.2 km x 1.2 km around 49.8915 N, 10.8850 E. */
-const BBOX = [49.88611, 10.87663, 49.89689, 10.89337];
+/** [south, west, north, east]: old town and the roof-line cluster to its north-west. */
+const BBOX = [49.88611, 10.874, 49.9003, 10.89337];
 const PAD_M = 200;
 const SNAPSHOT = "2026-10-01T00:00:00Z";
 const RELATION_ID_OFFSET = 1e12;
@@ -57,6 +58,7 @@ const KEPT_TAGS = [
   "building:levels",
   "building:min_level",
   "roof:shape",
+  "roof:lines",
   "roof:height",
   "roof:angle",
   "roof:levels",
@@ -93,7 +95,7 @@ function paddedBbox() {
 function overpassQuery() {
   return [
     `[out:json][timeout:300][date:"${SNAPSHOT}"][bbox:${paddedBbox().join(",")}];`,
-    `(way["building"];way["building:part"];rel["building"];rel["building:part"];rel["type"="building"];);`,
+    `(way["building"];way["building:part"];rel["building"];rel["building:part"];rel["type"="building"];way["roof:ridge"="yes"];way["roof:edge"="yes"];node["roof:apex"="yes"];);`,
     `(._;>>;);`,
     `out body qt;`,
   ].join("\n");
@@ -166,6 +168,7 @@ function readTags(raw) {
 
 function indexElements(elements) {
   const nodes = new Map();
+  const nodeTags = new Map();
   const ways = new Map();
   const relations = new Map();
   for (const e of elements) {
@@ -179,6 +182,7 @@ function indexElements(elements) {
         Math.abs(lon) <= 180
       ) {
         nodes.set(e.id, [lon, lat]);
+        nodeTags.set(e.id, readTags(e.tags));
       }
     } else if (
       e.type === "way" &&
@@ -201,7 +205,7 @@ function indexElements(elements) {
       relations.set(e.id, { id: e.id, members, tags: readTags(e.tags) });
     }
   }
-  return { nodes, ways, relations };
+  return { nodes, nodeTags, ways, relations };
 }
 
 const isYes = (v) => v !== undefined && v !== "no";
@@ -451,6 +455,84 @@ function properties(osm, kind, tags) {
   return props;
 }
 
+/** OSM2World ComplexRoof: edge node, edge way, apex; ridge ways override them. */
+function joinRoofLines(props, polygons, nodes, nodeTags, ways) {
+  if (
+    props["roof:lines"] === "no" ||
+    ["flat", "round", "dome", "onion"].includes(props["roof:shape"])
+  )
+    return;
+  const segments = [];
+  for (const way of ways.values()) {
+    const edge = way.tags["roof:edge"] === "yes";
+    if (!edge && way.tags["roof:ridge"] !== "yes") continue;
+    for (let i = 1; i < way.nodes.length; i++) {
+      const a = nodes.get(way.nodes[i - 1]),
+        b = nodes.get(way.nodes[i]);
+      if (
+        !a ||
+        !b ||
+        !pointInPolygons([(a[0] + b[0]) / 2, (a[1] + b[1]) / 2], polygons)
+      )
+        continue;
+      segments.push({
+        a: way.nodes[i - 1],
+        b: way.nodes[i],
+        edge,
+        tags: way.tags,
+      });
+    }
+  }
+  const apexes = [...nodeTags]
+    .filter(
+      ([id, tags]) =>
+        tags["roof:apex"] === "yes" && pointInPolygons(nodes.get(id), polygons),
+    )
+    .map(([id]) => id);
+  if (!segments.length && !(props["roof:shape"] === "complex" && apexes.length))
+    return;
+  const roofHeight =
+    props.roof_height_m ??
+    (props.roof_levels !== undefined ? 3 * props.roof_levels : 3);
+  if (!(roofHeight > 0)) return;
+  const heights = new Map();
+  for (const id of apexes)
+    heights.set(
+      id,
+      parseLength(nodeTags.get(id)["roof:height"] ?? "") ?? roofHeight,
+    );
+  for (const s of segments.filter((s) => s.edge))
+    for (const id of [s.a, s.b]) {
+      const tags = nodeTags.get(id) ?? {};
+      const height =
+        tags["roof:height"] !== undefined
+          ? parseLength(tags["roof:height"])
+          : s.tags["roof:height"] !== undefined
+            ? parseLength(s.tags["roof:height"])
+            : tags["roof:apex"] === "yes"
+              ? roofHeight
+              : undefined;
+      if (height !== undefined) heights.set(id, height);
+    }
+  for (const s of segments.filter((s) => !s.edge))
+    for (const id of [s.a, s.b])
+      heights.set(
+        id,
+        s.tags["roof:height"] !== undefined
+          ? parseLength(s.tags["roof:height"])
+          : roofHeight,
+      );
+  const ids = [...new Set([...segments.flatMap((s) => [s.a, s.b]), ...apexes])];
+  props.roof_lines = {
+    vertices: ids.map((id) => [
+      ...nodes.get(id),
+      (heights.get(id) ?? 0) / roofHeight,
+    ]),
+    edges: segments.map((s) => [ids.indexOf(s.a), ids.indexOf(s.b)]),
+  };
+  props.roof_lines_height_m = roofHeight;
+}
+
 // ------------------------------------------------------------------ output
 /** RFC 7946 rings: rounded to 1e-7 degrees, deduplicated, outer CCW, holes CW. */
 function geometryOf(polygons) {
@@ -484,7 +566,7 @@ async function main() {
   const refresh = process.argv.includes("--refresh");
   const query = overpassQuery();
   const response = await fetchOverpass(query, refresh);
-  const { nodes, ways, relations } = indexElements(response.elements);
+  const { nodes, nodeTags, ways, relations } = indexElements(response.elements);
 
   // Every building and part polygon, keyed "way/1" or "relation/1".
   const features = new Map();
@@ -591,6 +673,7 @@ async function main() {
     const geometry = geometryOf(f.polygons);
     if (!geometry) continue;
     const props = properties(f.key, f.kind, f.tags);
+    joinRoofLines(props, f.polygons, nodes, nodeTags, ways);
     stats[f.kind]++;
     for (const key of KEPT_TAGS)
       if (props[key] !== undefined)

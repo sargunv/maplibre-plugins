@@ -356,6 +356,12 @@ case("seam-pitched", style("seam-pitched", seam_sources, [with_paint(seam_layer,
 case("seam-overlap", style("seam", seam_sources, [seam_layer], default_light), (*seam_at(360, 175), 17.6, 330, 65))
 
 osm_style = style("osm", osm_sources, [osm_layer], default_light)
+roof_lines = osm_by_id[36941229]
+roof_lines_camera = (*centroid(roof_lines), 19.3, 120, 50)
+case("osm-roof-lines", osm_style, roof_lines_camera)
+named_roof_layer = json.loads(json.dumps(osm_layer))
+named_roof_layer["layout"]["building-roof-shape"] = osm_layer["layout"]["building-roof-shape"][-1]
+case("osm-roof-lines-named", style("osm-roof-lines-named", osm_sources, [named_roof_layer], default_light), roof_lines_camera)
 tower = osm_by_id[cathedral_tower]
 case("osm-pitched", osm_style, (*osm_center, 16.5, 0, 60),
      # The ground point of the cathedral's 72 m tower hits it and the parts

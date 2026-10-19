@@ -43,6 +43,7 @@
 //! output partly written; drop the whole layout then.
 
 const std = @import("std");
+const complex = @import("complex.zig");
 const radial_base = @import("radial.zig");
 const Allocator = std.mem.Allocator;
 
@@ -133,6 +134,7 @@ pub const Range = struct {
 
 /// The evaluated layout properties of one feature.
 pub const LayoutValues = struct {
+    lines: []const u8 = "",
     /// building-roof-shape; unknown values draw flat roofs.
     shape: []const u8 = "",
     /// building-roof-orientation; unknown values mean along.
@@ -241,6 +243,7 @@ fn closureKey(v: Local) [3]i64 {
 pub const BuildingLayout = struct {
     allocator: Allocator,
     extent: f64,
+    tile: ?complex.Tile = null,
     /// The bounds of every feature of the tile, which locate its cut lines.
     /// Set them before adding features; the default has no cuts.
     bounds: TileBounds = .no_cuts,
@@ -290,7 +293,7 @@ pub const BuildingLayout = struct {
         const orientation = std.meta.stringToEnum(RoofOrientation, values.orientation) orelse .along;
         const direction = directionVector(values.direction);
         for (try classifyRings(scratch, rings, self.extent, self.bounds)) |polygon|
-            try self.addPolygon(scratch, polygon, shape, orientation, direction);
+            try self.addPolygon(scratch, polygon, shape, orientation, direction, values.lines);
         const vertex_count = self.vertexCount() - first_vertex;
         if (vertex_count > 0)
             try self.ranges.append(self.allocator, .{ .feature_index = feature_index, .first_vertex = first_vertex, .vertex_count = vertex_count });
@@ -310,6 +313,7 @@ pub const BuildingLayout = struct {
         shape: RoofShape,
         orientation: RoofOrientation,
         direction: ?Point,
+        lines: []const u8,
     ) Allocator.Error!void {
         const rings = try scratch.alloc([]const Point, 1 + polygon.holes.items.len);
         rings[0] = polygon.outer;
@@ -333,6 +337,22 @@ pub const BuildingLayout = struct {
             try cutModel(scratch, local, shape, orientation, direction)
         else
             try modelFor(scratch, local, shape, orientation, direction);
+        if (shape == .complex and !local.cut) {
+            const rect = try minimumAreaRectangle(scratch, local.outer);
+            const run = if (rect) |r| r.half_short else 0;
+            if (try complex.complexRoof(scratch, local, lines, self.tile, self.extent, origin, run)) |roof_lines| {
+                model = .{ .complex = roof_lines };
+                var closure: Closure = .empty;
+                var probe = BuildingLayout.init(scratch, @intFromFloat(self.extent));
+                probe.closure = &closure;
+                try probe.build(scratch, local, model, walls);
+                var counts = closure.valueIterator();
+                while (counts.next()) |count| if (count.* != 0) {
+                    model = .flat;
+                    break;
+                };
+            }
+        }
         if (model == .radial and model.radial.base == null and !radialFits(local.outer, model.radial.center))
             return self.build(scratch, local, .flat, walls);
         if (model == .skeleton and shape != .hipped and shape != .mansard) {
@@ -373,6 +393,21 @@ pub const BuildingLayout = struct {
                     try self.addFlatRoof(scratch, terrace, 0, run);
                 }
                 try self.addRadialRoof(scratch, radial.base orelse polygon.outer, radial);
+            },
+            .complex => |m| {
+                var t: usize = 0;
+                while (t < m.triangles.len) : (t += 3) {
+                    const a = m.points[m.triangles[t]];
+                    const b = m.points[m.triangles[t + 1]];
+                    const c = m.points[m.triangles[t + 2]];
+                    const area = footprint.cross(a.point(), b.point(), c.point());
+                    const gx = ((b.n - a.n) * (c.y - a.y) - (c.n - a.n) * (b.y - a.y)) / area;
+                    const gy = ((b.x - a.x) * (c.n - a.n) - (c.x - a.x) * (b.n - a.n)) / area;
+                    var mesh = Mesh.init(scratch);
+                    for ([_]complex.RoofPoint{ a, b, c }) |p| _ = try mesh.add(vertex(p.x, p.y, run, p.n, roof_kind, gx, gy));
+                    try mesh.triangle(0, 1, 2);
+                    try self.emit(scratch, &mesh);
+                }
             },
             .skeleton => |model_skeleton| try self.addSkeletonRoof(scratch, model_skeleton),
         }
@@ -729,6 +764,12 @@ const Radial = struct {
 /// Points along a wall top where its slope changes, with n: the ends and
 /// every crossing of a break line between two facets of the roof.
 fn wallStops(scratch: Allocator, a: Point, b: Point, model: RoofModel, stationary: bool) Allocator.Error![]const Stop {
+    if (model == .complex) {
+        const points = try complex.complexStops(scratch, a, b, model.complex);
+        const stops = try scratch.alloc(Stop, points.len);
+        for (stops, points) |*s, p| s.* = .{ .x = p.x, .y = p.y, .n = p.n };
+        return stops;
+    }
     if (model == .skeleton and stationary) {
         const m = model.skeleton;
         const run = m.geometry.run;

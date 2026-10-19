@@ -89,7 +89,8 @@ export function buildingControls(
 ): () => void {
   const layoutSync = renderSpecControls(panel, {
     spec: withUi(spec.layout, {}, "Roof (layout)"),
-    names: layoutNames,
+    // Roof graphs come from the source; they have no scalar UI control.
+    names: layoutNames.filter((name) => name !== "building-roof-lines"),
     get: (name) => layer.getLayoutProperty(name as never),
     set: (name, value) => {
       layer.setLayoutProperty(name, value);

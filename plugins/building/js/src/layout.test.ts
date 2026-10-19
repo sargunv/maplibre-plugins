@@ -17,7 +17,7 @@ import {
   layOut,
   triangles,
 } from "./fixture.ts";
-import { isClipEdge } from "./footprint.ts";
+import { isClipEdge, NO_CUTS } from "./footprint.ts";
 import {
   BuildingLayout,
   type LayoutValues,
@@ -771,5 +771,39 @@ describe("roof shapes", () => {
     expect(layout.vertexCount).toBeGreaterThan(MAX_SEGMENT_VERTICES);
     expect(layout.segments.length).toBeGreaterThan(1);
     checkInvariants(layout, () => "round");
+  });
+});
+
+describe("explicit roof graphs", () => {
+  const fixture = fixtures.find((f) => f.name === "roof-lines.json")!.fixture;
+  it("keeps gable peaks, mapped apex heights and the same graph in adjacent tiles", () => {
+    for (let start = 0; start < 12; start += 3) {
+      const layouts = fixture.features.slice(start, start + 3).map((f) => {
+        const layout = new BuildingLayout(fixture.extent, NO_CUTS, f.tile);
+        layout.addFeature(toRings(f.rings), 0, {
+          shape: f.shape,
+          lines: f.lines,
+        });
+        return layout;
+      });
+      const [base, ...copies] = layouts;
+      expect(base!.vertex(0).run).toBeGreaterThan(0);
+      for (const [i, copy] of copies.entries()) {
+        const dx = (i === 0 ? 1 : -1) * fixture.extent;
+        expect(copy.indices()).toEqual(base!.indices());
+        for (let v = 0; v < base!.vertexCount; v++) {
+          const a = base!.exactVertex(v),
+            b = copy.exactVertex(v);
+          expect({ ...b, x: b.x - dx }).toEqual(a);
+        }
+      }
+    }
+    const apex = layOut(fixture.extent, [fixture.features[6]!]);
+    expect(Math.max(...allVertices(apex).map((v) => v.n))).toBe(0.75);
+    const gable = layOut(fixture.extent, [fixture.features[3]!]);
+    expect(
+      allVertices(gable).some((v) => v.kind === WALL_TOP && v.n === 1),
+    ).toBe(true);
+    expect(allVertices(gable).every((v) => v.run === 80)).toBe(true);
   });
 });
