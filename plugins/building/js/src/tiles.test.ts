@@ -99,6 +99,19 @@ describe("LayoutEvaluator", () => {
     expect(() => new LayoutEvaluator({ "building-roof-lines": 42 })).toThrow();
   });
 
+  it("evaluates string constants and camera values, resets defaults, and keeps the old value on error", () => {
+    const evaluator = new LayoutEvaluator({ "building-roof-lines": "literal" });
+    const feature = { type: 3 as const, properties: {} };
+    expect(evaluator.evaluate(16, feature).lines).toBe("literal");
+    evaluator.set("building-roof-lines", ["step", ["zoom"], "low", 16, "high"]);
+    expect(evaluator.evaluate(15, feature).lines).toBe("low");
+    expect(evaluator.evaluate(16, feature).lines).toBe("high");
+    expect(() => evaluator.set("building-roof-lines", 42)).toThrow();
+    expect(evaluator.evaluate(16, feature).lines).toBe("high");
+    evaluator.set("building-roof-lines", null);
+    expect(evaluator.evaluate(16, feature).lines).toBe("");
+  });
+
   it("rejects feature-state, bad constants and unknown keys", () => {
     expect(
       () =>

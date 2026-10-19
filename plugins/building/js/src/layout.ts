@@ -39,7 +39,12 @@
 
 import type { CanonicalTile } from "@maplibre-plugins/paint";
 
-import { complexRoof, complexStops } from "./complex.ts";
+import {
+  complexRoof,
+  complexStops,
+  partitionRoofGraph,
+  type RoofGraph,
+} from "./complex.ts";
 import {
   classifyRings,
   cross,
@@ -274,13 +279,23 @@ export class BuildingLayout {
       ? (values.orientation as RoofOrientation)
       : "along";
     const direction = directionVector(values.direction ?? -1);
-    for (const polygon of classifyRings(rings, this.extent, this.bounds))
+    const polygons = classifyRings(rings, this.extent, this.bounds);
+    const graphs =
+      shape === "complex"
+        ? partitionRoofGraph(
+            polygons,
+            values.lines ?? "",
+            this.tile,
+            this.extent,
+          )
+        : [];
+    for (const [i, polygon] of polygons.entries())
       this.addPolygon(
         polygon,
         shape,
         orientation,
         direction,
-        values.lines ?? "",
+        graphs[i] ?? null,
       );
     const vertexCount = this.vertexCount - firstVertex;
     if (vertexCount > 0)
@@ -301,7 +316,7 @@ export class BuildingLayout {
     shape: RoofShape,
     orientation: RoofOrientation,
     direction: Point | null,
-    lines: string,
+    lines: RoofGraph | null,
   ): void {
     const rings = [polygon.outer, ...polygon.holes];
     const walls = rings.map((ring) =>
@@ -335,14 +350,7 @@ export class BuildingLayout {
       : modelFor(footprint, shape, orientation, direction);
     if (shape === "complex" && !footprint.cut) {
       const run = minimumAreaRectangle(footprint.outer)?.halfShort ?? 0;
-      const roof = complexRoof(
-        footprint,
-        lines,
-        this.tile,
-        this.extent,
-        origin,
-        run,
-      );
+      const roof = complexRoof(footprint, lines, origin, run);
       if (roof) {
         model = { type: "complex", ...roof };
         const probe = new BuildingLayout(this.extent);

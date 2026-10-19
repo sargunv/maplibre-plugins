@@ -775,6 +775,35 @@ describe("roof shapes", () => {
 });
 
 describe("explicit roof graphs", () => {
+  it("recovers the cycling constraint, partitions components, and rejects numeric strings", () => {
+    const regression = fixtures.find(
+      (f) => f.name === "roof-lines-regressions.json",
+    )!.fixture;
+    for (const f of regression.features) {
+      const mesh = layOut(regression.extent, [f]);
+      const runs = [...new Set(allVertices(mesh).map((v) => v.run))].sort(
+        (a, b) => a - b,
+      );
+      if (f.label === "constraint recovery cycle") expect(runs).toEqual([500]);
+      else if (
+        f.label === "multipolygon apexes" ||
+        f.label === "numeric exponent edge"
+      )
+        expect(runs).toEqual([150]);
+      else if (f.label === "cross component edge") {
+        expect(runs).toEqual([0, 150]);
+        for (const v of allVertices(mesh))
+          expect(v.run).toBe(v.x >= 2000 ? 150 : 0);
+      } else expect(runs).toEqual([0]);
+    }
+  });
+  it("recovers a segment at the 192-point mesh limit", () => {
+    const dense = fixtures.find(
+      (f) => f.name === "roof-lines-dense.json",
+    )!.fixture;
+    const mesh = layOut(dense.extent, dense.features);
+    expect(allVertices(mesh).every((v) => v.run === 500)).toBe(true);
+  });
   const fixture = fixtures.find((f) => f.name === "roof-lines.json")!.fixture;
   it("keeps gable peaks, mapped apex heights and the same graph in adjacent tiles", () => {
     for (let start = 0; start < 12; start += 3) {

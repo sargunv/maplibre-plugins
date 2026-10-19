@@ -1054,6 +1054,144 @@ fixtures["roof-lines"] = {
   ),
 };
 
+// Review repros share their geometry and expected mesh with the Zig twin.
+const component = (x) => [
+  [x, 1000],
+  [x + 300, 1000],
+  [x + 300, 1300],
+  [x, 1300],
+];
+const apexes = [
+  [1150, 1150, 1],
+  [1650, 1150, 1],
+];
+const cyclePoints = [
+  [100, 300],
+  [100, 700],
+  [400, 500],
+  [900, 700],
+  [900, 950],
+  [500, 200],
+  [900, 200],
+  [400, 100],
+];
+const regressions = [
+  {
+    label: "constraint recovery cycle",
+    rings: [
+      [
+        [0, 0],
+        [1000, 0],
+        [1000, 1000],
+        [0, 1000],
+      ],
+    ],
+    lines: graph(
+      cyclePoints.map((p) => [...p, 1]),
+      [[4, 7]],
+    ),
+  },
+  {
+    label: "multipolygon apexes",
+    rings: [component(1000), component(1500)],
+    lines: graph(apexes, []),
+  },
+  {
+    label: "cross component edge",
+    rings: [component(1000), component(1500), component(2000)],
+    lines: graph([...apexes, [2150, 1150, 1]], [[0, 1]]),
+  },
+  {
+    label: "numeric string height",
+    rings: [component(1000)],
+    lines:
+      '{"vertices":[[10.877235978841782,49.9012145259869,"1"]],"edges":[]}',
+  },
+];
+for (const position of [0, 1, 2]) {
+  const vertex = geographic(apexes[0]);
+  vertex[position] = String(vertex[position]);
+  regressions.push({
+    label: `numeric string vertex ${position}`,
+    rings: [component(1000)],
+    lines: JSON.stringify({ vertices: [vertex], edges: [] }),
+  });
+}
+for (const edge of [
+  ["0", 1],
+  [0, "1"],
+  [null, 1],
+  [false, 1],
+  [0, 0.5],
+])
+  regressions.push({
+    label: `invalid edge ${JSON.stringify(edge)}`,
+    rings: [component(1000)],
+    lines: graph(
+      [
+        [1100, 1100, 1],
+        [1200, 1200, 1],
+      ],
+      [edge],
+    ),
+  });
+regressions.push({
+  label: "numeric exponent edge",
+  rings: [component(1000)],
+  lines: graph(
+    [
+      [1100, 1100, 1],
+      [1200, 1200, 1],
+    ],
+    [[0, 1]],
+  ).replace('"edges":[[0,1]]', '"edges":[[0.0,1e0]]'),
+});
+fixtures["roof-lines-regressions"] = {
+  description:
+    "PR12 review: terminating constraint insertion, per-component graphs, and strict numeric JSON tokens.",
+  full: true,
+  features: regressions.map((f, index) => ({
+    ...f,
+    index,
+    tile,
+    shape: "complex",
+  })),
+};
+
+// The near-limit case used to spend seconds flipping before falling back.
+let denseState = 1;
+const denseRandom = () => {
+  denseState = (Math.imul(denseState, 1664525) + 1013904223) >>> 0;
+  return denseState / 2 ** 32;
+};
+fixtures["roof-lines-dense"] = {
+  description:
+    "188 interior vertices and a constrained segment: terminating recovery near the graph size limit.",
+  features: [
+    {
+      index: 0,
+      tile,
+      shape: "complex",
+      rings: [
+        [
+          [0, 0],
+          [1000, 0],
+          [1000, 1000],
+          [0, 1000],
+        ],
+      ],
+      lines: graph(
+        Array.from({ length: 188 }, () => [
+          1 + Math.floor(denseRandom() * 998),
+          1 + Math.floor(denseRandom() * 998),
+          1,
+        ]),
+        [[0, 187]],
+      ),
+    },
+  ],
+};
+
 // Bounds beyond the copies: these two degenerate points emit no geometry.
 fixtures["roof-lines"].features.push({
   index: 99,

@@ -292,8 +292,10 @@ pub const BuildingLayout = struct {
         const shape = std.meta.stringToEnum(RoofShape, values.shape) orelse .flat;
         const orientation = std.meta.stringToEnum(RoofOrientation, values.orientation) orelse .along;
         const direction = directionVector(values.direction);
-        for (try classifyRings(scratch, rings, self.extent, self.bounds)) |polygon|
-            try self.addPolygon(scratch, polygon, shape, orientation, direction, values.lines);
+        const polygons = try classifyRings(scratch, rings, self.extent, self.bounds);
+        const graphs = if (shape == .complex) try complex.partitionRoofGraph(scratch, polygons, values.lines, self.tile, self.extent) else null;
+        for (polygons, 0..) |polygon, i|
+            try self.addPolygon(scratch, polygon, shape, orientation, direction, if (graphs) |g| g[i] else null);
         const vertex_count = self.vertexCount() - first_vertex;
         if (vertex_count > 0)
             try self.ranges.append(self.allocator, .{ .feature_index = feature_index, .first_vertex = first_vertex, .vertex_count = vertex_count });
@@ -313,7 +315,7 @@ pub const BuildingLayout = struct {
         shape: RoofShape,
         orientation: RoofOrientation,
         direction: ?Point,
-        lines: []const u8,
+        lines: ?complex.RoofGraph,
     ) Allocator.Error!void {
         const rings = try scratch.alloc([]const Point, 1 + polygon.holes.items.len);
         rings[0] = polygon.outer;
@@ -340,7 +342,7 @@ pub const BuildingLayout = struct {
         if (shape == .complex and !local.cut) {
             const rect = try minimumAreaRectangle(scratch, local.outer);
             const run = if (rect) |r| r.half_short else 0;
-            if (try complex.complexRoof(scratch, local, lines, self.tile, self.extent, origin, run)) |roof_lines| {
+            if (try complex.complexRoof(scratch, local, lines, origin, run)) |roof_lines| {
                 model = .{ .complex = roof_lines };
                 var closure: Closure = .empty;
                 var probe = BuildingLayout.init(scratch, @intFromFloat(self.extent));

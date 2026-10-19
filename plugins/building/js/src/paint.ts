@@ -12,7 +12,6 @@
 
 import {
   type CanonicalTile,
-  type CompiledValue,
   compileValue,
   type Current,
   type EvaluationFeature,
@@ -22,10 +21,7 @@ import {
   type TransitionOptions,
   type Vector,
 } from "@maplibre-plugins/paint";
-import {
-  createPropertyExpression,
-  type StylePropertyExpression,
-} from "@maplibre/maplibre-gl-style-spec";
+import { createPropertyExpression } from "@maplibre/maplibre-gl-style-spec";
 
 import type { LayoutValues } from "./layout.ts";
 import {
@@ -72,11 +68,63 @@ export function uniformNumber(
   return isFeatureValue(value) ? null : ((value as Vector)[0] ?? 0);
 }
 
+// Shared paint values include numeric vertex encoding and transitions. Layout
+// strings need neither: keep this adapter type-driven until that package has a
+// non-numeric value API.
+type LayoutValue = (
+  zoom: number,
+  feature: EvaluationFeature,
+  canonical?: CanonicalTile,
+) => Vector | string;
+function compileLayoutValue(
+  spec: (typeof layoutSpec)[LayoutName],
+  name: string,
+  raw: unknown,
+): LayoutValue {
+  if (spec.type !== "string") {
+    const compiled = compileValue(spec, name, raw);
+    return (zoom, feature, canonical) =>
+      isFeatureValue(compiled)
+        ? compiled.at(zoom, feature, undefined, canonical)
+        : compiled.at(zoom);
+  }
+  if (typeof raw === "string") return () => raw;
+  const result = createPropertyExpression(raw, `layout.${name}`, {
+    type: "string",
+    default: spec.default,
+    "property-type": "data-driven",
+    expression: { interpolated: false, parameters: ["zoom", "feature"] },
+    transition: false,
+  });
+  if (result.result === "error")
+    throw new Error(result.value.map((e) => e.message).join("; "));
+  const expression = result.value;
+  if (
+    expression.kind !== "constant" &&
+    expression.kind !== "camera" &&
+    expression.isStateDependent &&
+    !spec.featureState
+  )
+    throw new Error(`${name} cannot read feature-state`);
+  return (zoom, feature, canonical) => {
+    try {
+      const value = expression.evaluate(
+        { zoom },
+        feature as never,
+        {},
+        canonical as never,
+      );
+      return typeof value === "string" ? value : spec.default;
+    } catch {
+      return spec.default;
+    }
+  };
+}
+
 /** The layer's layout properties: raw values and their compiled forms. */
 export class LayoutEvaluator {
-  private lines: string | StylePropertyExpression = "";
   private readonly raw = new Map<LayoutName, unknown>();
-  private readonly compiled = new Map<LayoutName, CompiledValue>();
+  private readonly compiled = new Map<LayoutName, LayoutValue>();
 
   /**
    * Throws on an invalid value or an unknown key, as the host rejects the
@@ -96,33 +144,9 @@ export class LayoutEvaluator {
 
   /** Sets a property; undefined or null restores its default. Invalid values throw and keep the old one. */
   set(name: LayoutName, value: unknown): void {
-    if (name === "building-roof-lines") {
-      const raw = value ?? "";
-      if (typeof raw === "string") this.lines = raw;
-      else {
-        const result = createPropertyExpression(raw, `layout.${name}`, {
-          type: "string",
-          default: "",
-          "property-type": "data-driven",
-          expression: { interpolated: false, parameters: ["zoom", "feature"] },
-          transition: false,
-        });
-        if (result.result === "error")
-          throw new Error(result.value.map((e) => e.message).join("; "));
-        if (
-          result.value.kind !== "constant" &&
-          result.value.kind !== "camera" &&
-          result.value.isStateDependent
-        )
-          throw new Error("building-roof-lines cannot read feature-state");
-        this.lines = result.value;
-      }
-      this.raw.set(name, raw);
-      return;
-    }
-    const spec: PaintPropertySpec = layoutSpec[name];
+    const spec = layoutSpec[name];
     const raw = value === undefined || value === null ? spec.default : value;
-    const compiled = compileValue(spec, name, raw);
+    const compiled = compileLayoutValue(spec, name, raw);
     this.raw.set(name, raw);
     this.compiled.set(name, compiled);
   }
@@ -144,34 +168,18 @@ export class LayoutEvaluator {
     feature: EvaluationFeature,
     canonical?: CanonicalTile,
   ): Required<LayoutValues> {
-    const at = (name: LayoutName): number => {
-      const value = this.compiled.get(name)!;
-      const vector = isFeatureValue(value)
-        ? value.at(zoom, feature, undefined, canonical)
-        : value.at(zoom);
-      return vector[0] ?? 0;
+    const at = (name: LayoutName) =>
+      this.compiled.get(name)!(zoom, feature, canonical);
+    const number = (name: LayoutName): number => {
+      const value = at(name);
+      return typeof value === "string" ? 0 : (value[0] ?? 0);
     };
-    let lines = "";
-    try {
-      const value =
-        typeof this.lines === "string"
-          ? this.lines
-          : this.lines.evaluate(
-              { zoom },
-              feature as never,
-              {},
-              canonical as never,
-            );
-      if (typeof value === "string") lines = value;
-    } catch {
-      /* Invalid per-feature values use the empty default. */
-    }
     return {
-      lines,
-      shape: ROOF_SHAPES[at("building-roof-shape")] ?? "flat",
+      lines: at("building-roof-lines") as string,
+      shape: ROOF_SHAPES[number("building-roof-shape")] ?? "flat",
       orientation:
-        ROOF_ORIENTATIONS[at("building-roof-orientation")] ?? "along",
-      direction: at("building-roof-direction"),
+        ROOF_ORIENTATIONS[number("building-roof-orientation")] ?? "along",
+      direction: number("building-roof-direction"),
     };
   }
 }

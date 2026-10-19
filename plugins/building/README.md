@@ -103,13 +103,15 @@ translucent buildings (see [Rendering](#rendering)).
      pointing toward +x (or +y when vertical).
 4. The roof is built from these families:
    - **Complex roofs** triangulate a mapped graph of ridges, hips, valleys and
-     apexes. Vertices are inserted into the footprint triangulation, then
-     crossed diagonals are flipped until every mapped segment is a triangle
-     edge. Each triangle carries its own planar gradient. Eaves default to `n =
-     0`; graph vertices carry `n` in `[0, 1]`, including gable peaks on the
-     outline. Walls split at graph vertices on their boundary. Input is capped
-     at 192 total vertices and 576 constraints, and the emitted roof and
-     wall-top edges must pair before the mesh is accepted.
+     apexes. Vertices are inserted into the footprint triangulation, then each
+     mapped segment removes the triangles it crosses and ear-clips the two
+     boundary chains. Every walk consumes a triangle and every clipping step
+     removes a vertex, so recovery cannot cycle. Each triangle carries its own
+     planar gradient. Eaves default to `n = 0`; graph vertices carry `n` in `[0,
+     1]`, including gable peaks on the outline. Walls split at graph vertices on
+     their boundary. Input is capped at 192 total vertices and 576 constraints,
+     and the emitted roof and wall-top edges must pair before the mesh is
+     accepted.
    - **Skeleton shapes** (hipped and mansard) move every eave inward at equal
      speed, including courtyard boundaries, which expand into the building. Edge
      collapses and contacts split or merge wavefront loops. The swept faces form
@@ -263,8 +265,9 @@ cut draw roofless instead, see [Tile copies](#tile-copies)):
 - `flat`, `many`, and unknown shape values. Unknown orientations mean `along`.
 - `complex` with missing or invalid JSON, out-of-range coordinates or heights,
   points outside the footprint, intersecting constraints without a shared
-  vertex, an exhausted triangulation budget, or an open emitted mesh. Cut copies
-  remain roofless. The plugin does not repair or clip roof graphs.
+  vertex, a graph exceeding the size limits, an invalid triangulation cavity, or
+  an open emitted mesh. Cut copies remain roofless. The plugin does not repair
+  or clip roof graphs.
 - Footprints with holes for pyramidal roofs. Other shapes keep courtyards open,
   with walls facing into them.
 - Footprints using a skeleton that cannot resolve a numerical event or cover the
@@ -631,8 +634,12 @@ The [OSM example](examples/osm/README.md#roof-lines) resolves OSM height tags
 before layout. A graph is already normalized: changing paint height or angle
 scales it without reparsing the graph. The graph supports holes, shared
 junctions, boundary peaks and isolated apex points, but crossings must have an
-explicit shared vertex. Vertices on a cleaned-up eave snap to it within 0.75
-tile units; points farther outside cause a flat fallback.
+explicit shared vertex. Multipolygon features assign vertices to their exterior
+component (respecting holes), and retain edges within that component. An edge
+joining two components makes both fall back to flat; other components keep their
+roofs. Coordinates, heights and edge indices must be JSON numbers, not numeric
+strings. Vertices on a cleaned-up eave snap to it within 0.75 tile units; points
+farther outside cause a flat fallback.
 
 Paint properties follow `fill-extrusion`'s:
 
