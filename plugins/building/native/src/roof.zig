@@ -18,9 +18,9 @@
 //!   skeleton.ts / skeleton.zig compute the zero/one-speed wavefront; layout
 //!   turns its time into roof elevation, with a slope break for mansards.
 //! - Radial shapes (pyramidal, cone, dome, onion) are concentric copies of
-//!   the footprint shrunk toward the frame center, following a profile of
-//!   (height, scale) steps. They need the center inside the footprint's
-//!   kernel (every edge visible from it).
+//!   a base shrunk toward its center, following (height, scale) steps.
+//!   layout keeps the footprint for pyramids and near-round towers; otherwise
+//!   radial.zig supplies an inscribed circle surrounded by a flat terrace.
 //! - Flat roofs (flat, many and every fallback) are n = 1: the roof sits at
 //!   building-height and roof-height does not matter.
 //! - Roofless copies (a footprint the source cut, with a shape that is not
@@ -123,6 +123,8 @@ pub const RadialRoof = struct {
     pointed: bool,
     center: Point,
     run: f64,
+    /// A circular base above a flat terrace, when the footprint is not round.
+    base: ?[]const Point = null,
 };
 
 /// Footprints whose bounding rectangle is thinner than this get flat roofs.

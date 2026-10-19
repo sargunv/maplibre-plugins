@@ -247,6 +247,8 @@ case("shapes-top-down", shapes_style, (*shapes_center, 17.4, 0, 0),
               ("at", (centroid(shape_by_id[41])[0] + centroid(shape_by_id[58])[0]) / 2, centroid(shape_by_id[41])[1], 0, set()),
               grid(0.16)])
 case("shapes-close-radial", shapes_style, (*centroid(shape_by_id[12]), 19.6, 20, 50))
+for footprint, feature_id in [("rectangle", 12), ("l", 114), ("courtyard", 216)]:
+    case(f"shapes-dome-{footprint}", shapes_style, (*centroid(shape_by_id[feature_id]), 20.3, 30, 55))
 case("shapes-close-frame", shapes_style, (*centroid(shape_by_id[7]), 19.3, -30, 55))
 case("shapes-close-rotated", shapes_style, (*centroid(shape_by_id[60]), 19.0, 160, 50))
 # Onion roofs overhang (roof undersides) and cones: rows 1 to 3.

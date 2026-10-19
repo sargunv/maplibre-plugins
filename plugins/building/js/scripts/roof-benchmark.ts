@@ -49,6 +49,9 @@ for (const name of ["examples/osm/buildings", "fixtures/skeleton/invalides"]) {
     "quadruple_saltbox",
     "round",
     "round_gabled",
+    "cone",
+    "dome",
+    "onion",
   ]) {
     const times: number[] = [];
     let flat = 0,

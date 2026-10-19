@@ -248,7 +248,7 @@ const fixtures = {
   },
   "l-shape": {
     description:
-      "An L: gabled, gambrel, capped and barrel roofs follow its arms; half-hipped and saltbox span the bounding rectangle. Radial shapes fall back to flat (the center is outside the kernel).",
+      "An L: gabled, gambrel, capped and barrel roofs follow its arms; half-hipped and saltbox span the bounding rectangle. Cone, dome and onion sit on circular bases with terraces; pyramidal stays flat (the center is outside the kernel).",
     features: matrix([
       [
         [1000, 1000],
@@ -318,7 +318,7 @@ const fixtures = {
   },
   courtyard: {
     description:
-      "A courtyard: skeleton roofs follow the eaves, frame roofs clip around the hole, radial roofs stay flat. Courtyard walls face into it and follow the roof profile.",
+      "A courtyard: skeleton roofs follow the eaves, frame roofs clip around the hole, cone, dome and onion use inscribed circles with terraces, pyramidal stays flat. Courtyard walls face into it and follow the roof profile.",
     features: matrix(
       [
         [

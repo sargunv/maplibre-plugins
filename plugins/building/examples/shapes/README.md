@@ -42,10 +42,10 @@ south:
 |  12 | U, 18 m × 14 m with 6 m arms          | `along`                                  |
 |  13 | rectangle with an 8 m × 4 m courtyard | `along`                                  |
 
-The radial shapes (`pyramidal`, `cone`, `dome`, `onion`) on the L, T, U and
-courtyard rows draw flat roofs. Gabled and gambrel follow the arms, and frame
-roofs clip around the courtyard. These are the documented geometry paths and
-fallbacks.
+Cone, dome and onion use circular bases with flat terraces on the rectangle, L,
+T, U and courtyard rows. Their round footprints stay unchanged. Pyramidal stays
+flat on the L, T, U and courtyard rows. Gabled and gambrel follow the arms, and
+frame roofs clip around the courtyard.
 
 Walls are 7 m high. `height` adds the shape's `roof:height`: 3 m for `skillion`,
 4 m for `double_saltbox` and `quadruple_saltbox`, 5 m for most shapes, 6 m for

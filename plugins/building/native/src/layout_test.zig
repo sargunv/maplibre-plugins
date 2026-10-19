@@ -585,6 +585,42 @@ const courtyard = [_]Point{
     .{ .x = 1200, .y = 1050 },
 };
 
+test "places circular roofs above a terrace without covering the courtyard" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+    for ([_][]const u8{ "cone", "dome", "onion" }) |shape| {
+        for ([_][]const []const Point{ &.{&rectangle}, &.{ &rectangle, &courtyard } }) |rings| {
+            const result = try lay(allocator, rings, .{ .shape = shape });
+            var top: f32 = 0;
+            var terrace = false;
+            for (result.vertices.items) |v| {
+                if (v.kind == wall_top) try testing.expectEqual(0, v.n);
+                if (v.kind < roof_kind) continue;
+                try testing.expect(v.run > 0);
+                top = @max(top, v.n);
+                if (v.n == 0 and v.gx == 0 and v.gy == 0) terrace = true;
+                try testing.expect(v.x >= 1000 and v.x <= 1300 and v.y >= 1000 and v.y <= 1160);
+                if (rings.len > 1) try testing.expect(!(v.x > 1100 and v.x < 1200 and v.y > 1050 and v.y < 1100));
+            }
+            try testing.expectEqual(1, top);
+            try testing.expect(terrace);
+            var area: f64 = 0;
+            for (result.segments.items) |segment| {
+                var t: usize = 0;
+                while (t < segment.index_length) : (t += 3) {
+                    const a = result.vertices.items[segment.vertex_offset + result.indices.items[segment.index_offset + t]];
+                    const b = result.vertices.items[segment.vertex_offset + result.indices.items[segment.index_offset + t + 1]];
+                    const c = result.vertices.items[segment.vertex_offset + result.indices.items[segment.index_offset + t + 2]];
+                    if (a.kind < roof_kind) continue;
+                    area -= ((@as(f64, b.x) - a.x) * (@as(f64, c.y) - a.y) - (@as(f64, b.y) - a.y) * (@as(f64, c.x) - a.x)) / 2;
+                }
+            }
+            try expectCloseTo(area, 300 * 160 - @as(f64, if (rings.len > 1) 100 * 50 else 0), 1);
+        }
+    }
+}
+
 test "falls back to flat roofs" {
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();
@@ -598,10 +634,9 @@ test "falls back to flat roofs" {
         .{ .x = 1000, .y = 1300 },
     };
     try expectFlat(allocator, &.{&l_shape}, .{ .shape = "pyramidal" });
-    try expectFlat(allocator, &.{&l_shape}, .{ .shape = "dome" });
     try expectFlat(allocator, &.{&rectangle}, .{ .shape = "many" });
     try expectFlat(allocator, &.{&rectangle}, .{ .shape = "lean_to" });
-    try expectFlat(allocator, &.{ &rectangle, &courtyard }, .{ .shape = "dome" });
+    try expectFlat(allocator, &.{ &rectangle, &courtyard }, .{ .shape = "pyramidal" });
 }
 
 test "faces courtyard walls into the courtyard" {
@@ -663,10 +698,12 @@ test "draws a cut copy roofless, without walls on its cuts" {
     const lid = try filter(allocator, &result, isRoof);
     try testing.expect(lid.len > 0);
     for (lid) |v| try testing.expectEqual([5]f32{ 0, roof_kind, 0, 0, 100 }, [5]f32{ v.n, v.kind, v.gx, v.gy, v.run });
-    // Flat shapes and unsupported radial courtyards stay flat.
+    // Flat shapes and pyramidal courtyards stay flat.
     const hole = [_]Point{ .{ .x = 0, .y = 2050 }, .{ .x = 0, .y = 2150 }, .{ .x = 100, .y = 2150 }, .{ .x = 100, .y = 2050 } };
     const flat = try lay(allocator, &.{&cut}, .{ .shape = "flat" });
-    const holed = try lay(allocator, &.{ &cut, &hole }, .{ .shape = "dome" });
+    const holed = try lay(allocator, &.{ &cut, &hole }, .{ .shape = "pyramidal" });
+    const dome = try lay(allocator, &.{ &cut, &hole }, .{ .shape = "dome" });
+    for (dome.vertices.items) |v| try testing.expectEqual(0, v.n);
     for ([_]*const BuildingLayout{ &flat, &holed }) |r| {
         for (r.vertices.items) |v| {
             if (v.kind == wall_bottom) continue;
@@ -733,11 +770,13 @@ test "builds the same roof for every copy of a footprint" {
     // Whole copies: the tile's other features reach its buffer's edges.
     const none: TileBounds = .no_cuts;
     var compared: usize = 0;
-    for ([_][]const Point{ &rectangle, &turned, &l_shape, &circle }) |ring| {
+    for ([_][]const []const Point{ &.{&rectangle}, &.{&turned}, &.{&l_shape}, &.{&circle}, &.{ &rectangle, &courtyard } }) |rings| {
         for (values.items) |v| {
-            const base = try layIn(allocator, &.{ring}, v, none);
+            const base = try layIn(allocator, rings, v, none);
             for (offsets) |d| {
-                const copy = try layIn(allocator, &.{try moved(allocator, ring, d[0], d[1])}, v, none);
+                const shifted = try allocator.alloc([]const Point, rings.len);
+                for (rings, shifted) |ring, *out| out.* = try moved(allocator, ring, d[0], d[1]);
+                const copy = try layIn(allocator, shifted, v, none);
                 try testing.expectEqual(base.vertexCount(), copy.vertexCount());
                 try testing.expectEqualSlices(layout.Segment, base.segments.items, copy.segments.items);
                 try testing.expectEqualSlices(u16, base.indices.items, copy.indices.items);

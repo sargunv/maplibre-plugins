@@ -43,6 +43,7 @@
 //! output partly written; drop the whole layout then.
 
 const std = @import("std");
+const radial_base = @import("radial.zig");
 const Allocator = std.mem.Allocator;
 
 const footprint = @import("footprint.zig");
@@ -323,7 +324,7 @@ pub const BuildingLayout = struct {
             try cutModel(scratch, local, shape, orientation, direction)
         else
             try modelFor(scratch, local, shape, orientation, direction);
-        if (model == .radial and !radialFits(local.outer, model.radial.center))
+        if (model == .radial and model.radial.base == null and !radialFits(local.outer, model.radial.center))
             return self.build(scratch, local, .flat, walls);
         try self.build(scratch, local, model, walls);
     }
@@ -338,7 +339,18 @@ pub const BuildingLayout = struct {
             .flat => try self.addFlatRoof(scratch, polygon, 1, 0),
             .roofless => try self.addFlatRoof(scratch, polygon, 0, run),
             .planes => |planes| try self.addPlaneRoof(scratch, polygon, planes),
-            .radial => |radial| try self.addRadialRoof(scratch, polygon.outer, radial),
+            .radial => |radial| {
+                if (radial.base) |base| {
+                    var terrace = polygon;
+                    terrace.holes = .empty;
+                    try terrace.holes.appendSlice(scratch, polygon.holes.items);
+                    const hole = try scratch.dupe(Point, base);
+                    std.mem.reverse(Point, hole);
+                    try terrace.holes.append(scratch, hole);
+                    try self.addFlatRoof(scratch, terrace, 0, run);
+                }
+                try self.addRadialRoof(scratch, radial.base orelse polygon.outer, radial);
+            },
             .skeleton => |model_skeleton| try self.addSkeletonRoof(scratch, model_skeleton),
         }
     }
@@ -800,13 +812,16 @@ fn modelFor(
             return .{ .skeleton = .{ .geometry = geometry, .mansard = shape == .gambrel, .stationary = if (shape == .quadruple_saltbox) &.{} else ends, .profile = try skeletonProfile(scratch, shape, geometry.run), .eave_run = if (capped) roof.flat_top_inset * geometry.run else null } };
         }
     }
-    if (polygon.holes.items.len > 0 and isRadial(shape)) return .flat;
+    if (polygon.holes.items.len > 0 and shape == .pyramidal) return .flat;
     const frame = frameFor(rect, orientation, direction);
-    return roofModel(scratch, shape, rect, frame, polygon.outer, direction);
-}
-
-fn isRadial(shape: RoofShape) bool {
-    return shape == .pyramidal or shape == .cone or shape == .dome or shape == .onion;
+    var model = try roofModel(scratch, shape, rect, frame, polygon.outer, direction);
+    if (model != .radial or shape == .pyramidal) return model;
+    if (polygon.holes.items.len == 0 and radial_base.roundFootprint(polygon.outer, model.radial.center) and radialFits(polygon.outer, model.radial.center)) return model;
+    const circle = (try radial_base.inscribedCircle(scratch, polygon, model.radial.center, rect.half_short)) orelse return .flat;
+    model.radial.center = circle.center;
+    model.radial.run = circle.run;
+    model.radial.base = circle.base;
+    return model;
 }
 
 /// The model of a cut copy: flat where the whole footprint is flat too (a
@@ -821,7 +836,7 @@ fn cutModel(
     orientation: RoofOrientation,
     direction: ?Point,
 ) Allocator.Error!RoofModel {
-    if (shape == .flat or shape == .many or (polygon.holes.items.len > 0 and isRadial(shape))) return .flat;
+    if (shape == .flat or shape == .many or (polygon.holes.items.len > 0 and shape == .pyramidal)) return .flat;
     const rect = try minimumAreaRectangle(scratch, polygon.outer) orelse return .{ .roofless = 0 };
     const frame = frameFor(rect, orientation, direction);
     const model = try roofModel(scratch, shape, rect, frame, polygon.outer, direction);
