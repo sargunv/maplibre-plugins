@@ -15,8 +15,9 @@
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
+const footprint = @import("footprint.zig");
 
-pub const Point = struct { x: f64, y: f64 };
+pub const Point = footprint.Point;
 
 pub const Paint = struct {
     /// building-height and building-base, in meters; clamped at 0 here.
@@ -140,26 +141,53 @@ pub fn intersects(
     const top_points = try allocator.alloc(Point, count);
     defer allocator.free(top_points);
 
-    // The top polygon, all rings, unless part of it is behind the camera.
-    var top_visible = true;
     var offset: usize = 0;
     for (rings, 0..) |ring, r| {
         for (ring, 0..) |p, i| {
             const top = project(m, p.x + shift.x, p.y + shift.y, height);
             points[2 * (offset + i)] = top;
             points[2 * (offset + i) + 1] = project(m, p.x + shift.x, p.y + shift.y, base);
-            if (top) |t| top_points[offset + i] = t else top_visible = false;
+            top_points[offset + i] = top orelse .{ .x = 0, .y = 0 };
         }
         tops[r] = top_points[offset .. offset + ring.len];
         offset += ring.len;
     }
-    if (top_visible and queryIntersects(projected_query, tops)) return true;
+
+    // Each polygon's top (an exterior and the holes after it), unless part
+    // of it is behind the camera: one hidden polygon does not hide the
+    // others.
+    const polygon_of = try polygonRings(allocator, rings);
+    defer allocator.free(polygon_of);
+    const ring_offsets = try allocator.alloc(usize, rings.len);
+    defer allocator.free(ring_offsets);
+    offset = 0;
+    for (rings, ring_offsets) |ring, *o| {
+        o.* = offset;
+        offset += ring.len;
+    }
+    var polygon_tops: std.ArrayList([]const Point) = .empty;
+    defer polygon_tops.deinit(allocator);
+    var polygon: usize = 0;
+    while (true) : (polygon += 1) {
+        polygon_tops.clearRetainingCapacity();
+        var hidden = false;
+        for (rings, polygon_of, 0..) |ring, of, r| {
+            if (of != polygon) continue;
+            try polygon_tops.append(allocator, tops[r]);
+            for (0..ring.len) |i| {
+                if (points[2 * (ring_offsets[r] + i)] == null) hidden = true;
+            }
+        }
+        if (polygon_tops.items.len == 0) break;
+        if (!hidden and queryIntersects(projected_query, polygon_tops.items)) return true;
+    }
 
     // Every wall quad [topA, topB, baseB, baseA] in front of the camera.
     offset = 0;
-    for (rings) |ring| {
+    for (rings, polygon_of) |ring, of| {
         defer offset += ring.len;
-        if (ring.len < 2) continue;
+        // The layout drops this ring, so it has no walls.
+        if (of == null or ring.len < 2) continue;
         for (0..ring.len) |i| {
             const k = (i + 1) % ring.len;
             if (ring[i].x == ring[k].x and ring[i].y == ring[k].y) continue;
@@ -172,6 +200,29 @@ pub fn intersects(
         }
     }
     return false;
+}
+
+/// A feature's rings grouped into polygons, as classifyRings groups them:
+/// each ring's polygon, or null for a ring the layout drops (degenerate once
+/// simplified, or under min_ring_area). The first kept ring sets the
+/// exterior winding, and every exterior starts a polygon that the holes
+/// after it join. The twin of the TypeScript polygonRings.
+fn polygonRings(allocator: Allocator, rings: []const []const Point) Allocator.Error![]?usize {
+    const result = try allocator.alloc(?usize, rings.len);
+    var exterior_sign: f64 = 0;
+    var count: usize = 0;
+    for (rings, result) |ring, *of| {
+        of.* = null;
+        // Without tile bounds no edge is a cut, so the extent is unused.
+        const simplified = try footprint.simplifyRing(allocator, ring, 0, .no_cuts);
+        defer allocator.free(simplified);
+        const area = footprint.signedArea2(simplified);
+        if (@abs(area) < 2 * footprint.min_ring_area) continue;
+        if (exterior_sign == 0) exterior_sign = std.math.sign(area);
+        if (std.math.sign(area) == exterior_sign) count += 1;
+        of.* = count - 1;
+    }
+    return result;
 }
 
 // ---------------------------------------------------------------------------

@@ -135,6 +135,10 @@ export function coreExtrusion(
       "fill-extrusion-base": paint["building-base"] as never,
       "fill-extrusion-color": paint["building-color"] as never,
       "fill-extrusion-opacity": paint["building-opacity"] as never,
+      "fill-extrusion-translate": paint["building-translate"] as never,
+      "fill-extrusion-translate-anchor": paint[
+        "building-translate-anchor"
+      ] as never,
       "fill-extrusion-vertical-gradient": paint[
         "building-vertical-gradient"
       ] as never,
@@ -165,7 +169,7 @@ export function compareRow(
   };
   selectRow(parent, {
     name: "draw",
-    doc: "building: the plugin layer. fill-extrusion: a core layer with the same height, base, wall color and opacity (flat roofs). both: the two share the depth buffer, so the core boxes poke through the roofs.",
+    doc: "building: the plugin layer. fill-extrusion: a core layer with the same height, base, wall color, opacity and translate (flat roofs). both: the two share the depth buffer, so the core boxes poke through the roofs.",
     values: COMPARE,
     initial: "building",
     onInput: (value) => {

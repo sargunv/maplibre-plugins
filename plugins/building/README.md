@@ -65,14 +65,15 @@ Buildings rules to real OSM tags.
 
 Both twins lay out each tile's polygons the same way (`native/src/layout.zig`
 and `js/src/layout.ts`, tested against `fixtures/layout/`). A footprint is
-cleaned up and gets a roof frame from its minimum-area bounding rectangle, and
-its walls and roof become one mesh, built with that feature's roof shape,
-orientation and direction. The vertices carry relative roof elevations rather
-than heights: the shared vertex shader (`shaders/building.glsl`) turns them into
-meters from the paint properties, so heights, colors and roof angles change
-without a new layout, and only the three layout properties lay tiles out again.
-The shader lights every vertex exactly as core fill-extrusion does, and three
-draw passes give opaque or translucent buildings (see [Rendering](#rendering)).
+cleaned up and gets a straight skeleton for hipped and mansard roofs, or a roof
+frame from its minimum-area bounding rectangle for other shapes. Its walls and
+roof become one mesh, built with that feature's roof shape, orientation and
+direction. The vertices carry relative roof elevations rather than heights: the
+shared vertex shader (`shaders/building.glsl`) turns them into meters from the
+paint properties, so heights, colors and roof angles change without a new
+layout, and only the three layout properties lay tiles out again. The shader
+lights every vertex exactly as core fill-extrusion does, and three draw passes
+give opaque or translucent buildings (see [Rendering](#rendering)).
 
 ### Geometry
 
@@ -93,7 +94,13 @@ draw passes give opaque or translucent buildings (see [Rendering](#rendering)).
      closest to the direction. On a tie, it uses the short side's axis.
    - Without a direction, `+v` is `u` turned 90° clockwise on the map, with `u`
      pointing toward +x (or +y when vertical).
-4. The roof is built from one of three families:
+4. The roof is built from these families:
+   - **Skeleton shapes** (hipped and mansard) move every eave inward at equal
+     speed, including courtyard boundaries, which expand into the building. Edge
+     collapses and contacts split or merge wavefront loops. The swept faces form
+     the roof, with valleys at reflex corners and hips at convex corners. A
+     mansard changes slope at one third of the maximum inward run. Orientation
+     and direction do not change these roofs.
    - **Frame shapes** are concave height functions over the frame, written as
      the minimum of planes. The footprint is ear-clipped, and every triangle is
      clipped to every plane's facet, so each output triangle is planar. Points
@@ -113,11 +120,11 @@ The Source column names where each profile's constants come from.
 | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
 | flat, many        | `n = 1`                                                                                                                                     |                                                                                  |
 | gabled            | `1 - abs(v)/b`                                                                                                                              | OSM2World                                                                        |
-| hipped            | Equal slopes: the straight skeleton of the rectangle. Across a short frame, the hips meet in a point.                                       | none: equal slopes                                                               |
+| hipped            | Equal slopes over the straight skeleton of the footprint, including courtyard eaves.                                                        | [Straight skeleton](https://en.wikipedia.org/wiki/Straight_skeleton)             |
 | half-hipped       | Hips keep the side slope and start `min(b/3, 0.8a)` in from the ends, so the end walls rise to `n = 2/3`.                                   | OSM2World `HalfHippedRoof` (1/6 of the end wall, capped at 0.4 × the ridge line) |
 | skillion          | One plane. A set direction slopes it down exactly that way, over the footprint's extent along it. Otherwise it falls toward `+v` over `2b`. | OSM2World                                                                        |
 | gambrel           | `min(1 - abs(v)/2b, 2 - 2·abs(v)/b)`: breaks at `n = 2/3`, `b/3` in from the eaves                                                          | OSM2World `GambrelRoof`                                                          |
-| mansard           | The gambrel profile on all four sides. Ridge ends sit `min(2b/3, 0.8a)` in from the ends.                                                   | OSM2World `MansardRoof`                                                          |
+| mansard           | Straight skeleton with `n = min(2t/run, 0.5 + 0.5t/run)`, where `t` is inward distance from an eave.                                        | Gambrel slope profile on the straight skeleton                                   |
 | saltbox           | Equal slopes, with the ridge 0.7 of the width from the front eaves. The back eaves stop at `n = 4/7`.                                       | OSM2World `SaltboxRoof` (Streets GL uses a back eave at 0.2 instead)             |
 | round             | A semicircular barrel vault across `v` in 15° strips, with smooth gradients. Its gable walls follow the arc.                                | OSM2World / Streets GL (Streets GL uses 10° steps)                               |
 | round_gabled      | An equilateral pointed arch: each side is an arc of radius `2b` centered on the opposite eave. The two smooth sides meet at a crisp ridge.  | OSM wiki: "gabled, but the 2 roof slopes are rounded"                            |
@@ -136,7 +143,10 @@ Streets GL and the wiki's `Tag:roof:shape=round_gabled` page.
 
 `run` is `b` for most shapes. It is the face's own run for the saltbox variants
 (`0.3b`), `1.4b` for saltbox, the slope extent for skillion, and half the
-bounding rectangle's short side for radial shapes.
+bounding rectangle's short side for radial shapes. For hipped and mansard roofs
+it is the maximum wavefront distance before the footprint disappears. Mansard
+lower faces have slope `2/run`, and upper faces `0.5/run` in relative height;
+`building-roof-angle` still sets the total height from `run`.
 
 ### Tile copies
 
@@ -156,11 +166,12 @@ is drawn, also while its neighbors load.
 - A copy the source cut cannot know its roof: its frame needs the whole
   footprint. It draws roofless: walls up to the eaves and a flat lid at `n = 0`
   there, in the roof color. The real roof is never below the eaves, so wherever
-  a whole copy is drawn it covers the cut one. Flat shapes and footprints with
-  courtyards draw their flat roof, as their whole footprint does. The lid
-  carries the run the piece would have if it were whole, which only
-  `building-roof-angle` reads: with `building-roof-height` the eaves are exact,
-  with an angle they are an estimate.
+  a whole copy is drawn it covers the cut one. Flat shapes and unsupported
+  courtyard shapes draw their flat roof, as their whole footprint does. Hipped
+  and mansard courtyard copies draw roofless when cut. The lid carries the run
+  the piece would have if it were whole, which only `building-roof-angle` reads:
+  with `building-roof-height` the eaves are exact, with an angle they are an
+  estimate.
 - A cut is a ring edge on an axis-aligned line outside the tile square `[0,
   extent]` that is also the outermost coordinate of all the features the tile
   lays out on that side: a source clips everything along the same lines, so
@@ -194,7 +205,12 @@ These cases get a flat roof, and their walls are still drawn (copies the source
 cut draw roofless instead, see [Tile copies](#tile-copies)):
 
 - `flat`, `many`, and unknown shape values. Unknown orientations mean `along`.
-- Footprints with holes. Courtyard walls face into the courtyard.
+- Footprints with holes for shapes other than hipped and mansard. Courtyard
+  walls face into the courtyard.
+- Hipped or mansard footprints whose skeleton cannot resolve a numerical event
+  or cover the footprint, whose maximum inward run is under 1 tile unit, or that
+  have more than 192 vertices in all their rings: the skeleton's event search is
+  about cubic, and the web layer lays tiles out on the main thread.
 - Footprints whose bounding rectangle is thinner than 2 tile units, or a
   skillion whose extent along its direction is less than 2 tile units.
 - Radial shapes whose center is not at least 0.5 tile units inside every edge
@@ -694,11 +710,10 @@ would close them. The ones that limit this layer are under
 [Plugin API gaps](#plugin-api-gaps) below.
 
 1. **Frame roofs follow the bounding rectangle.** On footprints that are not
-   rectangles (L, T or irregular outlines), gabled, hipped, mansard and the
-   other frame shapes are the rectangle's roof clipped to the footprint, so
-   ridges and hips do not follow the arms of an L. Fix: a straight skeleton of
-   the footprint for hipped and mansard roofs, and ridges along its arms for
-   gabled ones, in both twins.
+   rectangles (L, T or irregular outlines), gabled and the other frame shapes
+   are the rectangle's roof clipped to the footprint, so their ridges do not
+   follow the arms of an L. Hipped and mansard roofs use the footprint's
+   straight skeleton and follow its arms and courtyards.
 2. **Radial shapes copy the footprint.** A dome or onion on a rectangle is a
    rectangular bulb, and on footprints whose center is outside their kernel (an
    L) radial shapes fall back to flat. Fix: blend the profile toward a circle
@@ -718,7 +733,10 @@ would close them. The ones that limit this layer are under
    there, so in a sparse tile a lone axis-aligned building across its edge draws
    roofless. A cut whose crossings a vector tile encoder merged into one point
    is taken for a whole footprint.
-5. **Holes flatten roofs.** Footprints with courtyards get flat roofs.
+5. **Courtyards support hipped and mansard roofs.** Other sloped shapes still
+   fall back to flat on footprints with holes. The skeleton uses floating-point
+   event calculations; unresolved events fall back to flat. Self-intersecting
+   footprints are not repaired.
 6. **Building parts are the source's job.** The layer draws every polygon it is
    given. Simple 3D Buildings' rules for `building:part` (drop the outline that
    has parts; parts do not inherit the outline's tags) and `type=building`
@@ -879,6 +897,7 @@ in the other:
 | ---------------------- | -------------------- | -------------------------------------------------- |
 | `footprint.ts`         | `footprint.zig`      | ring cleanup and classification, bounding frame    |
 | `triangulate.ts`       | `triangulate.zig`    | ear clipping with hole bridges                     |
+| `skeleton.ts`          | `skeleton.zig`       | equal-speed wavefront with courtyard boundaries    |
 | `roof.ts`              | `roof.zig`           | roof frames, planes, profiles                      |
 | `layout.ts`            | `layout.zig`         | walls, roofs, vertex output and segments           |
 | `spec.ts`              | `spec.zig`           | the layout table's enums (paint with `plugin.zig`) |

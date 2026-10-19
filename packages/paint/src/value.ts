@@ -111,6 +111,18 @@ export interface EvaluationFeature {
   readonly id?: number | string;
   /** Already decoded: no "__$json__:" strings. */
   readonly properties: Readonly<Record<string, unknown>>;
+  /**
+   * The feature's rings in tile coordinates (extent 8192), which `within`
+   * and `distance` read together with the canonical tile.
+   */
+  readonly geometry?: readonly (readonly { x: number; y: number }[])[];
+}
+
+/** A tile's canonical id, which `within` and `distance` need. */
+export interface CanonicalTile {
+  readonly z: number;
+  readonly x: number;
+  readonly y: number;
 }
 
 export type FeatureState = Readonly<Record<string, unknown>>;
@@ -140,7 +152,12 @@ export interface FeatureValue {
    * when the expression throws or returns null or the wrong type, while NaN
    * and ±Infinity pass through.
    */
-  at(zoom: number, feature: EvaluationFeature, state?: FeatureState): Vector;
+  at(
+    zoom: number,
+    feature: EvaluationFeature,
+    state?: FeatureState,
+    canonical?: CanonicalTile,
+  ): Vector;
   /**
    * Writes [min..., max...] at out[offset]: min at bucketZoom, max at
    * bucketZoom + 1 (a copy of min when the value is zoom-constant).
@@ -284,6 +301,7 @@ interface Evaluable {
     globals: { zoom: number },
     feature?: StyleFeature,
     featureState?: FeatureState,
+    canonical?: CanonicalTile,
   ): unknown;
 }
 
@@ -441,17 +459,24 @@ function evaluator(
   spec: PaintPropertySpec,
   expression: StylePropertyExpression,
   fallback: Vector,
-): (zoom: number, feature?: StyleFeature, state?: FeatureState) => Vector {
+): (
+  zoom: number,
+  feature?: StyleFeature,
+  state?: FeatureState,
+  canonical?: CanonicalTile,
+) => Vector {
   const evaluable = expression as unknown as Evaluable;
-  return (zoom, feature, state) => {
+  return (zoom, feature, state, canonical) => {
     let value: unknown;
     try {
-      // The host evaluates at an f32 zoom, and with no canonical tile
-      // (plugin_property.cpp evaluate).
+      // The host evaluates at an f32 zoom; paint with no canonical tile
+      // (plugin_property.cpp evaluate), layout with the bucket's
+      // (evaluateLayout).
       value = evaluable.evaluateWithoutErrorHandling(
         { zoom: f32(zoom) },
         feature,
         state,
+        canonical,
       );
     } catch {
       return fallback;
@@ -576,8 +601,13 @@ class ExpressionFeatureValue implements FeatureValue {
         : undefined;
   }
 
-  at(zoom: number, feature: EvaluationFeature, state?: FeatureState): Vector {
-    return this.evaluate(zoom, feature as StyleFeature, state);
+  at(
+    zoom: number,
+    feature: EvaluationFeature,
+    state?: FeatureState,
+    canonical?: CanonicalTile,
+  ): Vector {
+    return this.evaluate(zoom, feature as StyleFeature, state, canonical);
   }
 
   encode(

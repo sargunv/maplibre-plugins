@@ -201,7 +201,11 @@ export function layoutTile(
   );
   const features: PolygonFeature[] = [];
   for (const { index, id, rings, evaluation } of read) {
-    const featureLayout = values.evaluate(zoom, evaluation);
+    const featureLayout = values.evaluate(
+      zoom,
+      { ...evaluation, geometry: rings },
+      tileID,
+    );
     const before = layout.ranges.length;
     layout.addFeature(rings, features.length, featureLayout);
     // A degenerate footprint draws nothing.

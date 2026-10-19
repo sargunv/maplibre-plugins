@@ -64,6 +64,7 @@ const spec = @import("spec.zig");
 const RoofOrientation = spec.RoofOrientation;
 const RoofShape = spec.RoofShape;
 const triangulate = @import("triangulate.zig").triangulate;
+const skeleton = @import("skeleton.zig");
 
 pub const Point = footprint.Point;
 
@@ -335,6 +336,7 @@ pub const BuildingLayout = struct {
             .roofless => try self.addFlatRoof(scratch, polygon, 0, run),
             .planes => |planes| try self.addPlaneRoof(scratch, polygon.outer, planes),
             .radial => |radial| try self.addRadialRoof(scratch, polygon.outer, radial),
+            .skeleton => |model_skeleton| try self.addSkeletonRoof(scratch, model_skeleton),
         }
     }
 
@@ -367,6 +369,41 @@ pub const BuildingLayout = struct {
     }
 
     // ---- Roofs ---------------------------------------------------------------
+
+    fn addSkeletonRoof(self: *BuildingLayout, scratch: Allocator, model: roof.SkeletonRoof) Allocator.Error!void {
+        const run = model.geometry.run;
+        for (model.geometry.faces) |face| {
+            const bands: usize = if (model.mansard) 2 else 1;
+            for (0..bands) |band| {
+                const points = if (model.mansard) try clipSkeletonFace(scratch, face.points, run / 3, band == 0) else face.points;
+                if (points.len < 3) continue;
+                const slope: f64 = if (model.mansard) (if (band == 0) 2 else 0.5) else 1;
+                const intercept: f64 = if (model.mansard and band == 1) 0.5 else 0;
+                var mesh: Mesh = .init(scratch);
+                // Preserve collinear event vertices; triangles need no extra center.
+                var center: skeleton.SkeletonPoint = .{ .x = 0, .y = 0, .time = 0 };
+                const length: f64 = @floatFromInt(points.len);
+                for (points) |p| {
+                    center.x += p.x / length;
+                    center.y += p.y / length;
+                    center.time += p.time / length;
+                }
+                const gx = slope * face.normal.x / run;
+                const gy = slope * face.normal.y / run;
+                _ = try mesh.add(vertex(center.x, center.y, run, std.math.clamp(slope * center.time / run + intercept, 0, 1), roof_kind, gx, gy));
+                for (points) |p| _ = try mesh.add(vertex(p.x, p.y, run, std.math.clamp(slope * p.time / run + intercept, 0, 1), roof_kind, gx, gy));
+                if (points.len == 3) {
+                    if (triangleArea2(f32Point(.{ .x = points[0].x, .y = points[0].y }), f32Point(.{ .x = points[1].x, .y = points[1].y }), f32Point(.{ .x = points[2].x, .y = points[2].y })) > 0)
+                        try mesh.triangle(1, 2, 3);
+                } else for (points, 0..) |b, i| {
+                    const c = points[(i + 1) % points.len];
+                    if (triangleArea2(f32Point(.{ .x = center.x, .y = center.y }), f32Point(.{ .x = b.x, .y = b.y }), f32Point(.{ .x = c.x, .y = c.y })) > 0)
+                        try mesh.triangle(0, @intCast(i + 1), @intCast((i + 1) % points.len + 1));
+                }
+                try self.emit(scratch, &mesh);
+            }
+        }
+    }
 
     /// A triangulation at one n: 1 for flat roofs, 0 for roofless lids.
     fn addFlatRoof(self: *BuildingLayout, scratch: Allocator, polygon: Polygon, n: f64, run: f64) Allocator.Error!void {
@@ -694,16 +731,20 @@ fn modelFor(
     direction: ?Point,
 ) Allocator.Error!RoofModel {
     if (shape == .flat or shape == .many) return .flat;
-    // Courtyards have no ridge to follow.
-    if (polygon.holes.items.len > 0) return .flat;
     const rect = try minimumAreaRectangle(scratch, polygon.outer) orelse return .flat;
     if (rect.half_short < min_half_width) return .flat;
+    if (shape == .hipped or shape == .mansard) {
+        const geometry = (try skeleton.straightSkeleton(scratch, polygon)) orelse return .flat;
+        if (geometry.run < min_half_width) return .flat;
+        return .{ .skeleton = .{ .geometry = geometry, .mansard = shape == .mansard } };
+    }
+    if (polygon.holes.items.len > 0) return .flat;
     const frame = frameFor(rect, orientation, direction);
     return roofModel(scratch, shape, rect, frame, polygon.outer, direction);
 }
 
 /// The model of a cut copy: flat where the whole footprint is flat too (a
-/// flat shape, or courtyards, which the whole footprint has as well), else
+/// flat shape, or an unsupported courtyard shape), else
 /// roofless, with the run the piece would have if it were whole. Its eaves
 /// sit exactly at the real roof's with building-roof-height; with
 /// building-roof-angle the run is an estimate.
@@ -714,11 +755,26 @@ fn cutModel(
     orientation: RoofOrientation,
     direction: ?Point,
 ) Allocator.Error!RoofModel {
-    if (shape == .flat or shape == .many or polygon.holes.items.len > 0) return .flat;
+    if (shape == .flat or shape == .many or (polygon.holes.items.len > 0 and shape != .hipped and shape != .mansard)) return .flat;
     const rect = try minimumAreaRectangle(scratch, polygon.outer) orelse return .{ .roofless = 0 };
     const frame = frameFor(rect, orientation, direction);
     const model = try roofModel(scratch, shape, rect, frame, polygon.outer, direction);
     return .{ .roofless = if (model == .flat) rect.half_short else model.run() };
+}
+
+fn clipSkeletonFace(scratch: Allocator, points: []const skeleton.SkeletonPoint, time: f64, below: bool) Allocator.Error![]const skeleton.SkeletonPoint {
+    var result: std.ArrayList(skeleton.SkeletonPoint) = .empty;
+    for (points, 0..) |a, i| {
+        const b = points[(i + 1) % points.len];
+        const inside_a = if (below) a.time <= time else a.time >= time;
+        const inside_b = if (below) b.time <= time else b.time >= time;
+        if (inside_a) try result.append(scratch, a);
+        if (inside_a != inside_b) {
+            const t = (time - a.time) / (b.time - a.time);
+            try result.append(scratch, .{ .x = a.x + t * (b.x - a.x), .y = a.y + t * (b.y - a.y), .time = time });
+        }
+    }
+    return result.toOwnedSlice(scratch);
 }
 
 /// Whether every edge of a positive-area ring is visible from the center.

@@ -11,6 +11,7 @@
 // a string outside an enum's values, gives the property's default.
 
 import {
+  type CanonicalTile,
   type CompiledValue,
   compileValue,
   type Current,
@@ -104,12 +105,20 @@ export class LayoutEvaluator {
     ) as Record<LayoutName, unknown>;
   }
 
-  /** One feature's layout values at a tile's zoom. */
-  evaluate(zoom: number, feature: EvaluationFeature): Required<LayoutValues> {
+  /**
+   * One feature's layout values at a tile's zoom. With the tile and the
+   * feature's geometry, `within` and `distance` work, as in the host's
+   * layout.
+   */
+  evaluate(
+    zoom: number,
+    feature: EvaluationFeature,
+    canonical?: CanonicalTile,
+  ): Required<LayoutValues> {
     const at = (name: LayoutName): number => {
       const value = this.compiled.get(name)!;
       const vector = isFeatureValue(value)
-        ? value.at(zoom, feature)
+        ? value.at(zoom, feature, undefined, canonical)
         : value.at(zoom);
       return vector[0] ?? 0;
     };

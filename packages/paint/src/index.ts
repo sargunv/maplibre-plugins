@@ -34,6 +34,7 @@ export {
 } from "./binder.ts";
 export {
   type BooleanPaintPropertySpec,
+  type CanonicalTile,
   type Compiled,
   compile,
   type CompiledValue,

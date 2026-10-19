@@ -11,7 +11,7 @@
 // tile coordinates, y down) unless a case says otherwise, at realistic
 // sizes for an 8192 extent at zoom 16 (about 13.4 units per meter).
 
-import { writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -21,7 +21,7 @@ import { ROOF_SHAPES } from "../../js/src/spec.ts";
 const here = dirname(fileURLToPath(import.meta.url));
 const EXTENT = 8192;
 
-/** Shapes whose roof follows building-roof-orientation. */
+/** Frame shapes, plus skeleton shapes to check that orientation is ignored. */
 const FRAME_SHAPES = [
   "gabled",
   "hipped",
@@ -100,6 +100,56 @@ function matrix(rings, options = {}) {
 }
 
 const fixtures = {
+  skeleton: {
+    description:
+      "Straight-skeleton event regressions, including simultaneous collapses and touching courtyard boundaries; hipped and mansard twins must agree.",
+    features: JSON.parse(
+      readFileSync(join(here, "../skeleton/cases.json"), "utf8"),
+    ).flatMap((entry, i) =>
+      ["hipped", "mansard"].map((shape, j) => ({
+        index: i * 2 + j,
+        label: `${entry.name}: ${shape}`,
+        rings: entry.rings.map((ring) =>
+          ring.map(([x, y]) => [x + 1000, y + 1000]),
+        ),
+        shape,
+        orientation: "along",
+        direction: -1,
+      })),
+    ),
+  },
+  invalides: {
+    description:
+      "The three Hotel des Invalides courtyard wings (OSM snapshot 2026-10-01), projected onto the zoom-15 grid. Hipped and mansard roofs must cover the wings and leave all courtyards open.",
+    features: JSON.parse(
+      readFileSync(join(here, "../skeleton/invalides.geojson"), "utf8"),
+    ).features.flatMap((feature, i) => {
+      const rings = feature.geometry.coordinates.map((ring) =>
+        ring
+          .map(([lon, lat]) => [
+            Math.round(((lon + 180) / 360) * 2 ** 15 * EXTENT),
+            Math.round(
+              ((1 - Math.asinh(Math.tan((lat * Math.PI) / 180)) / Math.PI) /
+                2) *
+                2 ** 15 *
+                EXTENT,
+            ),
+          ])
+          .reverse(),
+      );
+      const minX = Math.min(...rings[0].map((p) => p[0]));
+      const minY = Math.min(...rings[0].map((p) => p[1]));
+      const local = rings.map((ring) =>
+        ring.map(([x, y]) => [x - minX + 1000, y - minY + 1000]),
+      );
+      return ["hipped", "mansard"].map((shape, j) => ({
+        index: i * 2 + j,
+        label: `${feature.properties.osm} ${shape}`,
+        rings: local,
+        shape,
+      }));
+    }),
+  },
   "rectangle-full": {
     description:
       "A 300 × 160 axis-aligned rectangle with every roof shape, recorded vertex by vertex.",
@@ -108,7 +158,7 @@ const fixtures = {
   },
   rectangle: {
     description:
-      "The same rectangle across and with set directions; skillion follows the exact direction, the others turn their frame to the nearest axis (135° is a tie, which picks the shorter side's axis).",
+      "The same rectangle across and with set directions; skillion follows the exact direction, skeleton shapes ignore directions and the other shapes turn their frame to the nearest axis (135° is a tie, which picks the shorter side's axis).",
     features: matrix([rectangle], { along: false }),
   },
   rotated: {
@@ -184,7 +234,7 @@ const fixtures = {
   },
   courtyard: {
     description:
-      "A footprint with a courtyard: every shape falls back to a flat roof, with walls around the courtyard facing into it.",
+      "A footprint with a courtyard: hipped and mansard follow the courtyard eaves; other shapes fall back to flat. Courtyard walls face into it.",
     features: matrix(
       [
         [
@@ -205,7 +255,7 @@ const fixtures = {
   },
   clipped: {
     description:
-      "Tile-clipped footprints, laid out as one tile whose features reach x = -128, x = extent + 64 and y = extent + 128: the source's cut lines. A ring edge on one of them, outside the tile, is a cut (so is a point repeated there, where the cut collapsed): it gets no wall, and the copy draws roofless (walls to the eaves and a lid at n = 0, with the piece's own run), or flat when its shape is flat or it has a courtyard. Axis-aligned walls elsewhere, an edge on x = 0 and footprints crossing the tile's edge uncut get their whole roofs.",
+      "Tile-clipped footprints, laid out as one tile whose features reach x = -128, x = extent + 64 and y = extent + 128: the source's cut lines. A ring edge on one of them, outside the tile, is a cut (so is a point repeated there, where the cut collapsed): it gets no wall, and the copy draws roofless (walls to the eaves and a lid at n = 0, with the piece's own run), or flat when its shape is flat or its courtyard shape is unsupported. Axis-aligned walls elsewhere, an edge on x = 0 and footprints crossing the tile's edge uncut get their whole roofs.",
     features: [
       ...["gabled", "hipped", "dome", "flat"].map((shape, i) => ({
         index: i,

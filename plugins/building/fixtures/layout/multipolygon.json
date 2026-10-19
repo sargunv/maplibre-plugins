@@ -21,17 +21,17 @@
   ],
   "expected": {
     "vertex_count": 102,
-    "index_count": 174,
-    "segments": [[0, 0, 102, 174]],
+    "index_count": 180,
+    "segments": [[0, 0, 102, 180]],
     "ranges": [[0, 0, 32], [1, 32, 70]],
     "summaries": [
       {
         "vertices": 32,
-        "triangles": 16,
+        "triangles": 18,
         "sum_pos": [36800, 34560, 2560],
-        "sum_roof": [8, 40, 0, 0],
-        "weighted": 38055.7320313,
-        "moment": 16035
+        "sum_roof": [7, 40, 0, 0],
+        "weighted": 38034.8375,
+        "moment": 21381
       },
       {
         "vertices": 70,

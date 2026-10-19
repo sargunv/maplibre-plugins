@@ -65,7 +65,8 @@ carried no property values.
   clamp either; building's layout reads any negative direction as unset, and its
   shader clamps the data-driven roof angle); `query_feature` gets the layout
   values at the camera zoom without a tile id, so zoom-dependent or
-  `within`/`distance` layout expressions can differ from the layout's.
+  `within`/`distance` layout expressions can differ from the layout's
+  (building's hit test reads only paint values, so its hits do not change).
 - Host fix: take `0006` into #4685 or a follow-up.
 
 **Tile id and overscale in the layout context.** The layout context had only the
@@ -90,12 +91,12 @@ feature clipped to one tile plus its buffer, with a tile-local `feature_index`
 and no feature id, and does not know which neighboring tiles are drawn.
 
 - Hits:
-  - building: a roof frame needs the whole footprint. Every tile draws its own
-    copy, as core fill-extrusion does, and whole copies compute the same roof,
-    but a copy the source cut at its buffer cannot, and draws roofless (walls to
-    the eaves and a lid). So a building larger than the buffer, cut in every
-    tile, draws roofless everywhere; none of the Bamberg example's 1,318 sloped
-    roofs does with its buffer of 256
+  - building: a roof frame or straight skeleton needs the whole footprint. Every
+    tile draws its own copy, as core fill-extrusion does, and whole copies
+    compute the same roof, but a copy the source cut at its buffer cannot, and
+    draws roofless (walls to the eaves and a lid). So a building larger than the
+    buffer, cut in every tile, draws roofless everywhere; none of the Bamberg
+    example's 1,318 sloped roofs does with its buffer of 256
     ([Tile copies](../plugins/building/README.md#tile-copies)). The cut lines
     are inferred from the bounds of the tile's features, as the layout context
     has no buffer.

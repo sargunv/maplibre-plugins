@@ -153,6 +153,33 @@ describe("layoutTile", () => {
     expect(Math.max(...roofN(2))).toBe(0);
   });
 
+  it("gives layout expressions the feature's geometry and tile, for distance", () => {
+    const tile = { z: 16, x: 34_000, y: 22_000 };
+    // A point inside the first building (layout units 800 to 1600 of 8192).
+    const f = 1200 / 8192;
+    const lon = ((tile.x + f) / 2 ** tile.z) * 360 - 180;
+    const lat =
+      (Math.atan(Math.sinh(Math.PI * (1 - (2 * (tile.y + f)) / 2 ** tile.z))) *
+        180) /
+      Math.PI;
+    const near = [
+      "<",
+      ["distance", { type: "Point", coordinates: [lon, lat] }],
+      1,
+    ];
+    const layout = new LayoutEvaluator({
+      "building-roof-shape": ["case", near, "gabled", "flat"],
+    });
+    const out = layoutTile(
+      layerOf([
+        { id: 1, rings: square(400, 400) },
+        { id: 2, rings: square(3000, 400) },
+      ]),
+      { ...options(layout), canonical: tile },
+    );
+    expect(out.features.map((f) => f.layout.shape)).toEqual(["gabled", "flat"]);
+  });
+
   it("decodes a GeoJSON source's encoded properties", () => {
     const tile = layoutTile(
       layerOf([

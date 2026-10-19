@@ -1,5 +1,5 @@
 {
-  "description": "Tile-clipped footprints, laid out as one tile whose features reach x = -128, x = extent + 64 and y = extent + 128: the source's cut lines. A ring edge on one of them, outside the tile, is a cut (so is a point repeated there, where the cut collapsed): it gets no wall, and the copy draws roofless (walls to the eaves and a lid at n = 0, with the piece's own run), or flat when its shape is flat or it has a courtyard. Axis-aligned walls elsewhere, an edge on x = 0 and footprints crossing the tile's edge uncut get their whole roofs.",
+  "description": "Tile-clipped footprints, laid out as one tile whose features reach x = -128, x = extent + 64 and y = extent + 128: the source's cut lines. A ring edge on one of them, outside the tile, is a cut (so is a point repeated there, where the cut collapsed): it gets no wall, and the copy draws roofless (walls to the eaves and a lid at n = 0, with the piece's own run), or flat when its shape is flat or its courtyard shape is unsupported. Axis-aligned walls elsewhere, an edge on x = 0 and footprints crossing the tile's edge uncut get their whole roofs.",
   "extent": 8192,
   "features": [
     {
@@ -92,8 +92,8 @@
   ],
   "expected": {
     "vertex_count": 261,
-    "index_count": 423,
-    "segments": [[0, 0, 261, 423]],
+    "index_count": 429,
+    "segments": [[0, 0, 261, 429]],
     "ranges": [
       [0, 0, 16],
       [1, 16, 16],
@@ -183,11 +183,11 @@
       },
       {
         "vertices": 32,
-        "triangles": 16,
+        "triangles": 18,
         "sum_pos": [261440, 98560, 2240],
-        "sum_roof": [8, 40, 0, 0],
-        "weighted": 186848.211607,
-        "moment": 16040
+        "sum_roof": [7, 40, 0, 0],
+        "weighted": 186821.257143,
+        "moment": 22511
       },
       {
         "vertices": 16,

@@ -1,5 +1,5 @@
 {
-  "description": "The same rectangle across and with set directions; skillion follows the exact direction, the others turn their frame to the nearest axis (135° is a tie, which picks the shorter side's axis).",
+  "description": "The same rectangle across and with set directions; skillion follows the exact direction, skeleton shapes ignore directions and the other shapes turn their frame to the nearest axis (135° is a tie, which picks the shorter side's axis).",
   "extent": 8192,
   "features": [
     {
@@ -180,32 +180,32 @@
     }
   ],
   "expected": {
-    "vertex_count": 890,
-    "index_count": 1866,
-    "segments": [[0, 0, 890, 1866]],
+    "vertex_count": 894,
+    "index_count": 1908,
+    "segments": [[0, 0, 894, 1908]],
     "ranges": [
       [0, 0, 30],
-      [1, 30, 28],
-      [2, 58, 44],
-      [3, 102, 20],
-      [4, 122, 50],
-      [5, 172, 97],
-      [6, 269, 40],
-      [7, 309, 30],
-      [8, 339, 52],
-      [9, 391, 40],
-      [10, 431, 72],
-      [11, 503, 30],
-      [12, 533, 32],
-      [13, 565, 20],
-      [14, 585, 20],
-      [15, 605, 30],
-      [16, 635, 30],
-      [17, 665, 97],
-      [18, 762, 50],
-      [19, 812, 28],
-      [20, 840, 20],
-      [21, 860, 30]
+      [1, 30, 32],
+      [2, 62, 44],
+      [3, 106, 20],
+      [4, 126, 50],
+      [5, 176, 97],
+      [6, 273, 40],
+      [7, 313, 30],
+      [8, 343, 52],
+      [9, 395, 40],
+      [10, 435, 72],
+      [11, 507, 30],
+      [12, 537, 32],
+      [13, 569, 20],
+      [14, 589, 20],
+      [15, 609, 30],
+      [16, 639, 30],
+      [17, 669, 97],
+      [18, 766, 50],
+      [19, 816, 28],
+      [20, 844, 20],
+      [21, 864, 30]
     ],
     "summaries": [
       {
@@ -217,12 +217,12 @@
         "moment": 19543
       },
       {
-        "vertices": 28,
-        "triangles": 12,
-        "sum_pos": [32200, 30240, 4200],
-        "sum_roof": [4, 32, 0, 0],
-        "weighted": 34499.8947321,
-        "moment": 7658
+        "vertices": 32,
+        "triangles": 18,
+        "sum_pos": [36800, 34560, 2560],
+        "sum_roof": [7, 40, 0, 0],
+        "weighted": 38034.8375,
+        "moment": 21381
       },
       {
         "vertices": 44,
@@ -274,11 +274,11 @@
       },
       {
         "vertices": 52,
-        "triangles": 28,
-        "sum_pos": [59800, 56159.9995117, 7800],
-        "sum_roof": [21.3333337307, 80, 0, 0],
-        "weighted": 63165.2967691,
-        "moment": 79928
+        "triangles": 34,
+        "sum_pos": [59799.999939, 56159.999939, 4160],
+        "sum_roof": [19.6666669846, 80, 0, 0],
+        "weighted": 61049.9250736,
+        "moment": 123837
       },
       {
         "vertices": 40,
@@ -306,11 +306,11 @@
       },
       {
         "vertices": 32,
-        "triangles": 16,
+        "triangles": 18,
         "sum_pos": [36800, 34560, 2560],
-        "sum_roof": [8, 40, 0, 0],
-        "weighted": 38175.0804687,
-        "moment": 16047
+        "sum_roof": [7, 40, 0, 0],
+        "weighted": 38034.8375,
+        "moment": 21381
       },
       {
         "vertices": 20,
