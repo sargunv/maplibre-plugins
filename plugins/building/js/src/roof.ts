@@ -3,17 +3,20 @@
 // against ../../fixtures/layout.
 //
 // A roof is described by n, its relative elevation: z = wallTop + n ×
-// roofHeight, with n = 0 at the eaves and 1 at the top. Three families:
+// roofHeight, with n = 0 at the eaves and 1 at the top. Roof families:
 //
-// - Frame shapes (gabled, hipped, half-hipped, skillion, gambrel, round,
-//   double_saltbox, saltbox, mansard, quadruple_saltbox, round_gabled) live
+// - Frame shapes (gabled, half-hipped, skillion, gambrel, round,
+//   double_saltbox, saltbox, quadruple_saltbox, round_gabled) live
 //   in the roof frame: u along the ridge, v across it, centered on the
 //   footprint's minimum-area bounding rectangle, half-extents a (along u)
 //   and b (along v). Every one is concave, so it is written as the minimum
 //   of planes n = A·u + B·v + C; the region where a plane is the minimum is
-//   a convex facet, and the break lines (ridges, hips, gambrel and mansard
+//   a convex facet, and the break lines (ridges, hips and gambrel
 //   breaks) are where facets meet. Curved ones (round, round_gabled) are
 //   strips of planes with smooth gradients.
+// - Skeleton shapes (hipped, mansard) follow every eave, including courtyards.
+//   skeleton.ts / skeleton.zig compute the equal-speed wavefront; layout
+//   turns its time into roof elevation, with a slope break for mansards.
 // - Radial shapes (pyramidal, cone, dome, onion) are concentric copies of
 //   the footprint shrunk toward the frame center, following a profile of
 //   (height, scale) steps. They need the center inside the footprint's
@@ -28,6 +31,7 @@
 // roof/*.java) unless noted.
 
 import { type BoundingRectangle, type Point, TIE } from "./footprint.ts";
+import type { Skeleton } from "./skeleton.ts";
 import type { RoofOrientation, RoofShape } from "./spec.ts";
 
 /** n = gx·x + gy·y + c in tile units. */
@@ -63,6 +67,7 @@ export interface StripProfile {
 
 export type RoofModel =
   | { type: "flat" }
+  | ({ type: "skeleton"; mansard: boolean } & Skeleton)
   | {
       /**
        * A cut copy of a footprint: walls to the eaves and a lid at n = 0.
@@ -105,8 +110,6 @@ export const HALF_HIPPED_INSET = 1 / 6;
 export const RIDGE_OFFSET_CAP = 0.4;
 /** OSM2World SaltboxRoof: the ridge sits 0.7 of the width from the front. */
 export const SALTBOX_RIDGE = 0.7;
-/** OSM2World MansardRoof: ridge ends 1/3 of the end wall in from the ends. */
-export const MANSARD_RIDGE_OFFSET = 1 / 3;
 /**
  * double_saltbox and quadruple_saltbox are a gabled and a hipped roof cut
  * off by a flat top, as Streets GL's QuadrupleSaltboxRoofBuilder and
@@ -259,7 +262,8 @@ function stripPlanes(frame: Frame, profile: StripProfile): Plane[] {
 
 /**
  * The roof model of one footprint. `outer` is the exterior ring (positive
- * area) and is only read by skillion's exact direction.
+ * area) and is only read by skillion's exact direction. For skeleton shapes,
+ * layout builds the full model; this function supplies only a cut-copy run.
  */
 export function roofModel(
   shape: RoofShape,
@@ -299,20 +303,10 @@ export function roofModel(
         ],
         b,
       );
-    case "hipped": {
-      // Equal slopes all round: the straight skeleton of the rectangle.
-      // Across a short frame (a < b) the hips meet in a point.
-      const r = Math.min(a, b);
-      return planes(
-        [
-          [0, -1 / b, 1],
-          [0, 1 / b, 1],
-          [-1 / r, 0, 1 + (a - r) / r],
-          [1 / r, 0, 1 + (a - r) / r],
-        ],
-        b,
-      );
-    }
+    case "hipped":
+    case "mansard":
+      // Whole footprints use the skeleton; cut copies only need a run estimate.
+      return { type: "roofless", run: rect.halfShort };
     case "half-hipped": {
       // The hip planes keep the side slope and are cut off by the end
       // walls: their ridge ends sit an inset in from the ends.
@@ -421,27 +415,6 @@ export function roofModel(
           [0, 1 / run, 1 - ridge / run],
         ],
         run,
-      );
-    }
-    case "mansard": {
-      // OSM2World MansardRoof: a hipped roof whose faces break 1/3 of the
-      // way in, at n = 2/3, the same profile as gambrel on every side.
-      const inset = Math.min(
-        2 * b * MANSARD_RIDGE_OFFSET,
-        RIDGE_OFFSET_CAP * 2 * a,
-      );
-      return planes(
-        [
-          [0, -1 / (2 * b), 1],
-          [0, 1 / (2 * b), 1],
-          [0, -2 / b, 2],
-          [0, 2 / b, 2],
-          [-1 / (2 * inset), 0, 1 + (a - inset) / (2 * inset)],
-          [1 / (2 * inset), 0, 1 + (a - inset) / (2 * inset)],
-          [-2 / inset, 0, (2 * a) / inset],
-          [2 / inset, 0, (2 * a) / inset],
-        ],
-        b,
       );
     }
     case "pyramidal":

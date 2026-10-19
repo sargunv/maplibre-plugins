@@ -56,6 +56,7 @@ import {
   type RoofModel,
   stripGradient,
 } from "./roof.ts";
+import { straightSkeleton, type SkeletonPoint } from "./skeleton.ts";
 import {
   ROOF_ORIENTATIONS,
   ROOF_SHAPES,
@@ -327,6 +328,60 @@ export class BuildingLayout {
         return this.addPlaneRoof(polygon.outer, model);
       case "radial":
         return this.addRadialRoof(polygon.outer, model);
+      case "skeleton":
+        return this.addSkeletonRoof(model);
+    }
+  }
+
+  private addSkeletonRoof(
+    model: Extract<RoofModel, { type: "skeleton" }>,
+  ): void {
+    for (const face of model.faces) {
+      const bands = model.mansard ? [0, 1] : [0];
+      for (const band of bands) {
+        const points = model.mansard
+          ? clipSkeletonFace(face.points, model.run / 3, band === 0)
+          : face.points;
+        if (points.length < 3) continue;
+        const slope = model.mansard ? (band === 0 ? 2 : 0.5) : 1;
+        const intercept = model.mansard && band === 1 ? 0.5 : 0;
+        const mesh = new Mesh();
+        // A center fan preserves collinear event vertices shared with adjacent
+        // faces. Triangles need no extra center, which can collapse in float32.
+        const center = { x: 0, y: 0, time: 0 };
+        for (const p of points) {
+          center.x += p.x / points.length;
+          center.y += p.y / points.length;
+          center.time += p.time / points.length;
+        }
+        for (const p of [center, ...points])
+          mesh.add({
+            x: p.x,
+            y: p.y,
+            run: model.run,
+            n: Math.max(
+              0,
+              Math.min(1, (slope * p.time) / model.run + intercept),
+            ),
+            kind: ROOF,
+            gx: (slope * face.normal.x) / model.run,
+            gy: (slope * face.normal.y) / model.run,
+          });
+        if (points.length === 3) {
+          if (
+            triangleArea2(f32(points[0]!), f32(points[1]!), f32(points[2]!)) > 0
+          )
+            mesh.triangle(1, 2, 3);
+        } else
+          for (let i = 0; i < points.length; i++) {
+            const a = center;
+            const b = points[i]!;
+            const c = points[(i + 1) % points.length]!;
+            if (triangleArea2(f32(a), f32(b), f32(c)) > 0)
+              mesh.triangle(0, i + 1, ((i + 1) % points.length) + 1);
+          }
+        this.emit(mesh);
+      }
     }
   }
 
@@ -735,17 +790,22 @@ function modelFor(
   direction: Point | null,
 ): RoofModel {
   if (shape === "flat" || shape === "many") return { type: "flat" };
-  // Courtyards have no ridge to follow.
-  if (polygon.holes.length > 0) return { type: "flat" };
   const rect = minimumAreaRectangle(polygon.outer);
   if (!rect || rect.halfShort < MIN_HALF_WIDTH) return { type: "flat" };
+  if (shape === "hipped" || shape === "mansard") {
+    const skeleton = straightSkeleton(polygon);
+    return skeleton && skeleton.run >= MIN_HALF_WIDTH
+      ? { type: "skeleton", mansard: shape === "mansard", ...skeleton }
+      : { type: "flat" };
+  }
+  if (polygon.holes.length > 0) return { type: "flat" };
   const frame = frameFor(rect, orientation, direction);
   return roofModel(shape, rect, frame, polygon.outer, direction);
 }
 
 /**
  * The model of a cut copy: flat where the whole footprint is flat too (a
- * flat shape, or courtyards, which the whole footprint has as well), else
+ * flat shape, or an unsupported courtyard shape), else
  * roofless, with the run the piece would have if it were whole. Its eaves
  * sit exactly at the real roof's with building-roof-height; with
  * building-roof-angle the run is an estimate.
@@ -756,7 +816,11 @@ function cutModel(
   orientation: RoofOrientation,
   direction: Point | null,
 ): RoofModel {
-  if (shape === "flat" || shape === "many" || polygon.holes.length > 0)
+  if (
+    shape === "flat" ||
+    shape === "many" ||
+    (polygon.holes.length > 0 && shape !== "hipped" && shape !== "mansard")
+  )
     return { type: "flat" };
   const rect = minimumAreaRectangle(polygon.outer);
   if (!rect) return { type: "roofless", run: 0 };
@@ -766,6 +830,26 @@ function cutModel(
     type: "roofless",
     run: model.type === "flat" ? rect.halfShort : model.run,
   };
+}
+
+function clipSkeletonFace(
+  points: readonly SkeletonPoint[],
+  time: number,
+  below: boolean,
+): SkeletonPoint[] {
+  const result: SkeletonPoint[] = [];
+  for (let i = 0; i < points.length; i++) {
+    const a = points[i]!;
+    const b = points[(i + 1) % points.length]!;
+    const insideA = below ? a.time <= time : a.time >= time;
+    const insideB = below ? b.time <= time : b.time >= time;
+    if (insideA) result.push(a);
+    if (insideA !== insideB) {
+      const t = (time - a.time) / (b.time - a.time);
+      result.push({ x: a.x + t * (b.x - a.x), y: a.y + t * (b.y - a.y), time });
+    }
+  }
+  return result;
 }
 
 /** Whether every edge of a positive-area ring is visible from the center. */
