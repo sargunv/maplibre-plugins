@@ -5,7 +5,9 @@ import type { Feature } from "geojson";
 import type { Map as MaplibreMap } from "maplibre-gl";
 
 import { mountAnimatedIcon } from "./animated-icon.ts";
+import { mountBuilding } from "./building.ts";
 import { mountLocationIndicator } from "./location-indicator.ts";
+import { mountOsmRoofs, osmAttribution } from "./osm-roofs.ts";
 import { mountParticles, particlesCamera } from "./particles.ts";
 import { mountWater } from "./water.ts";
 import {
@@ -91,5 +93,24 @@ export const plugins: PluginEntry[] = [
       "Stateless GPU particles from one shader core: an emitter at a point, on a disc, or as weather around the camera, and particles from every point, line and polygon of a vector source layer. Pick a preset; every control is a paint property the native plugin also accepts.",
     camera: particlesCamera,
     mount: mountParticles,
+  },
+  {
+    id: "building",
+    title: "Buildings",
+    layerType: "building",
+    description:
+      "A replacement for fill-extrusion with OSM roof:shape roofs: every roof shape on a grid of footprints, lit by the style light like core fill-extrusion. Each control is a layout or paint property the native plugin also accepts.",
+    camera: { center: [50.0971, 14.4152], zoom: 17, bearing: -20, pitch: 60 },
+    mount: mountBuilding,
+  },
+  {
+    id: "osm-roofs",
+    title: "OSM roofs (Bamberg)",
+    layerType: "building",
+    description:
+      "Real OpenStreetMap buildings of Bamberg's old town with their roof tagging, drawn with the Simple 3D Buildings rules. Roofs tagged with roof:shape are terracotta, untagged ones grey. Hover a building to highlight it and click it to inspect its roof tags.",
+    attribution: osmAttribution,
+    camera: { center: [49.8915, 10.885], zoom: 16.5, bearing: -30, pitch: 60 },
+    mount: mountOsmRoofs,
   },
 ];

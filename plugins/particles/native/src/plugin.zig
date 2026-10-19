@@ -45,7 +45,6 @@ const layer_types = [_]c.mln_plugin_layer_type_v1{
         .query_feature = null,
         .update_uniform_block = emitter.updateUniformBlock,
         .get_query_radius = null,
-        .enable_stencil_overlap_dedup = 0,
         .enable_near_clipped_matrix = 0,
         .should_animate = emitter.shouldAnimate,
         .source_free = 1,
@@ -67,7 +66,6 @@ const layer_types = [_]c.mln_plugin_layer_type_v1{
         .query_feature = null,
         .update_uniform_block = features.updateUniformBlock,
         .get_query_radius = null,
-        .enable_stencil_overlap_dedup = 0,
         .enable_near_clipped_matrix = 0,
         .should_animate = features.shouldAnimate,
         .source_free = 0,
@@ -509,9 +507,9 @@ const registry = struct {
 
     fn encodingSize(encoding: c.mln_plugin_property_encoding_v1) u32 {
         return switch (encoding) {
-            c.MLN_PLUGIN_PROPERTY_ENCODING_FLOAT, c.MLN_PLUGIN_PROPERTY_ENCODING_ENUM_FLOAT => 4,
+            c.MLN_PLUGIN_PROPERTY_ENCODING_FLOAT, c.MLN_PLUGIN_PROPERTY_ENCODING_BOOLEAN_FLOAT, c.MLN_PLUGIN_PROPERTY_ENCODING_ENUM_FLOAT => 4,
             c.MLN_PLUGIN_PROPERTY_ENCODING_FLOAT2 => 8,
-            c.MLN_PLUGIN_PROPERTY_ENCODING_COLOR => 16,
+            c.MLN_PLUGIN_PROPERTY_ENCODING_IMAGE_FROM, c.MLN_PLUGIN_PROPERTY_ENCODING_IMAGE_TO, c.MLN_PLUGIN_PROPERTY_ENCODING_COLOR, c.MLN_PLUGIN_PROPERTY_ENCODING_COLOR_RGBA8 => 16,
             else => 0,
         };
     }
@@ -522,9 +520,10 @@ const registry = struct {
 
     fn unpackedType(encoding: c.mln_plugin_property_encoding_v1) c.mln_plugin_vertex_attribute_type {
         return switch (encoding) {
-            c.MLN_PLUGIN_PROPERTY_ENCODING_FLOAT, c.MLN_PLUGIN_PROPERTY_ENCODING_ENUM_FLOAT => c.MLN_PLUGIN_VERTEX_FLOAT,
+            c.MLN_PLUGIN_PROPERTY_ENCODING_FLOAT, c.MLN_PLUGIN_PROPERTY_ENCODING_BOOLEAN_FLOAT, c.MLN_PLUGIN_PROPERTY_ENCODING_ENUM_FLOAT => c.MLN_PLUGIN_VERTEX_FLOAT,
             c.MLN_PLUGIN_PROPERTY_ENCODING_FLOAT2 => c.MLN_PLUGIN_VERTEX_FLOAT_X2,
-            c.MLN_PLUGIN_PROPERTY_ENCODING_COLOR => c.MLN_PLUGIN_VERTEX_FLOAT_X4,
+            c.MLN_PLUGIN_PROPERTY_ENCODING_IMAGE_FROM, c.MLN_PLUGIN_PROPERTY_ENCODING_IMAGE_TO, c.MLN_PLUGIN_PROPERTY_ENCODING_COLOR => c.MLN_PLUGIN_VERTEX_FLOAT_X4,
+            c.MLN_PLUGIN_PROPERTY_ENCODING_COLOR_RGBA8 => c.MLN_PLUGIN_VERTEX_UINT8_X4_NORMALIZED,
             else => 0,
         };
     }
@@ -547,6 +546,11 @@ const registry = struct {
         if (shader.struct_size < @sizeOf(c.mln_plugin_shader_descriptor_v1) or !validString(shader.shader_id) or
             shader.source_count == 0 or shader.sources == null or shader.attribute_count == 0 or shader.attributes == null)
             return "plugin shader descriptor is malformed";
+        const vulkan_or_metal = c.MLN_PLUGIN_BACKEND_VULKAN | c.MLN_PLUGIN_BACKEND_METAL;
+        if (shader.tile_pattern_texture > 1 or (shader.tile_pattern_texture != 0 and backend_mask & ~@as(u32, vulkan_or_metal) != 0))
+            return "tile pattern textures currently require the Vulkan or Metal backend";
+        if (shader.instanced > 1 or (shader.instanced != 0 and backend_mask & ~@as(u32, vulkan_or_metal) != 0))
+            return "plugin instancing currently requires the Vulkan or Metal backend";
 
         var source_backends: u32 = 0;
         for (shader.sources[0..shader.source_count]) |source| {
@@ -613,7 +617,10 @@ const registry = struct {
             const minimum = findAttribute(shader, binding.minimum_attribute_id);
             const maximum = findAttribute(shader, binding.maximum_attribute_id);
             var duplicate_name = false;
-            for (bindings[0..i]) |previous| duplicate_name = duplicate_name or std.mem.eql(u8, slice(previous.property_name), slice(binding.property_name));
+            // An image property binds its FROM and TO rectangles under one name.
+            for (bindings[0..i]) |previous| duplicate_name = duplicate_name or
+                (std.mem.eql(u8, slice(previous.property_name), slice(binding.property_name)) and
+                    (previous.encoding == c.MLN_PLUGIN_PROPERTY_ENCODING_IMAGE_TO) == (binding.encoding == c.MLN_PLUGIN_PROPERTY_ENCODING_IMAGE_TO));
             const min_bit = @as(u32, 1) << @intCast(binding.minimum_attribute_id % 32);
             const max_bit = @as(u32, 1) << @intCast(binding.maximum_attribute_id % 32);
             const reused = bound_attributes & min_bit != 0 or (!packed_pair and bound_attributes & max_bit != 0);
@@ -653,14 +660,20 @@ const registry = struct {
         for (list, 0..) |p, i| {
             if (p.struct_size < @sizeOf(c.mln_plugin_property_descriptor_v1) or !validString(p.name) or
                 p.default_value.struct_size < @sizeOf(c.mln_plugin_value) or p.default_value.type != p.type or
-                (p.type == c.MLN_PLUGIN_VALUE_STRING and !validOptionalString(p.default_value.data.string_value)) or
+                ((p.type == c.MLN_PLUGIN_VALUE_STRING or p.type == c.MLN_PLUGIN_VALUE_IMAGE) and !validOptionalString(p.default_value.data.string_value)) or
                 p.expression_capabilities & ~@as(u32, valid_capabilities) != 0)
                 return "plugin property descriptor is malformed";
+            if (p.is_layout > 1 or (p.is_layout != 0 and (p.supports_transitions != 0 or p.expression_capabilities & c.MLN_PLUGIN_EXPRESSION_FEATURE_STATE != 0)))
+                return "plugin layout properties cannot transition or use feature-state";
+            if (p.is_layout != 0 and p.type == c.MLN_PLUGIN_VALUE_IMAGE and
+                p.expression_capabilities & (c.MLN_PLUGIN_EXPRESSION_FEATURE | c.MLN_PLUGIN_EXPRESSION_COMPOSITE) != 0)
+                return "plugin layout image properties support only camera expressions";
             const transitionable = switch (p.type) {
-                c.MLN_PLUGIN_VALUE_FLOAT, c.MLN_PLUGIN_VALUE_ROTATION, c.MLN_PLUGIN_VALUE_FLOAT2, c.MLN_PLUGIN_VALUE_COLOR, c.MLN_PLUGIN_VALUE_DOUBLE2 => true,
+                c.MLN_PLUGIN_VALUE_FLOAT, c.MLN_PLUGIN_VALUE_ROTATION, c.MLN_PLUGIN_VALUE_FLOAT2, c.MLN_PLUGIN_VALUE_COLOR, c.MLN_PLUGIN_VALUE_IMAGE, c.MLN_PLUGIN_VALUE_DOUBLE2 => true,
                 else => false,
             };
-            if (p.supports_transitions != 0 and !transitionable) return "plugin transitions require an interpolatable paint property";
+            if (p.supports_transitions != 0 and !transitionable) return "plugin transitions require an interpolatable paint property or image";
+            if (p.type == c.MLN_PLUGIN_VALUE_BOOLEAN and p.default_value.data.boolean_value > 1) return "plugin boolean default must be 0 or 1";
             if (p.type < c.MLN_PLUGIN_VALUE_FLOAT or p.type > c.MLN_PLUGIN_VALUE_ROTATION) return "plugin property default value has the wrong type";
             for (list[0..i]) |previous| {
                 if (std.mem.eql(u8, slice(previous.name), slice(p.name))) return "plugin descriptor contains duplicate property names";
@@ -712,9 +725,19 @@ const registry = struct {
                 return "geometry plugin requires source layout callbacks and a valid geometry mask";
             if (source_free and layer.build_frame == null) return "source-free plugin layers require a frame callback";
             if (!source_free and layer.build_frame != null) return "frame callbacks apply only to source-free plugin layers";
+            if (source_free and (layer.is_3d != 0 or layer.draw_pass_count != 0)) return "source-free plugin layers do not support 3D draw passes";
             for (layers[0..i]) |previous| {
                 if (std.mem.eql(u8, slice(previous.layer_type), slice(layer.layer_type))) return "plugin descriptor contains duplicate layer types";
             }
+            if (layer.replace_builtin > 1 or layer.is_3d > 1 or layer.enable_near_clipped_matrix > 1 or
+                layer.draw_pass_count > 32 or (layer.draw_pass_count != 0 and layer.draw_passes == null))
+                return "plugin rendering descriptor is malformed";
+            if (layer.draw_pass_count != 0) for (layer.draw_passes[0..layer.draw_pass_count]) |pass| {
+                if (pass.struct_size < @sizeOf(c.mln_plugin_draw_pass_v1) or pass.depth_test > 1 or pass.depth_write > 1 or
+                    pass.color_write > 1 or pass.blend > 1 or pass.stencil_dedup > 1 or (pass.depth_write != 0 and pass.depth_test == 0) or
+                    (pass.stencil_dedup != 0 and layer.is_3d == 0) or (pass.cull != c.MLN_PLUGIN_CULL_NONE and pass.cull != c.MLN_PLUGIN_CULL_BACK_CCW))
+                    return "plugin draw pass is malformed";
+            };
             if (layer.shader_count == 0 or layer.shaders == null) return "host-drawable plugin layers must declare at least one shader";
             const shader_list = layer.shaders[0..layer.shader_count];
             var needs_uniform_callback = false;
@@ -732,20 +755,29 @@ const registry = struct {
                 for (shader.property_bindings[0..shader.property_binding_count]) |binding| {
                     const property = findProperty(layer, slice(binding.property_name)) orelse
                         return "plugin shader property binding references an incompatible paint property";
-                    const matches = switch (property.type) {
+                    const matches = property.is_layout == 0 and switch (property.type) {
+                        c.MLN_PLUGIN_VALUE_IMAGE => shader.tile_pattern_texture != 0 and
+                            (binding.encoding == c.MLN_PLUGIN_PROPERTY_ENCODING_IMAGE_FROM or binding.encoding == c.MLN_PLUGIN_PROPERTY_ENCODING_IMAGE_TO),
+                        c.MLN_PLUGIN_VALUE_BOOLEAN => binding.encoding == c.MLN_PLUGIN_PROPERTY_ENCODING_BOOLEAN_FLOAT,
                         c.MLN_PLUGIN_VALUE_FLOAT, c.MLN_PLUGIN_VALUE_ROTATION => binding.encoding == c.MLN_PLUGIN_PROPERTY_ENCODING_FLOAT,
                         c.MLN_PLUGIN_VALUE_FLOAT2 => binding.encoding == c.MLN_PLUGIN_PROPERTY_ENCODING_FLOAT2,
-                        c.MLN_PLUGIN_VALUE_COLOR => binding.encoding == c.MLN_PLUGIN_PROPERTY_ENCODING_COLOR,
+                        c.MLN_PLUGIN_VALUE_COLOR => binding.encoding == c.MLN_PLUGIN_PROPERTY_ENCODING_COLOR or
+                            binding.encoding == c.MLN_PLUGIN_PROPERTY_ENCODING_COLOR_RGBA8,
                         c.MLN_PLUGIN_VALUE_STRING => property.enum_value_count != 0 and binding.encoding == c.MLN_PLUGIN_PROPERTY_ENCODING_ENUM_FLOAT,
                         else => false,
                     };
                     if (!matches) return "plugin shader property binding references an incompatible paint property";
                 }
             }
+            if (source_free) for (shader_list) |shader| {
+                if (shader.tile_pattern_texture != 0) return "source-free plugin layers cannot use tile pattern textures";
+            };
             for (layer.properties[0..layer.property_count]) |property| {
                 if (source_free and property.expression_capabilities & data_dependencies != 0)
                     return "source-free plugin layers cannot declare data-driven properties";
-                if (property.expression_capabilities & data_dependencies == 0) continue;
+                if (source_free and property.type == c.MLN_PLUGIN_VALUE_IMAGE) return "source-free plugin layers cannot declare image properties";
+                // Layout values reach the layout callbacks, not the shaders.
+                if (property.is_layout != 0 or property.expression_capabilities & data_dependencies == 0) continue;
                 var bound = false;
                 for (shader_list) |shader| {
                     if (shader.property_binding_count == 0) continue;
@@ -805,7 +837,7 @@ test "the registry mimic accepts the descriptor and rejects what the host reject
                 x.emitter_properties[20].expression_capabilities |= c.MLN_PLUGIN_EXPRESSION_FEATURE;
             }
         }.f },
-        .{ .expected = "plugin transitions require an interpolatable paint property", .apply = struct {
+        .{ .expected = "plugin transitions require an interpolatable paint property or image", .apply = struct {
             fn f(x: *Mutable) void {
                 x.features_properties[7].supports_transitions = 1;
             }
@@ -870,6 +902,33 @@ test "the registry mimic accepts the descriptor and rejects what the host reject
         .{ .expected = "frame callbacks apply only to source-free plugin layers", .apply = struct {
             fn f(x: *Mutable) void {
                 x.layers[1].build_frame = layer_types[0].build_frame;
+            }
+        }.f },
+        .{ .expected = "source-free plugin layers do not support 3D draw passes", .apply = struct {
+            fn f(x: *Mutable) void {
+                x.layers[0].is_3d = 1;
+            }
+        }.f },
+        .{ .expected = "plugin layout properties cannot transition or use feature-state", .apply = struct {
+            fn f(x: *Mutable) void {
+                x.features_properties[7].is_layout = 1;
+                x.features_properties[7].expression_capabilities |= c.MLN_PLUGIN_EXPRESSION_FEATURE_STATE;
+            }
+        }.f },
+        .{
+            .expected = "plugin shader property binding references an incompatible paint property",
+            .apply = struct {
+                fn f(x: *Mutable) void {
+                    // Layout properties cannot feed a shader binding.
+                    x.features_properties[10].is_layout = 1;
+                    x.features_properties[10].supports_transitions = 0;
+                    x.features_properties[10].expression_capabilities &= ~@as(u32, c.MLN_PLUGIN_EXPRESSION_FEATURE_STATE);
+                }
+            }.f,
+        },
+        .{ .expected = "tile pattern textures currently require the Vulkan or Metal backend", .apply = struct {
+            fn f(x: *Mutable) void {
+                x.shaders[1].tile_pattern_texture = 1;
             }
         }.f },
     };

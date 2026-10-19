@@ -1,0 +1,97 @@
+{
+  "description": "Rings that need cleanup: repeated, closing, collinear and spike points are dropped; a zero-area ring and a tiny triangle produce nothing; a strip thinner than 2 units gets a flat roof; unknown values fall back to flat and along.",
+  "extent": 8192,
+  "features": [
+    {
+      "label": "repeats, collinear points, a spike, closed",
+      "index": 0,
+      "rings": [
+        [
+          [1000, 1000],
+          [1000, 1000],
+          [1150, 1000],
+          [1300, 1000],
+          [1300, 1080],
+          [1400, 1080],
+          [1300, 1080],
+          [1300, 1160],
+          [1150, 1161],
+          [1000, 1160],
+          [1000, 1000]
+        ]
+      ],
+      "shape": "gabled"
+    },
+    {
+      "label": "zero area",
+      "index": 1,
+      "rings": [[[1000, 1000], [1100, 1000], [1200, 1000]]],
+      "shape": "gabled"
+    },
+    {
+      "label": "tiny triangle",
+      "index": 2,
+      "rings": [[[1000, 1000], [1001, 1000], [1000, 1001]]],
+      "shape": "hipped"
+    },
+    {
+      "label": "a strip 1 unit wide",
+      "index": 3,
+      "rings": [[[1000, 1000], [1400, 1000], [1400, 1001], [1000, 1001]]],
+      "shape": "gabled"
+    },
+    {
+      "label": "unknown shape and orientation",
+      "index": 4,
+      "rings": [[[1000, 1000], [1300, 1000], [1300, 1160], [1000, 1160]]],
+      "shape": "sawtooth",
+      "orientation": "diagonal"
+    },
+    {
+      "label": "one ring in reversed winding: the first ring decides, so an exterior",
+      "index": 5,
+      "rings": [[[1000, 1000], [1000, 1100], [1100, 1100], [1100, 1000]]],
+      "shape": "gabled"
+    }
+  ],
+  "expected": {
+    "vertex_count": 105,
+    "index_count": 177,
+    "segments": [[0, 0, 105, 177]],
+    "ranges": [[0, 0, 35], [3, 35, 20], [4, 55, 20], [5, 75, 30]],
+    "summaries": [
+      {
+        "vertices": 35,
+        "triangles": 21,
+        "sum_pos": [40248.125, 38210, 2817.5],
+        "sum_roof": [8.07453416288, 34, 0, 3.98739977926],
+        "weighted": 41561.9898357,
+        "moment": 31799
+      },
+      {
+        "vertices": 20,
+        "triangles": 10,
+        "sum_pos": [24000, 20010, 0],
+        "sum_roof": [12, 16, 0, 0],
+        "weighted": 22844.75,
+        "moment": 4115
+      },
+      {
+        "vertices": 20,
+        "triangles": 10,
+        "sum_pos": [23000, 21600, 0],
+        "sum_roof": [12, 16, 0, 0],
+        "weighted": 23351.7,
+        "moment": 4115
+      },
+      {
+        "vertices": 30,
+        "triangles": 18,
+        "sum_pos": [31500, 31500, 1500],
+        "sum_roof": [8, 30, 0, 0],
+        "weighted": 33158.2833333,
+        "moment": 19540
+      }
+    ]
+  }
+}

@@ -12,6 +12,17 @@ const Plugin = struct {
     catalog_entry_point: ?[]const u8 = null,
     /// The exported animation clock, for `--play-once`.
     clock_symbol: ?[]const u8 = null,
+    /// GeoJSON sources the example layer reads, as `--geojson` and
+    /// `--geojson-options` with repo-relative files.
+    geojson: []const ExampleSource = &.{},
+    /// Default flags (the camera), before the user's, which override them.
+    args: []const []const u8 = &.{},
+};
+
+const ExampleSource = struct {
+    id: []const u8,
+    data: []const u8,
+    options: ?[]const u8 = null,
 };
 
 /// Every native plugin the viewer can load. Each entry becomes a
@@ -29,6 +40,19 @@ const plugins = [_]Plugin{
         .clock_symbol = "mln_animated_icon_clock_seconds",
     },
     .{ .name = "particles", .dependency = "particles", .artifact = "maplibre-particles", .entry_point = "mln_particles_register" },
+    .{
+        .name = "building",
+        .dependency = "building",
+        .artifact = "maplibre-building",
+        .entry_point = "mln_building_register",
+        // The roof shapes grid in Letenské sady, Prague.
+        .geojson = &.{.{
+            .id = "building-shapes",
+            .data = "../../plugins/building/examples/shapes/buildings.geojson",
+            .options = "../../plugins/building/examples/shapes/source.json",
+        }},
+        .args = &.{ "--center", "50.0971,14.4152", "--zoom", "17", "--bearing", "0", "--pitch", "60" },
+    },
 };
 
 const BuildOptions = struct {
@@ -129,13 +153,17 @@ pub fn build(b: *std.Build) void {
     }
     b.installArtifact(exe);
 
-    // The viewer's logic that needs no window or map: the play-once pick.
-    const tests = b.addTest(.{ .root_module = b.createModule(.{
-        .root_source_file = b.path("src/play_once.zig"),
-        .target = options.target,
-        .optimize = options.optimize,
-    }) });
-    b.step("test", "Run the viewer's unit tests").dependOn(&b.addRunArtifact(tests).step);
+    // The viewer's logic that needs no window or map: the play-once pick and
+    // the GeoJSON source JSON.
+    const test_step = b.step("test", "Run the viewer's unit tests");
+    for ([_][]const u8{ "src/play_once.zig", "src/geojson_source.zig" }) |path| {
+        const tests = b.addTest(.{ .root_module = b.createModule(.{
+            .root_source_file = b.path(path),
+            .target = options.target,
+            .optimize = options.optimize,
+        }) });
+        test_step.dependOn(&b.addRunArtifact(tests).step);
+    }
 
     // Plugins build against the headers of the install the viewer loads them
     // into, rather than the vendored copy.
@@ -155,6 +183,15 @@ pub fn build(b: *std.Build) void {
         run.addArgs(&.{ "--entry", plugin.entry_point });
         if (plugin.catalog_entry_point) |symbol| run.addArgs(&.{ "--catalog-entry", symbol });
         if (plugin.clock_symbol) |symbol| run.addArgs(&.{ "--clock-symbol", symbol });
+        for (plugin.geojson) |source| {
+            run.addArg("--geojson");
+            run.addPrefixedFileArg(b.fmt("{s}=", .{source.id}), b.path(source.data));
+            if (source.options) |source_options| {
+                run.addArg("--geojson-options");
+                run.addPrefixedFileArg(b.fmt("{s}=", .{source.id}), b.path(source_options));
+            }
+        }
+        run.addArgs(plugin.args);
         if (b.args) |args| run.addArgs(args);
         b.step("run-" ++ plugin.name, "Open the viewer with the " ++ plugin.name ++ " plugin").dependOn(&run.step);
     }

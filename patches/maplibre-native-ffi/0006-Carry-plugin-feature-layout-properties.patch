@@ -1,0 +1,758 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: maplibre-plugins <sync@localhost>
+Date: Sun, 18 Oct 2026 15:27:10 -0700
+Subject: [PATCH 6/6] Carry plugin feature layout properties
+
+Feature and composite expressions for plugin layout properties, evaluated
+per feature during tile layout, and the tile id in the layout context.
+
+Carried by maplibre-plugins until it lands upstream.
+---
+ .mise/bin/sync-submodules                     |   1 +
+ ...047-plugin-feature-layout-properties.patch | 714 ++++++++++++++++++
+ patches/maplibre-native/README.md             |   2 +
+ 3 files changed, 717 insertions(+)
+ create mode 100644 patches/maplibre-native/0047-plugin-feature-layout-properties.patch
+
+diff --git a/.mise/bin/sync-submodules b/.mise/bin/sync-submodules
+index 9a95c2e5..b86739a4 100755
+--- a/.mise/bin/sync-submodules
++++ b/.mise/bin/sync-submodules
+@@ -84,6 +84,7 @@ mln_patches=(
+   "$repo_root/patches/maplibre-native/0044-plugin-rotation-properties.patch"
+   "$repo_root/patches/maplibre-native/0045-plugin-frame-queries.patch"
+   "$repo_root/patches/maplibre-native/0046-plugin-static-textures.patch"
++  "$repo_root/patches/maplibre-native/0047-plugin-feature-layout-properties.patch"
+ )
+ 
+ # The patches overlap, so no single patch reverses cleanly on its own once the
+diff --git a/patches/maplibre-native/0047-plugin-feature-layout-properties.patch b/patches/maplibre-native/0047-plugin-feature-layout-properties.patch
+new file mode 100644
+index 00000000..e6a52cb9
+--- /dev/null
++++ b/patches/maplibre-native/0047-plugin-feature-layout-properties.patch
+@@ -0,0 +1,714 @@
++diff --git a/include/mln/plugin/plugin_api.h b/include/mln/plugin/plugin_api.h
++index ccf63c1b72e65f123c6cace1280d4b86fd91859c..7e53e345b8df7d50d84cec65ec653162fa03be8e 100644
++--- a/include/mln/plugin/plugin_api.h
+++++ b/include/mln/plugin/plugin_api.h
++@@ -148,8 +148,13 @@ typedef struct mln_plugin_property_descriptor_v1 {
++     /* Optional allowed string values. */
++     const mln_plugin_string* enum_values;
++     size_t enum_value_count;
++-    /* 0 = paint, 1 = layout. Layout values may use camera expressions only,
++-     * never transition, and are evaluated at tile zoom before create_layout. */
+++    /* 0 = paint, 1 = layout. Layout values never transition and cannot use
+++     * feature-state. They may use camera expressions, and FEATURE and COMPOSITE
+++     * expressions (except image properties), which the host evaluates for each
+++     * feature during tile layout, at the tile's zoom; see
+++     * mln_plugin_feature_v1.layout_properties. Layout properties need no shader
+++     * property binding. A null result, a non-finite number, or a string outside
+++     * enum_values falls back to the default. */
++     uint8_t is_layout;
++ } mln_plugin_property_descriptor_v1;
++ 
++@@ -394,15 +399,33 @@ typedef struct mln_plugin_feature_v1 {
++     /* path_offsets has path_count + 1 entries and ends at point_count. */
++     const uint32_t* path_offsets;
++     size_t path_count;
+++    /* Optional; introduced after path_count, so check struct_size before
+++     * reading. Every layout property in definition order (the names and order
+++     * of mln_plugin_layout_context_v1.properties), evaluated for this feature:
+++     * at the tile's zoom in layout_feature, and at the query zoom in
+++     * query_feature. explicitly_set reports whether the style sets the
+++     * property. Borrowed for the callback, like the rest of the feature. */
+++    const mln_plugin_property_value_v1* layout_properties;
+++    size_t layout_property_count;
++ } mln_plugin_feature_v1;
++ 
++ /* Worker-thread input. Paint evaluation is owned by the host binders. */
++ typedef struct mln_plugin_layout_context_v1 {
++     uint32_t struct_size;
+++    /* The tile's overscaled zoom, at which layout values evaluate. */
++     float zoom;
++     uint32_t extent;
+++    /* Every layout property in definition order. A feature-dependent value
+++     * (FEATURE or COMPOSITE expression) has no single value for the tile and
+++     * reads as the property's default here; read it per feature from
+++     * mln_plugin_feature_v1.layout_properties. */
++     const mln_plugin_property_value_v1* properties;
++     size_t property_count;
+++    /* Optional; introduced after property_count. The canonical tile being laid
+++     * out, named as in mln_plugin_uniform_context_v1. Its overscaled z is
+++     * zoom. */
+++    uint32_t tile_x, tile_y;
+++    uint8_t tile_z;
++ } mln_plugin_layout_context_v1;
++ 
++ /* Returned bytes remain valid until destroy_layout. The host copies them after
++diff --git a/src/mln/layout/plugin_layout.cpp b/src/mln/layout/plugin_layout.cpp
++index a87cbdb1349c74123fd7003c192075665ca18ba7..48595121fadfe927eca4e8acec9dc5fe14ee85e5 100644
++--- a/src/mln/layout/plugin_layout.cpp
+++++ b/src/mln/layout/plugin_layout.cpp
++@@ -78,21 +78,36 @@ void PluginLayout::createBucket(const ImagePositions& imagePositions,
++     context.struct_size = sizeof(context);
++     context.zoom = zoom;
++     context.extent = util::EXTENT;
+++    context.tile_x = canonical.x;
+++    context.tile_y = canonical.y;
+++    context.tile_z = canonical.z;
+++    // Layout values in definition order, once for the tile (where a
+++    // feature-dependent value reads as its default) and then per feature.
+++    // Layers share this layout only when their layout values are equal.
+++    std::vector<std::pair<const plugin::PropertyDefinition*, style::PluginPropertyValue>> layoutValues;
++     std::vector<mln_plugin_property_value_v1> layoutProperties;
++-    std::vector<style::PluginPropertyValue::EvaluationStorage> storage(registration->properties.size());
++-    for (size_t i = 0; i < registration->properties.size(); ++i) {
++-        const auto& definition = registration->properties[i];
+++    for (const auto& definition : registration->properties) {
++         if (!definition.isLayout) continue;
++         const auto it = leader.pluginProperties.find(definition.name);
++-        const auto value = it == leader.pluginProperties.end() ? style::defaultPluginPropertyValue(definition)
++-                                                               : it->second;
+++        layoutValues.emplace_back(
+++            &definition,
+++            it == leader.pluginProperties.end() ? style::defaultPluginPropertyValue(definition) : it->second);
++         layoutProperties.push_back({sizeof(mln_plugin_property_value_v1),
++                                     {definition.name.data(), definition.name.size()},
++-                                    value.evaluate(zoom, definition, storage[i]),
+++                                    {},
++                                     static_cast<uint8_t>(it != leader.pluginProperties.end())});
++     }
++-    context.properties = layoutProperties.data();
+++    std::vector<style::PluginPropertyValue::EvaluationStorage> storage(layoutValues.size());
+++    for (size_t i = 0; i < layoutValues.size(); ++i) {
+++        const auto& [definition, value] = layoutValues[i];
+++        layoutProperties[i].value = value.evaluateLayout(zoom, nullptr, &canonical, *definition, storage[i]);
+++    }
+++    context.properties = layoutProperties.empty() ? nullptr : layoutProperties.data();
++     context.property_count = layoutProperties.size();
+++    // Per-feature values start from the tile's; only feature-dependent ones
+++    // change between features.
+++    auto featureProperties = layoutProperties;
+++    std::vector<style::PluginPropertyValue::EvaluationStorage> featureStorage(layoutValues.size());
++ 
++     void* layoutInstance = nullptr;
++     const auto createStatus = registration->createLayout(&context, &layoutInstance);
++@@ -112,7 +127,14 @@ void PluginLayout::createBucket(const ImagePositions& imagePositions,
++             continue;
++         }
++ 
++-        const plugin::FeatureView pluginFeature(*feature, i);
+++        for (size_t p = 0; p < layoutValues.size(); ++p) {
+++            const auto& [definition, value] = layoutValues[p];
+++            if (value.isDataDriven())
+++                featureProperties[p].value = value.evaluateLayout(
+++                    zoom, feature.get(), &canonical, *definition, featureStorage[p]);
+++        }
+++        plugin::FeatureView pluginFeature(*feature, i);
+++        pluginFeature.setLayoutProperties(featureProperties);
++         if (registration->layoutFeature(layoutInstance, &pluginFeature.value) != MLN_PLUGIN_STATUS_OK) {
++             Log::Error(Event::Style, "Plugin layer '" + leader.id + "' failed while laying out a feature");
++             return;
++diff --git a/src/mln/plugin/plugin_conversion.hpp b/src/mln/plugin/plugin_conversion.hpp
++index 033b775f88dc7f2a8ecb6a4f6214be780920c280..0fd26c55f305d2128c7caf97741f3676eff41850 100644
++--- a/src/mln/plugin/plugin_conversion.hpp
+++++ b/src/mln/plugin/plugin_conversion.hpp
++@@ -56,11 +56,19 @@ struct FeatureView {
++                  points.data(),
++                  points.size(),
++                  offsets.data(),
++-                 geometry.size()};
+++                 geometry.size(),
+++                 nullptr,
+++                 0};
++     }
++     FeatureView(const FeatureView&) = delete;
++     FeatureView& operator=(const FeatureView&) = delete;
++ 
+++    // Borrows the values, which must outlive the callback that reads them.
+++    void setLayoutProperties(const std::vector<mln_plugin_property_value_v1>& properties) {
+++        value.layout_properties = properties.empty() ? nullptr : properties.data();
+++        value.layout_property_count = properties.size();
+++    }
+++
++     std::vector<mln_plugin_tile_point_v1> points;
++     std::vector<uint32_t> offsets;
++     mln_plugin_feature_v1 value{};
++diff --git a/src/mln/plugin/plugin_registry.cpp b/src/mln/plugin/plugin_registry.cpp
++index 1ab553f3c411a4bf7ae876644c147df41952ac40..c332b010a14c3ca6188da004752c57ae86a310df 100644
++--- a/src/mln/plugin/plugin_registry.cpp
+++++ b/src/mln/plugin/plugin_registry.cpp
++@@ -425,10 +425,16 @@ bool appendProperties(const mln_plugin_property_descriptor_v1* properties,
++             error = "plugin property descriptor is malformed";
++             return false;
++         }
+++        constexpr uint32_t featureExpressions = MLN_PLUGIN_EXPRESSION_FEATURE | MLN_PLUGIN_EXPRESSION_COMPOSITE;
++         if (property.is_layout > 1 ||
++-            (property.is_layout &&
++-             (property.supports_transitions || (property.expression_capabilities & ~MLN_PLUGIN_EXPRESSION_CAMERA)))) {
++-            error = "plugin layout properties support only camera expressions and cannot transition";
+++            (property.is_layout && (property.supports_transitions ||
+++                                    (property.expression_capabilities & MLN_PLUGIN_EXPRESSION_FEATURE_STATE)))) {
+++            error = "plugin layout properties cannot transition or use feature-state";
+++            return false;
+++        }
+++        if (property.is_layout && property.type == MLN_PLUGIN_VALUE_IMAGE &&
+++            (property.expression_capabilities & featureExpressions)) {
+++            error = "plugin layout image properties support only camera expressions";
++             return false;
++         }
++         const bool transitionableType = property.type == MLN_PLUGIN_VALUE_FLOAT ||
++@@ -675,7 +681,8 @@ mln_plugin_status PluginRegistry::registerPlugin(const mln_plugin_descriptor_v1&
++                 error = "source-free plugin layers cannot declare image properties";
++                 return MLN_PLUGIN_STATUS_INVALID_ARGUMENT;
++             }
++-            if ((property.expressionCapabilities & dataDependencies) == 0) continue;
+++            // Layout values reach the layout callbacks, not the shaders.
+++            if (property.isLayout || (property.expressionCapabilities & dataDependencies) == 0) continue;
++             const bool bound = std::any_of(
++                 copiedLayerType.shaders.begin(), copiedLayerType.shaders.end(), [&](const auto& shader) {
++                     return std::any_of(shader.propertyBindings.begin(),
++diff --git a/src/mln/renderer/layers/render_plugin_style_layer.cpp b/src/mln/renderer/layers/render_plugin_style_layer.cpp
++index 7beba8d937e7e2265f9154f9ecd9ac7b087adbf8..a25411192284a1fa50e5072080ffd2b20dd1cc80 100644
++--- a/src/mln/renderer/layers/render_plugin_style_layer.cpp
+++++ b/src/mln/renderer/layers/render_plugin_style_layer.cpp
++@@ -649,27 +649,34 @@ bool RenderPluginStyleLayer::queryIntersectsFeature(const GeometryCoordinates& q
++     // Source-free layers have no tile feature index, so they answer no
++     // rendered-feature queries.
++     if (!registration->requiresSource || !registration->queryFeature) return false;
++-    const plugin::FeatureView pluginFeature(feature);
+++    plugin::FeatureView pluginFeature(feature);
++     std::vector<mln_plugin_tile_point_v1> query;
++     query.reserve(queryGeometry.size());
++     for (const auto& point : queryGeometry) query.push_back({point.x, point.y});
++     const auto& definitions = registration->properties;
++     const auto& impl = pluginImpl(baseImpl);
++-    std::vector<mln_plugin_property_value_v1> properties;
+++    // Paint values as evaluated for the frame; layout values from the style,
+++    // evaluated for this feature at the query zoom. The feature also carries
+++    // the layout values, as in layout_feature.
+++    std::vector<mln_plugin_property_value_v1> properties, layoutProperties;
++     std::vector<style::PluginPropertyValue::EvaluationStorage> storage(definitions.size());
++     properties.reserve(definitions.size());
++     for (size_t i = 0; i < definitions.size(); ++i) {
++         const auto& definition = definitions[i];
++-        const auto propertyIt = evaluatedPluginProperties.find(definition.name);
++-        const auto value = propertyIt == evaluatedPluginProperties.end() ? style::defaultPluginPropertyValue(definition)
++-                                                                         : propertyIt->second;
+++        const auto& source = definition.isLayout ? impl.pluginProperties : evaluatedPluginProperties;
+++        const auto propertyIt = source.find(definition.name);
+++        const auto value = propertyIt == source.end() ? style::defaultPluginPropertyValue(definition)
+++                                                      : propertyIt->second;
++         mln_plugin_property_value_v1 property{};
++         property.struct_size = sizeof(property);
++         property.name = {definition.name.data(), definition.name.size()};
++-        property.value = value.evaluate(zoom, feature, featureState, definition, storage[i]);
+++        property.value = definition.isLayout ? value.evaluateLayout(zoom, &feature, nullptr, definition, storage[i])
+++                                             : value.evaluate(zoom, feature, featureState, definition, storage[i]);
++         property.explicitly_set = impl.pluginProperties.find(definition.name) != impl.pluginProperties.end();
++         properties.push_back(property);
+++        if (definition.isLayout) layoutProperties.push_back(property);
++     }
+++    pluginFeature.setLayoutProperties(layoutProperties);
++     mln_plugin_query_context_v1 queryContext{};
++     queryContext.struct_size = sizeof(queryContext);
++     queryContext.pixels_to_tile_units = pixelsToTileUnits;
++diff --git a/src/mln/style/plugin_property.cpp b/src/mln/style/plugin_property.cpp
++index 315760f63c2c0d81f42d457d1f47646c66a70407..abe39ecdb119cdc8e924822aff5fc4c8992c5603 100644
++--- a/src/mln/style/plugin_property.cpp
+++++ b/src/mln/style/plugin_property.cpp
++@@ -13,6 +13,7 @@
++ 
++ #include <algorithm>
++ #include <cmath>
+++#include <initializer_list>
++ #include <stdexcept>
++ 
++ #include <rapidjson/stringbuffer.h>
++@@ -285,6 +286,43 @@ mln_plugin_value PluginPropertyValue::evaluate(float zoom,
++     return evaluate(expression::EvaluationContext(zoom).withAvailableImages(availableImages), definition, storage);
++ }
++ 
+++mln_plugin_value PluginPropertyValue::evaluateLayout(float zoom,
+++                                                     const GeometryTileFeature* feature,
+++                                                     const CanonicalTileID* canonical,
+++                                                     const plugin::PropertyDefinition& definition,
+++                                                     EvaluationStorage& storage) const {
+++    const auto fallback = [&] {
+++        return defaultPluginPropertyValue(definition).evaluate(zoom, definition, storage);
+++    };
+++    if (!feature && isDataDriven()) return fallback();
+++    const auto result = evaluate(
+++        expression::EvaluationContext(zoom, feature).withCanonicalTileID(canonical), definition, storage);
+++    const auto finite = [](std::initializer_list<double> values) {
+++        return std::all_of(values.begin(), values.end(), [](double value) { return std::isfinite(value); });
+++    };
+++    switch (result.type) {
+++        case MLN_PLUGIN_VALUE_FLOAT:
+++        case MLN_PLUGIN_VALUE_ROTATION:
+++            if (!finite({result.data.float_value})) return fallback();
+++            break;
+++        case MLN_PLUGIN_VALUE_FLOAT2:
+++            if (!finite({result.data.float2_value.x, result.data.float2_value.y})) return fallback();
+++            break;
+++        case MLN_PLUGIN_VALUE_DOUBLE2:
+++            if (!finite({result.data.double2_value.x, result.data.double2_value.y})) return fallback();
+++            break;
+++        case MLN_PLUGIN_VALUE_STRING:
+++            if (!definition.enumValues.empty() &&
+++                std::find(definition.enumValues.begin(), definition.enumValues.end(), storage.string) ==
+++                    definition.enumValues.end())
+++                return fallback();
+++            break;
+++        default:
+++            break;
+++    }
+++    return result;
+++}
+++
++ PluginTransitioningPropertyValue::PluginTransitioningPropertyValue(PluginPropertyValue input)
++     : value(std::visit([](const auto& typed) -> TypedValue { return Transitioning{typed}; }, input.value)) {}
++ 
++diff --git a/src/mln/style/plugin_property.hpp b/src/mln/style/plugin_property.hpp
++index 5c4227a52226658b9cb41fb5db909dd826d1f339..dcd4a7973e3a2bca8d744030c4e135cc643dbda6 100644
++--- a/src/mln/style/plugin_property.hpp
+++++ b/src/mln/style/plugin_property.hpp
++@@ -17,6 +17,7 @@
++ #include <variant>
++ 
++ namespace mln {
+++class CanonicalTileID;
++ class GeometryTileFeature;
++ namespace plugin {
++ struct PropertyDefinition;
++@@ -64,6 +65,14 @@ public:
++                               const plugin::PropertyDefinition&,
++                               EvaluationStorage&,
++                               const std::set<std::string>* availableImages = nullptr) const;
+++    // A layout value, for one feature or (null feature) for the whole tile.
+++    // Without a feature, a feature-dependent value reads as the default. A
+++    // non-finite number or a string outside the enum also falls back to it.
+++    mln_plugin_value evaluateLayout(float zoom,
+++                                    const GeometryTileFeature*,
+++                                    const CanonicalTileID*,
+++                                    const plugin::PropertyDefinition&,
+++                                    EvaluationStorage&) const;
++ 
++     friend bool operator==(const PluginPropertyValue& lhs, const PluginPropertyValue& rhs) {
++         return lhs.value == rhs.value;
++diff --git a/test/plugin/api.test.cpp b/test/plugin/api.test.cpp
++index 1f8cfb490b29319ddaf3fc6e3ffaa2939719da41..6ea9c232594f5a510a4b5d8355c54a6912172b47 100644
++--- a/test/plugin/api.test.cpp
+++++ b/test/plugin/api.test.cpp
++@@ -398,9 +398,24 @@ TEST(PluginApi, LayoutPropertiesValidateScopeSerializeAndInvalidateGeometry) {
++     input.property.supports_transitions = 1;
++     input.expectRejected();
++     input.property.supports_transitions = 0;
++-    input.property.expression_capabilities |= MLN_PLUGIN_EXPRESSION_FEATURE;
+++    input.property.expression_capabilities |= MLN_PLUGIN_EXPRESSION_FEATURE_STATE;
++     input.expectRejected();
++-    input.property.expression_capabilities = MLN_PLUGIN_EXPRESSION_CAMERA;
+++    // Feature-dependent layout values need no shader binding, but stay out of
+++    // image properties and source-free layers.
+++    input.property.expression_capabilities = MLN_PLUGIN_EXPRESSION_CAMERA | MLN_PLUGIN_EXPRESSION_FEATURE |
+++                                             MLN_PLUGIN_EXPRESSION_COMPOSITE;
+++    input.property.type = input.property.default_value.type = MLN_PLUGIN_VALUE_IMAGE;
+++    input.property.default_value.data.string_value = {};
+++    input.expectRejected();
+++    input.property.type = input.property.default_value.type = MLN_PLUGIN_VALUE_FLOAT;
+++    input.property.default_value.data.float_value = 0;
+++    input.layer.source_free = 1;
+++    input.layer.build_frame = [](const mln_plugin_frame_context_v1*, mln_plugin_bucket_v1*) {
+++        return MLN_PLUGIN_STATUS_OK;
+++    };
+++    input.expectRejected();
+++    input.layer.source_free = 0;
+++    input.layer.build_frame = nullptr;
++     ASSERT_EQ(MLN_PLUGIN_STATUS_OK, mln_plugin_register_v1(&input.descriptor, nullptr, 0));
++     style::conversion::Error error;
++     auto parse = [&](const std::string& section, int value) {
++@@ -410,6 +425,18 @@ TEST(PluginApi, LayoutPropertiesValidateScopeSerializeAndInvalidateGeometry) {
++             error);
++     };
++     EXPECT_FALSE(parse("paint", 2));
+++    const auto parseJSON = [&](const std::string& value) {
+++        return style::conversion::convertJSON<std::unique_ptr<style::Layer>>(
+++            R"({"id":"test","source":"s","type":")" + input.type + R"(","layout":{"test-anchor":)" + value + "}}",
+++            error);
+++    };
+++    const auto dataDriven = parseJSON(R"(["step",["zoom"],0,10,["get","v"]])");
+++    ASSERT_TRUE(dataDriven) << error.message;
+++    EXPECT_EQ(style::StyleProperty::Kind::Expression, (*dataDriven)->getProperty("test-anchor").getKind());
+++    const auto dataDrivenLayout = (*dataDriven)->serialize().getObject()->at("layout");
+++    ASSERT_TRUE(dataDrivenLayout.getObject());
+++    EXPECT_TRUE(dataDrivenLayout.getObject()->at("test-anchor").getArray());
+++    EXPECT_FALSE(parseJSON(R"(["feature-state","v"])"));
++     auto a = parse("layout", 2), b = parse("layout", 4);
++     ASSERT_TRUE(a) << error.message;
++     ASSERT_TRUE(b) << error.message;
++diff --git a/test/plugin/layout.test.cpp b/test/plugin/layout.test.cpp
++index 507bd75ca134dbb8be2b9d555e43adfdf1b4427d..db7fc131228421a7b7322da25df200dc2527ee2f 100644
++--- a/test/plugin/layout.test.cpp
+++++ b/test/plugin/layout.test.cpp
++@@ -3,12 +3,15 @@
++ #include <mln/renderer/buckets/plugin_bucket.hpp>
++ #include <mln/renderer/render_layer.hpp>
++ #include <mln/style/layers/plugin_style_layer.hpp>
+++#include <mln/style/rapidjson_conversion.hpp>
++ #include <mln/tile/geojson_tile_data.hpp>
++ #include <gtest/gtest.h>
++ 
++ #include <array>
++ #include <cstring>
++ #include <limits>
+++#include <map>
+++#include <variant>
++ 
++ using namespace mln;
++ 
++@@ -366,4 +369,173 @@ TEST(PluginLayout, SharesPaintOnlyForIdenticalFeatureRecordsAcrossInputRates) {
++         EXPECT_EQ(!different, roof == wall);
++     }
++ }
+++
+++// What the layout callbacks saw of the layout properties: the tile context and
+++// each feature's values, by property name, as strings or numbers.
+++using LayoutValues = std::map<std::string, std::variant<std::string, float>>;
+++struct LayoutPropertyState {
+++    uint32_t contextSize = 0, featureSize = 0;
+++    float zoom = 0;
+++    std::array<uint32_t, 3> tile{};
+++    std::vector<std::string> contextOrder, featureOrder;
+++    LayoutValues context;
+++    std::vector<LayoutValues> features;
+++    std::vector<std::map<std::string, bool>> explicitlySet;
+++};
+++LayoutPropertyState* layoutProperties = nullptr;
+++
+++LayoutValues readValues(const mln_plugin_property_value_v1* values,
+++                        size_t count,
+++                        std::vector<std::string>& order,
+++                        std::map<std::string, bool>* explicitlySet = nullptr) {
+++    LayoutValues result;
+++    order.clear();
+++    for (size_t i = 0; i < count; ++i) {
+++        const auto& property = values[i];
+++        EXPECT_EQ(sizeof(property), property.struct_size);
+++        std::string name(property.name.data, property.name.size);
+++        order.push_back(name);
+++        if (explicitlySet) (*explicitlySet)[name] = property.explicitly_set != 0;
+++        if (property.value.type == MLN_PLUGIN_VALUE_STRING)
+++            result[name] = std::string(property.value.data.string_value.data, property.value.data.string_value.size);
+++        else
+++            result[name] = property.value.data.float_value;
+++    }
+++    return result;
+++}
+++
+++// Lays out one tile (overscaled z 4 of canonical 3/5/2) of points with the
+++// given feature properties, and a style that sets the given properties.
+++std::vector<LayoutValues> layOutWithProperties(LayoutPropertyState& state,
+++                                               const std::map<std::string, std::string>& style,
+++                                               const std::vector<mapbox::feature::property_map>& featureProperties) {
+++    layoutProperties = &state;
+++    plugin::LayerType registration;
+++    registration.pluginID = "test.layout-values";
+++    registration.type = "test.layout-values.layer";
+++    registration.geometryTypeMask = MLN_PLUGIN_GEOMETRY_POINT;
+++    registration.createLayout = [](const mln_plugin_layout_context_v1* context, void** instance) {
+++        auto& state = *layoutProperties;
+++        state.contextSize = context->struct_size;
+++        state.zoom = context->zoom;
+++        state.tile = {context->tile_x, context->tile_y, context->tile_z};
+++        state.context = readValues(context->properties, context->property_count, state.contextOrder);
+++        *instance = &state;
+++        return MLN_PLUGIN_STATUS_OK;
+++    };
+++    registration.layoutFeature = [](void*, const mln_plugin_feature_v1* feature) {
+++        auto& state = *layoutProperties;
+++        state.featureSize = feature->struct_size;
+++        state.explicitlySet.emplace_back();
+++        state.features.push_back(readValues(feature->layout_properties,
+++                                            feature->layout_property_count,
+++                                            state.featureOrder,
+++                                            &state.explicitlySet.back()));
+++        return MLN_PLUGIN_STATUS_OK;
+++    };
+++    registration.finishLayout = [](void*, mln_plugin_bucket_v1* output) {
+++        *output = {};
+++        output->struct_size = sizeof(*output);
+++        return MLN_PLUGIN_STATUS_OK;
+++    };
+++    registration.destroyLayout = [](void*) {
+++    };
+++    // Layout and paint properties interleave; only layout ones reach layout.
+++    const auto property = [](std::string name, mln_plugin_value_type type, Value fallback, bool layout) {
+++        plugin::PropertyDefinition definition;
+++        definition.name = std::move(name);
+++        definition.type = type;
+++        definition.defaultValue = std::move(fallback);
+++        definition.isLayout = layout;
+++        definition.expressionCapabilities = MLN_PLUGIN_EXPRESSION_CAMERA | MLN_PLUGIN_EXPRESSION_FEATURE |
+++                                            MLN_PLUGIN_EXPRESSION_COMPOSITE;
+++        return definition;
+++    };
+++    registration.properties.push_back(property("test-shape", MLN_PLUGIN_VALUE_STRING, std::string("flat"), true));
+++    registration.properties.back().enumValues = {"flat", "gabled", "hipped"};
+++    registration.properties.push_back(property("test-height", MLN_PLUGIN_VALUE_FLOAT, 1.0, false));
+++    registration.properties.push_back(property("test-direction", MLN_PLUGIN_VALUE_FLOAT, -1.0, true));
+++    registration.properties.push_back(
+++        property("test-orientation", MLN_PLUGIN_VALUE_STRING, std::string("along"), true));
+++    registration.properties.back().enumValues = {"along", "across"};
+++    registration.properties.back().expressionCapabilities = MLN_PLUGIN_EXPRESSION_CAMERA;
+++    const auto shared = std::make_shared<const plugin::RegisteredLayer>(std::move(registration));
+++    auto impl = makeMutable<style::PluginStyleLayer::Impl>("test-layer", "points", shared);
+++    for (const auto& [name, json] : style) {
+++        JSDocument document;
+++        document.Parse<0>(json.c_str());
+++        EXPECT_FALSE(document.HasParseError()) << json;
+++        style::conversion::Error error;
+++        auto value = style::convertPluginPropertyValue(
+++            *shared->findProperty(name), style::conversion::Convertible(static_cast<const JSValue*>(&document)), error);
+++        EXPECT_TRUE(value) << name << ": " << error.message;
+++        if (value) impl->pluginProperties.emplace(name, std::move(*value));
+++    }
+++    std::vector<Immutable<style::LayerProperties>> layers = {
+++        makeMutable<style::PluginStyleLayerProperties>(std::move(impl))};
+++    auto features = std::make_shared<mapbox::feature::feature_collection<int16_t>>();
+++    for (const auto& properties : featureProperties)
+++        features->emplace_back(mapbox::geometry::point<int16_t>{10, 20}, properties);
+++    auto featureIndex = std::make_unique<FeatureIndex>(std::make_unique<GeoJSONTileData>(*features));
+++    const BucketParameters parameters{OverscaledTileID{4, 0, {3, 5, 2}}, MapMode::Static, 1, &shared->info};
+++    PluginLayout layout(parameters, std::move(layers), std::make_unique<GeoJSONTileLayer>(features), shared);
+++    mln::unordered_map<std::string, LayerRenderData> renderData;
+++    layout.createBucket({}, featureIndex, renderData, false, false, parameters.tileID.canonical);
+++    layoutProperties = nullptr;
+++    return state.features;
+++}
+++
+++TEST(PluginLayout, EvaluatesLayoutPropertiesPerFeature) {
+++    LayoutPropertyState state;
+++    const auto features = layOutWithProperties(
+++        state,
+++        {{"test-shape", R"(["get","shape"])"},
+++         // COMPOSITE: the tile's overscaled zoom (4) picks the feature branch.
+++         {"test-direction", R"(["step",["zoom"],0,4,["get","direction"]])"},
+++         {"test-orientation", R"(["step",["zoom"],"along",4,"across"])"}},
+++        {{{"shape", std::string("gabled")}, {"direction", 90.0}},
+++         {{"shape", std::string("not-a-roof")}, {"direction", std::string("north")}},
+++         {}});
+++    EXPECT_EQ(sizeof(mln_plugin_layout_context_v1), state.contextSize);
+++    EXPECT_EQ(sizeof(mln_plugin_feature_v1), state.featureSize);
+++    EXPECT_EQ(4.0f, state.zoom);
+++    EXPECT_EQ((std::array<uint32_t, 3>{5, 2, 3}), state.tile);
+++    const std::vector<std::string> order = {"test-shape", "test-direction", "test-orientation"};
+++    EXPECT_EQ(order, state.contextOrder);
+++    EXPECT_EQ(order, state.featureOrder);
+++    // Feature-dependent values have no tile value and read as the default.
+++    EXPECT_EQ((LayoutValues{{"test-shape", std::string("flat")},
+++                            {"test-direction", -1.0f},
+++                            {"test-orientation", std::string("across")}}),
+++              state.context);
+++    ASSERT_EQ(3u, features.size());
+++    EXPECT_EQ((LayoutValues{{"test-shape", std::string("gabled")},
+++                            {"test-direction", 90.0f},
+++                            {"test-orientation", std::string("across")}}),
+++              features[0]);
+++    // A string outside the enum and a value of the wrong type fall back to the
+++    // default, as does a missing property.
+++    for (size_t i = 1; i < 3; ++i) {
+++        SCOPED_TRACE(i);
+++        EXPECT_EQ((LayoutValues{{"test-shape", std::string("flat")},
+++                                {"test-direction", -1.0f},
+++                                {"test-orientation", std::string("across")}}),
+++                  features[i]);
+++        EXPECT_TRUE(state.explicitlySet[i].at("test-shape"));
+++    }
+++}
+++
+++TEST(PluginLayout, LayoutPropertiesDefaultWhenUnset) {
+++    LayoutPropertyState state;
+++    const auto features = layOutWithProperties(state, {{"test-direction", "45"}}, {{{"shape", std::string("hipped")}}});
+++    ASSERT_EQ(1u, features.size());
+++    EXPECT_EQ((LayoutValues{{"test-shape", std::string("flat")},
+++                            {"test-direction", 45.0f},
+++                            {"test-orientation", std::string("along")}}),
+++              features[0]);
+++    EXPECT_EQ(state.context, features[0]);
+++    EXPECT_EQ(
+++        (std::map<std::string, bool>{{"test-shape", false}, {"test-direction", true}, {"test-orientation", false}}),
+++        state.explicitlySet[0]);
+++}
++ } // namespace
++diff --git a/test/plugin/rendering.test.cpp b/test/plugin/rendering.test.cpp
++index 4fba67535d7d7bd32e8a19ba80079025e2f38f46..6d1def6fd7c372b55444cdfcfd89dafe9fc94611 100644
++--- a/test/plugin/rendering.test.cpp
+++++ b/test/plugin/rendering.test.cpp
++@@ -2,6 +2,7 @@
++ #include <mln/map/map_options.hpp>
++ #include <mln/plugin/plugin_api.h>
++ #include <mln/plugin/plugin_shader.hpp>
+++#include <mln/renderer/renderer.hpp>
++ #include <mln/style/style.hpp>
++ #include <mln/style/layer.hpp>
++ #include <mln/style/rapidjson_conversion.hpp>
++@@ -671,6 +672,17 @@ mln_plugin_status coverViewportFrame(const mln_plugin_frame_context_v1*, mln_plu
++     return MLN_PLUGIN_STATUS_OK;
++ }
++ 
+++mln_plugin_status createTestLayout(const mln_plugin_layout_context_v1*, void** instance) {
+++    *instance = new (std::nothrow) TestLayout();
+++    return *instance ? MLN_PLUGIN_STATUS_OK : MLN_PLUGIN_STATUS_CALLBACK_ERROR;
+++}
+++
+++mln_plugin_status layOutTestFeature(void* instance, const mln_plugin_feature_v1* feature) {
+++    if (feature->point_count == 0) return MLN_PLUGIN_STATUS_CALLBACK_ERROR;
+++    static_cast<TestLayout*>(instance)->features.emplace_back(feature->feature_index, feature->points[0]);
+++    return MLN_PLUGIN_STATUS_OK;
+++}
+++
++ // A plugin with one layer type, named like the plugin, and one shader, "main".
++ // code holds the OpenGL vertex and fragment, Vulkan vertex and fragment, and
++ // Metal sources; the Metal entry points are testVertex and testFragment. Unless
++@@ -688,7 +700,10 @@ struct TestPlugin {
++         [](const mln_plugin_uniform_context_v1*, uint32_t, uint8_t*, size_t) {
++             return MLN_PLUGIN_STATUS_OK;
++         };
+++    mln_plugin_create_layout_fn createLayout = createTestLayout;
+++    mln_plugin_layout_feature_fn layoutFeature = layOutTestFeature;
++     mln_plugin_finish_layout_fn finishLayout = coverViewport;
+++    mln_plugin_query_feature_fn queryFeature = nullptr;
++     // Set for a source-free layer, which replaces the layout callbacks.
++     mln_plugin_build_frame_fn buildFrame = nullptr;
++ };
++@@ -744,16 +759,10 @@ void registerTestPlugin(const std::string& pluginID, const TestPlugin& plugin) {
++         layer.build_frame = plugin.buildFrame;
++     } else {
++         layer.geometry_type_mask = MLN_PLUGIN_GEOMETRY_POINT;
++-        layer.create_layout = [](const mln_plugin_layout_context_v1*, void** instance) {
++-            *instance = new (std::nothrow) TestLayout();
++-            return *instance ? MLN_PLUGIN_STATUS_OK : MLN_PLUGIN_STATUS_CALLBACK_ERROR;
++-        };
++-        layer.layout_feature = [](void* instance, const mln_plugin_feature_v1* feature) {
++-            if (feature->point_count == 0) return MLN_PLUGIN_STATUS_CALLBACK_ERROR;
++-            static_cast<TestLayout*>(instance)->features.emplace_back(feature->feature_index, feature->points[0]);
++-            return MLN_PLUGIN_STATUS_OK;
++-        };
+++        layer.create_layout = plugin.createLayout;
+++        layer.layout_feature = plugin.layoutFeature;
++         layer.finish_layout = plugin.finishLayout;
+++        layer.query_feature = plugin.queryFeature;
++         layer.destroy_layout = [](void* instance) {
++             delete static_cast<TestLayout*>(instance);
++         };
++@@ -1033,6 +1042,103 @@ TEST(PluginRendering, StaticTexturesResolveInEveryShaderVariant) {
++     EXPECT_EQ(green, pixelAt(test.frontend.render(test.map).image, 32, 32));
++ }
++ 
+++// A layout property that decides, per feature, whether the feature draws its
+++// quad: "test-shape" is "show" or "hide". The layout callbacks record what they
+++// saw, so a property change must reach them through a new tile layout.
+++unsigned shapeLayouts = 0;
+++std::vector<std::string> shapeValues;
+++// What query_feature saw: the feature's layout value and the property array's.
+++std::vector<std::array<std::string, 2>> shapeQueries;
+++
+++TestPlugin shapeLayoutPlugin() {
+++    TestPlugin plugin;
+++    plugin.code = {glPosition + "void main(){gl_Position=vec4(a_pos,0.0,1.0);}",
+++                   "void main(){fragColor=vec4(0.0,1.0,0.0,1.0);}",
+++                   vulkanPosition + "void main(){gl_Position=vec4(a_pos,0.0,1.0);applySurfaceTransform();}",
+++                   vulkanFragColor + "void main(){fragColor=vec4(0.0,1.0,0.0,1.0);}",
+++                   metalPosition +
+++                       "vertex float4 testVertex(Input in [[stage_in]]){return float4(in.a_pos,0.0,1.0);}"
+++                       "fragment float4 testFragment(){return float4(0.0,1.0,0.0,1.0);}"};
+++    static const std::array<mln_plugin_string, 2> shapes = {{{"hide", 4}, {"show", 4}}};
+++    mln_plugin_property_descriptor_v1 shape{};
+++    shape.struct_size = sizeof(shape);
+++    shape.name = {"test-shape", 10};
+++    shape.type = MLN_PLUGIN_VALUE_STRING;
+++    shape.default_value = {sizeof(mln_plugin_value), MLN_PLUGIN_VALUE_STRING, {.string_value = shapes[0]}};
+++    shape.expression_capabilities = MLN_PLUGIN_EXPRESSION_CAMERA | MLN_PLUGIN_EXPRESSION_FEATURE |
+++                                    MLN_PLUGIN_EXPRESSION_COMPOSITE;
+++    shape.enum_values = shapes.data();
+++    shape.enum_value_count = shapes.size();
+++    shape.is_layout = 1;
+++    plugin.properties = {shape};
+++    plugin.createLayout = [](const mln_plugin_layout_context_v1* context, void** instance) {
+++        ++shapeLayouts;
+++        if (context->struct_size < sizeof(*context) || context->property_count != 1)
+++            return MLN_PLUGIN_STATUS_CALLBACK_ERROR;
+++        return createTestLayout(context, instance);
+++    };
+++    plugin.layoutFeature = [](void* instance, const mln_plugin_feature_v1* feature) {
+++        if (feature->struct_size < sizeof(*feature) || feature->layout_property_count != 1)
+++            return MLN_PLUGIN_STATUS_CALLBACK_ERROR;
+++        const auto& value = feature->layout_properties[0].value.data.string_value;
+++        shapeValues.emplace_back(value.data, value.size);
+++        return shapeValues.back() == "show" ? layOutTestFeature(instance, feature) : MLN_PLUGIN_STATUS_OK;
+++    };
+++    plugin.queryFeature = [](const mln_plugin_feature_v1* feature,
+++                             const mln_plugin_tile_point_v1*,
+++                             size_t,
+++                             const mln_plugin_query_context_v1*,
+++                             const mln_plugin_property_value_v1* properties,
+++                             size_t propertyCount) -> uint8_t {
+++        if (feature->struct_size < sizeof(*feature) || feature->layout_property_count != 1 || propertyCount != 1)
+++            return 0;
+++        const auto& fromFeature = feature->layout_properties[0].value.data.string_value;
+++        const auto& fromProperties = properties[0].value.data.string_value;
+++        shapeQueries.push_back(
+++            {std::string(fromFeature.data, fromFeature.size), std::string(fromProperties.data, fromProperties.size)});
+++        return 1;
+++    };
+++    return plugin;
+++}
+++
+++TEST(PluginRendering, LayoutPropertyChangesLayOutTilesAgain) {
+++    ASSERT_NO_FATAL_FAILURE(registerTestPlugin("test.shape-layout", shapeLayoutPlugin()));
+++    shapeLayouts = 0;
+++    shapeValues.clear();
+++    RenderTest test;
+++    const auto features =
+++        R"({"type":"Feature","properties":{"roof":"show"},"geometry":{"type":"Point","coordinates":[0,0]}})";
+++    test.map.getStyle().loadJSON(pointStyle(
+++        R"({"id":"shape","type":"test.shape-layout","source":"points","layout":{"test-shape":["get","roof"]}})",
+++        features));
+++    EXPECT_EQ(green, pixelAt(test.frontend.render(test.map).image, 32, 32));
+++    EXPECT_GT(shapeLayouts, 0u);
+++    EXPECT_EQ(std::vector<std::string>(shapeValues.size(), "show"), shapeValues);
+++    // Hit tests see the feature's layout value, not the default.
+++    shapeQueries.clear();
+++    EXPECT_EQ(1u, test.frontend.getRenderer()->queryRenderedFeatures(ScreenCoordinate{32, 32}).size());
+++    EXPECT_EQ((std::vector<std::array<std::string, 2>>{{"show", "show"}}), shapeQueries);
+++    const auto serialized = test.map.getStyle().getLayer("shape")->serialize();
+++    EXPECT_TRUE(serialized.getObject()->at("layout").getObject()->at("test-shape").getArray());
+++
+++    // Unscoped, as the C API sets a property; each change lays the tiles out again.
+++    const auto expectLayout = [&](const std::string& json, const std::string& value, const Rgba& pixel) {
+++        SCOPED_TRACE(json);
+++        const auto layouts = shapeLayouts;
+++        shapeValues.clear();
+++        ASSERT_NO_FATAL_FAILURE(setPaint(test, "shape", "test-shape", json));
+++        EXPECT_EQ(pixel, pixelAt(test.frontend.render(test.map).image, 32, 32));
+++        EXPECT_GT(shapeLayouts, layouts);
+++        ASSERT_FALSE(shapeValues.empty());
+++        EXPECT_EQ(std::vector<std::string>(shapeValues.size(), value), shapeValues);
+++    };
+++    expectLayout(R"("hide")", "hide", clear);
+++    expectLayout(R"(["match",["get","roof"],"show","show","hide"])", "show", green);
+++    // An unset property reads as its default, and so does a value outside the enum.
+++    expectLayout("null", "hide", clear);
+++    expectLayout(R"(["concat",["get","roof"],"!"])", "hide", clear);
+++}
+++
++ // A vertex-only DRAWABLE block beside a LAYER block that both stages read: the
++ // vertex stage takes the quad's horizontal offset from the layer block, and
++ // the fragment stage its color.
+diff --git a/patches/maplibre-native/README.md b/patches/maplibre-native/README.md
+index 908c2478..3f6366a6 100644
+--- a/patches/maplibre-native/README.md
++++ b/patches/maplibre-native/README.md
+@@ -215,3 +215,5 @@ again.
+ `0045-plugin-frame-queries.patch` Hit envelopes for source-free rendered features. Carried by maplibre-plugins until it lands upstream.
+ 
+ `0046-plugin-static-textures.patch` Static RGBA32F catalog textures for plugin shaders. Carried by maplibre-plugins until it lands upstream.
++
++`0047-plugin-feature-layout-properties.patch` Feature and composite expressions for plugin layout properties, evaluated per feature during tile layout, and the tile id in the layout context. Carried by maplibre-plugins until it lands upstream.

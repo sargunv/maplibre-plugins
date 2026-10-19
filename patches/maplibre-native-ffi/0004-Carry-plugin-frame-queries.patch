@@ -1,41 +1,41 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: maplibre-plugins <sync@localhost>
-Date: Mon, 12 Oct 2026 02:35:45 -0700
-Subject: [PATCH 3/4] Carry plugin frame queries
+Date: Sun, 18 Oct 2026 15:11:14 -0700
+Subject: [PATCH 4/6] Carry plugin frame queries
 
 Hit envelopes for source-free rendered features.
 
 Carried by maplibre-plugins until it lands upstream.
 ---
  .mise/bin/sync-submodules                     |   1 +
- .../0044-plugin-frame-queries.patch           | 176 ++++++++++++++++++
+ .../0045-plugin-frame-queries.patch           | 176 ++++++++++++++++++
  patches/maplibre-native/README.md             |   2 +
  3 files changed, 179 insertions(+)
- create mode 100644 patches/maplibre-native/0044-plugin-frame-queries.patch
+ create mode 100644 patches/maplibre-native/0045-plugin-frame-queries.patch
 
 diff --git a/.mise/bin/sync-submodules b/.mise/bin/sync-submodules
-index 18a41c6e..c65dc034 100755
+index d3bf5ba2..3b6f2cbb 100755
 --- a/.mise/bin/sync-submodules
 +++ b/.mise/bin/sync-submodules
-@@ -81,6 +81,7 @@ mln_patches=(
-   "$repo_root/patches/maplibre-native/0039-color-ramp-global-state.patch"
-   "$repo_root/patches/maplibre-native/0042-source-free-plugin-layers.patch"
-   "$repo_root/patches/maplibre-native/0043-plugin-rotation-properties.patch"
-+  "$repo_root/patches/maplibre-native/0044-plugin-frame-queries.patch"
+@@ -82,6 +82,7 @@ mln_patches=(
+   "$repo_root/patches/maplibre-native/0042-vulkan-fill-extrusion-plugin.patch"
+   "$repo_root/patches/maplibre-native/0043-source-free-plugin-layers.patch"
+   "$repo_root/patches/maplibre-native/0044-plugin-rotation-properties.patch"
++  "$repo_root/patches/maplibre-native/0045-plugin-frame-queries.patch"
  )
  
  # The patches overlap, so no single patch reverses cleanly on its own once the
-diff --git a/patches/maplibre-native/0044-plugin-frame-queries.patch b/patches/maplibre-native/0044-plugin-frame-queries.patch
+diff --git a/patches/maplibre-native/0045-plugin-frame-queries.patch b/patches/maplibre-native/0045-plugin-frame-queries.patch
 new file mode 100644
-index 00000000..d80c8122
+index 00000000..b5cf416e
 --- /dev/null
-+++ b/patches/maplibre-native/0044-plugin-frame-queries.patch
++++ b/patches/maplibre-native/0045-plugin-frame-queries.patch
 @@ -0,0 +1,176 @@
 +diff --git a/include/mln/plugin/plugin_api.h b/include/mln/plugin/plugin_api.h
-+index 060130e05f08be4bcc1143f71ba3576d1e1d8b1d..615691a933c19387fa7658184f68c2a55b53abb2 100644
++index ef1cb2aa069c5629211974f3642ccb2283a8f674..d7696d54fa8a0a9cb93e9459855537b6b8edd6d9 100644
 +--- a/include/mln/plugin/plugin_api.h
 ++++ b/include/mln/plugin/plugin_api.h
-+@@ -374,6 +374,22 @@ typedef struct mln_plugin_feature_vertex_range_v1 {
++@@ -423,6 +423,22 @@ typedef struct mln_plugin_feature_vertex_range_v1 {
 +     uint32_t vertex_count;
 + } mln_plugin_feature_vertex_range_v1;
 + 
@@ -58,7 +58,7 @@ index 00000000..d80c8122
 + /* The bucket struct is host-owned. All views written into it, including nested
 +  * drawable strings/arrays, indices, vertex bytes and feature ranges, remain
 +  * plugin-owned and valid until destroy_layout. On success the host copies them
-+@@ -391,6 +407,9 @@ typedef struct mln_plugin_bucket_v1 {
++@@ -440,6 +456,9 @@ typedef struct mln_plugin_bucket_v1 {
 +     float query_radius;
 +     const mln_plugin_feature_vertex_range_v1* feature_vertex_ranges;
 +     size_t feature_vertex_range_count;
@@ -69,7 +69,7 @@ index 00000000..d80c8122
 + 
 + /*
 +diff --git a/src/mln/renderer/layers/render_plugin_style_layer.cpp b/src/mln/renderer/layers/render_plugin_style_layer.cpp
-+index 5752e102e8d3b273d345e6deb9bca595a0730b5c..e505234ade924f68c5395be1f7b654eed807449a 100644
++index 134612db1e2526b64931c9e6a70d2a84d0267ea7..1d1fb706a570ede42a0e77f579e5f36782cfc0f7 100644
 +--- a/src/mln/renderer/layers/render_plugin_style_layer.cpp
 ++++ b/src/mln/renderer/layers/render_plugin_style_layer.cpp
 +@@ -1,5 +1,6 @@
@@ -79,7 +79,7 @@ index 00000000..d80c8122
 + #include <mln/gfx/context.hpp>
 + #include <mln/gfx/color_mode.hpp>
 + #include <mln/gfx/cull_face_mode.hpp>
-+@@ -22,6 +23,7 @@
++@@ -23,6 +24,7 @@
 + #include <mln/renderer/paint_parameters.hpp>
 + #include <mln/shaders/program_parameters.hpp>
 + #include <mln/shaders/shader_program_base.hpp>
@@ -87,15 +87,15 @@ index 00000000..d80c8122
 + #include <mln/style/plugin_property.hpp>
 + #include <mln/util/logging.hpp>
 + #include <mln/util/projection.hpp>
-+@@ -29,6 +31,7 @@
++@@ -30,6 +32,7 @@
 + #include <mapbox/cheap_ruler.hpp>
 + 
 + #include <chrono>
 ++#include <cmath>
 + #include <cstring>
 + #include <set>
-+ 
-+@@ -70,6 +73,43 @@ void destinationToLatLng(const mln_plugin_frame_context_v1* context,
++ #include <cmath>
++@@ -73,6 +76,43 @@ void destinationToLatLng(const mln_plugin_frame_context_v1* context,
 + 
 + RenderPluginStyleLayer::~RenderPluginStyleLayer() = default;
 + 
@@ -139,7 +139,7 @@ index 00000000..d80c8122
 + RenderPluginStyleLayer::RenderPluginStyleLayer(Immutable<style::PluginStyleLayer::Impl> impl)
 +     : RenderLayer(makeMutable<style::PluginStyleLayerProperties>(std::move(impl))) {
 +     // Unlike generated layers, a plugin layer has no generated evaluated
-+@@ -405,6 +445,7 @@ void RenderPluginStyleLayer::updateFrame(gfx::ShaderRegistry& shaders,
++@@ -490,6 +530,7 @@ void RenderPluginStyleLayer::updateFrame(gfx::ShaderRegistry& shaders,
 +     std::copy(projMatrix.begin(), projMatrix.end(), frameContext.proj_matrix);
 +     frameContext.project_mercator = &projectToMercatorPixels;
 +     frameContext.destination = &destinationToLatLng;
@@ -147,7 +147,7 @@ index 00000000..d80c8122
 + 
 +     mln_plugin_bucket_v1 output{};
 +     output.struct_size = sizeof(output);
-+@@ -412,22 +453,24 @@ void RenderPluginStyleLayer::updateFrame(gfx::ShaderRegistry& shaders,
++@@ -497,22 +538,24 @@ void RenderPluginStyleLayer::updateFrame(gfx::ShaderRegistry& shaders,
 +         Log::Error(Event::Style, "Plugin layer '" + getID() + "' failed to build its frame");
 +         removeAllDrawables();
 +         frameBucket.reset();
@@ -176,7 +176,7 @@ index 00000000..d80c8122
 +     }
 +     const auto zoom = static_cast<float>(state.getZoom());
 +diff --git a/src/mln/renderer/layers/render_plugin_style_layer.hpp b/src/mln/renderer/layers/render_plugin_style_layer.hpp
-+index 4da778bb5e4b89cbe2154bdad38a590740a2cb9e..b52a963511b3ee47e7c092d62a0bfb4e5c8e08bc 100644
++index 7b8bcf95ffeaffdc3bf338ff37a898346644bcb8..b29895405c2521397a2cebbef2db1cf4e20e2d92 100644
 +--- a/src/mln/renderer/layers/render_plugin_style_layer.hpp
 ++++ b/src/mln/renderer/layers/render_plugin_style_layer.hpp
 +@@ -2,6 +2,7 @@
@@ -198,7 +198,7 @@ index 00000000..d80c8122
 +     void transition(const TransitionParameters&) override;
 +     void evaluate(const PropertyEvaluationParameters&) override;
 +     void layerChanged(const TransitionParameters&,
-+@@ -61,6 +65,8 @@ private:
++@@ -62,6 +66,8 @@ private:
 + 
 +     // Owns frame geometry and binders while drawables reference them.
 +     std::shared_ptr<PluginBucket> frameBucket;
@@ -208,12 +208,12 @@ index 00000000..d80c8122
 + 
 + } // namespace mln
 diff --git a/patches/maplibre-native/README.md b/patches/maplibre-native/README.md
-index f34f21f8..6d18573b 100644
+index 09521af0..44bbf019 100644
 --- a/patches/maplibre-native/README.md
 +++ b/patches/maplibre-native/README.md
-@@ -209,3 +209,5 @@ again.
- `0042-source-free-plugin-layers.patch` Per-frame geometry without a style source. Carried by maplibre-plugins until it lands upstream.
+@@ -211,3 +211,5 @@ again.
+ `0043-source-free-plugin-layers.patch` Per-frame geometry without a style source. Carried by maplibre-plugins until it lands upstream.
  
- `0043-plugin-rotation-properties.patch` Shortest-arc rotation transitions. Carried by maplibre-plugins until it lands upstream.
+ `0044-plugin-rotation-properties.patch` Shortest-arc rotation transitions. Carried by maplibre-plugins until it lands upstream.
 +
-+`0044-plugin-frame-queries.patch` Hit envelopes for source-free rendered features. Carried by maplibre-plugins until it lands upstream.
++`0045-plugin-frame-queries.patch` Hit envelopes for source-free rendered features. Carried by maplibre-plugins until it lands upstream.

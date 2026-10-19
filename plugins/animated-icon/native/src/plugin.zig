@@ -837,7 +837,6 @@ const Registration = struct {
             .query_feature = queryFeature,
             .update_uniform_block = updateUniformBlock,
             .get_query_radius = getQueryRadius,
-            .enable_stencil_overlap_dedup = 0,
             .enable_near_clipped_matrix = 0,
             .should_animate = shouldAnimate,
             .source_free = 0,

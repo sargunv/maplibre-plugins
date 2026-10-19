@@ -1,0 +1,112 @@
+{
+  "description": "Found by fuzzing: a hip running exactly through a reflex corner, and thin footprints where a break line runs along a triangle edge. Points within 1e-9 (in n) of a break line count as on it, so no crossing is made at a rounding-error place or divides by zero.",
+  "extent": 8192,
+  "features": [
+    {
+      "label": "hipped U whose hip passes through the inner corner",
+      "index": 0,
+      "rings": [
+        [
+          [963, 2333],
+          [1239, 2333],
+          [1239, 2038],
+          [1177, 2038],
+          [1177, 2271],
+          [1025, 2271],
+          [1025, 2038],
+          [963, 2038]
+        ]
+      ],
+      "shape": "hipped"
+    },
+    {
+      "label": "quadruple_saltbox on a thin L",
+      "index": 1,
+      "rings": [
+        [
+          [1235, 5466],
+          [1337, 5466],
+          [1337, 5461],
+          [1240, 5461],
+          [1240, 5439],
+          [1235, 5439]
+        ]
+      ],
+      "shape": "quadruple_saltbox"
+    },
+    {
+      "label": "quadruple_saltbox on a thin U",
+      "index": 2,
+      "rings": [
+        [
+          [5996, 2628],
+          [6020, 2628],
+          [6020, 2828],
+          [6030, 2828],
+          [6030, 2628],
+          [6054, 2628],
+          [6054, 2852],
+          [5996, 2852]
+        ]
+      ],
+      "shape": "quadruple_saltbox"
+    },
+    {
+      "label": "quadruple_saltbox across toward 200° on an L",
+      "index": 3,
+      "rings": [
+        [
+          [1014, 1947],
+          [1152, 1947],
+          [1152, 2195],
+          [1299, 2195],
+          [1299, 2333],
+          [1014, 2333]
+        ]
+      ],
+      "shape": "quadruple_saltbox",
+      "orientation": "across",
+      "direction": 200
+    }
+  ],
+  "expected": {
+    "vertex_count": 244,
+    "index_count": 438,
+    "segments": [[0, 0, 244, 438]],
+    "ranges": [[0, 0, 56], [1, 56, 58], [2, 114, 72], [3, 186, 58]],
+    "summaries": [
+      {
+        "vertices": 56,
+        "triangles": 30,
+        "sum_pos": [61482.4649658, 121062.464844, 7728],
+        "sum_roof": [7.03235512972, 58, 0.00724637694657, -7.97826086916],
+        "weighted": 97246.086236,
+        "moment": 97678
+      },
+      {
+        "vertices": 58,
+        "triangles": 36,
+        "sum_pos": [73909.6899414, 316368.707031, 234.900011063],
+        "sum_roof": [26, 74, 6, -6],
+        "weighted": 198788.121275,
+        "moment": 151857
+      },
+      {
+        "vertices": 72,
+        "triangles": 44,
+        "sum_pos": [433754.786133, 196196.199707, 626.399986267],
+        "sum_roof": [32, 90, 0, -7.54022988677],
+        "weighted": 319858.012948,
+        "moment": 280614
+      },
+      {
+        "vertices": 58,
+        "triangles": 36,
+        "sum_pos": [66859.8521729, 125176.068481, 3358.2000885],
+        "sum_roof": [26, 74, 6, -6],
+        "weighted": 99820.7202831,
+        "moment": 151857
+      }
+    ]
+  }
+}

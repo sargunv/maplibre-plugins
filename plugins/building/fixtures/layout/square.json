@@ -1,0 +1,678 @@
+{
+  "description": "A square: the long and short sides tie, so along takes the first calipers edge.",
+  "extent": 8192,
+  "features": [
+    {
+      "label": "flat",
+      "index": 0,
+      "rings": [[[2000, 2000], [2200, 2000], [2200, 2200], [2000, 2200]]],
+      "shape": "flat",
+      "orientation": "along",
+      "direction": -1
+    },
+    {
+      "label": "gabled",
+      "index": 1,
+      "rings": [[[2000, 2000], [2200, 2000], [2200, 2200], [2000, 2200]]],
+      "shape": "gabled",
+      "orientation": "along",
+      "direction": -1
+    },
+    {
+      "label": "hipped",
+      "index": 2,
+      "rings": [[[2000, 2000], [2200, 2000], [2200, 2200], [2000, 2200]]],
+      "shape": "hipped",
+      "orientation": "along",
+      "direction": -1
+    },
+    {
+      "label": "half-hipped",
+      "index": 3,
+      "rings": [[[2000, 2000], [2200, 2000], [2200, 2200], [2000, 2200]]],
+      "shape": "half-hipped",
+      "orientation": "along",
+      "direction": -1
+    },
+    {
+      "label": "pyramidal",
+      "index": 4,
+      "rings": [[[2000, 2000], [2200, 2000], [2200, 2200], [2000, 2200]]],
+      "shape": "pyramidal",
+      "orientation": "along",
+      "direction": -1
+    },
+    {
+      "label": "skillion",
+      "index": 5,
+      "rings": [[[2000, 2000], [2200, 2000], [2200, 2200], [2000, 2200]]],
+      "shape": "skillion",
+      "orientation": "along",
+      "direction": -1
+    },
+    {
+      "label": "gambrel",
+      "index": 6,
+      "rings": [[[2000, 2000], [2200, 2000], [2200, 2200], [2000, 2200]]],
+      "shape": "gambrel",
+      "orientation": "along",
+      "direction": -1
+    },
+    {
+      "label": "round",
+      "index": 7,
+      "rings": [[[2000, 2000], [2200, 2000], [2200, 2200], [2000, 2200]]],
+      "shape": "round",
+      "orientation": "along",
+      "direction": -1
+    },
+    {
+      "label": "double_saltbox",
+      "index": 8,
+      "rings": [[[2000, 2000], [2200, 2000], [2200, 2200], [2000, 2200]]],
+      "shape": "double_saltbox",
+      "orientation": "along",
+      "direction": -1
+    },
+    {
+      "label": "saltbox",
+      "index": 9,
+      "rings": [[[2000, 2000], [2200, 2000], [2200, 2200], [2000, 2200]]],
+      "shape": "saltbox",
+      "orientation": "along",
+      "direction": -1
+    },
+    {
+      "label": "mansard",
+      "index": 10,
+      "rings": [[[2000, 2000], [2200, 2000], [2200, 2200], [2000, 2200]]],
+      "shape": "mansard",
+      "orientation": "along",
+      "direction": -1
+    },
+    {
+      "label": "dome",
+      "index": 11,
+      "rings": [[[2000, 2000], [2200, 2000], [2200, 2200], [2000, 2200]]],
+      "shape": "dome",
+      "orientation": "along",
+      "direction": -1
+    },
+    {
+      "label": "quadruple_saltbox",
+      "index": 12,
+      "rings": [[[2000, 2000], [2200, 2000], [2200, 2200], [2000, 2200]]],
+      "shape": "quadruple_saltbox",
+      "orientation": "along",
+      "direction": -1
+    },
+    {
+      "label": "round_gabled",
+      "index": 13,
+      "rings": [[[2000, 2000], [2200, 2000], [2200, 2200], [2000, 2200]]],
+      "shape": "round_gabled",
+      "orientation": "along",
+      "direction": -1
+    },
+    {
+      "label": "onion",
+      "index": 14,
+      "rings": [[[2000, 2000], [2200, 2000], [2200, 2200], [2000, 2200]]],
+      "shape": "onion",
+      "orientation": "along",
+      "direction": -1
+    },
+    {
+      "label": "cone",
+      "index": 15,
+      "rings": [[[2000, 2000], [2200, 2000], [2200, 2200], [2000, 2200]]],
+      "shape": "cone",
+      "orientation": "along",
+      "direction": -1
+    },
+    {
+      "label": "many",
+      "index": 16,
+      "rings": [[[2000, 2000], [2200, 2000], [2200, 2200], [2000, 2200]]],
+      "shape": "many",
+      "orientation": "along",
+      "direction": -1
+    },
+    {
+      "label": "gabled across",
+      "index": 17,
+      "rings": [[[2000, 2000], [2200, 2000], [2200, 2200], [2000, 2200]]],
+      "shape": "gabled",
+      "orientation": "across",
+      "direction": -1
+    },
+    {
+      "label": "hipped across",
+      "index": 18,
+      "rings": [[[2000, 2000], [2200, 2000], [2200, 2200], [2000, 2200]]],
+      "shape": "hipped",
+      "orientation": "across",
+      "direction": -1
+    },
+    {
+      "label": "half-hipped across",
+      "index": 19,
+      "rings": [[[2000, 2000], [2200, 2000], [2200, 2200], [2000, 2200]]],
+      "shape": "half-hipped",
+      "orientation": "across",
+      "direction": -1
+    },
+    {
+      "label": "skillion across",
+      "index": 20,
+      "rings": [[[2000, 2000], [2200, 2000], [2200, 2200], [2000, 2200]]],
+      "shape": "skillion",
+      "orientation": "across",
+      "direction": -1
+    },
+    {
+      "label": "gambrel across",
+      "index": 21,
+      "rings": [[[2000, 2000], [2200, 2000], [2200, 2200], [2000, 2200]]],
+      "shape": "gambrel",
+      "orientation": "across",
+      "direction": -1
+    },
+    {
+      "label": "round across",
+      "index": 22,
+      "rings": [[[2000, 2000], [2200, 2000], [2200, 2200], [2000, 2200]]],
+      "shape": "round",
+      "orientation": "across",
+      "direction": -1
+    },
+    {
+      "label": "double_saltbox across",
+      "index": 23,
+      "rings": [[[2000, 2000], [2200, 2000], [2200, 2200], [2000, 2200]]],
+      "shape": "double_saltbox",
+      "orientation": "across",
+      "direction": -1
+    },
+    {
+      "label": "saltbox across",
+      "index": 24,
+      "rings": [[[2000, 2000], [2200, 2000], [2200, 2200], [2000, 2200]]],
+      "shape": "saltbox",
+      "orientation": "across",
+      "direction": -1
+    },
+    {
+      "label": "mansard across",
+      "index": 25,
+      "rings": [[[2000, 2000], [2200, 2000], [2200, 2200], [2000, 2200]]],
+      "shape": "mansard",
+      "orientation": "across",
+      "direction": -1
+    },
+    {
+      "label": "quadruple_saltbox across",
+      "index": 26,
+      "rings": [[[2000, 2000], [2200, 2000], [2200, 2200], [2000, 2200]]],
+      "shape": "quadruple_saltbox",
+      "orientation": "across",
+      "direction": -1
+    },
+    {
+      "label": "round_gabled across",
+      "index": 27,
+      "rings": [[[2000, 2000], [2200, 2000], [2200, 2200], [2000, 2200]]],
+      "shape": "round_gabled",
+      "orientation": "across",
+      "direction": -1
+    },
+    {
+      "label": "gabled toward 30°",
+      "index": 28,
+      "rings": [[[2000, 2000], [2200, 2000], [2200, 2200], [2000, 2200]]],
+      "shape": "gabled",
+      "orientation": "along",
+      "direction": 30
+    },
+    {
+      "label": "hipped toward 350°",
+      "index": 29,
+      "rings": [[[2000, 2000], [2200, 2000], [2200, 2200], [2000, 2200]]],
+      "shape": "hipped",
+      "orientation": "along",
+      "direction": 350
+    },
+    {
+      "label": "skillion toward 30°",
+      "index": 30,
+      "rings": [[[2000, 2000], [2200, 2000], [2200, 2200], [2000, 2200]]],
+      "shape": "skillion",
+      "orientation": "along",
+      "direction": 30
+    },
+    {
+      "label": "skillion toward 200°",
+      "index": 31,
+      "rings": [[[2000, 2000], [2200, 2000], [2200, 2200], [2000, 2200]]],
+      "shape": "skillion",
+      "orientation": "along",
+      "direction": 200
+    },
+    {
+      "label": "saltbox toward 135°",
+      "index": 32,
+      "rings": [[[2000, 2000], [2200, 2000], [2200, 2200], [2000, 2200]]],
+      "shape": "saltbox",
+      "orientation": "along",
+      "direction": 135
+    },
+    {
+      "label": "saltbox toward 290°",
+      "index": 33,
+      "rings": [[[2000, 2000], [2200, 2000], [2200, 2200], [2000, 2200]]],
+      "shape": "saltbox",
+      "orientation": "along",
+      "direction": 290
+    },
+    {
+      "label": "round toward 75°",
+      "index": 34,
+      "rings": [[[2000, 2000], [2200, 2000], [2200, 2200], [2000, 2200]]],
+      "shape": "round",
+      "orientation": "along",
+      "direction": 75
+    },
+    {
+      "label": "gambrel toward 0°",
+      "index": 35,
+      "rings": [[[2000, 2000], [2200, 2000], [2200, 2200], [2000, 2200]]],
+      "shape": "gambrel",
+      "orientation": "along",
+      "direction": 0
+    },
+    {
+      "label": "pyramidal toward 90°",
+      "index": 36,
+      "rings": [[[2000, 2000], [2200, 2000], [2200, 2200], [2000, 2200]]],
+      "shape": "pyramidal",
+      "orientation": "along",
+      "direction": 90
+    },
+    {
+      "label": "skillion toward 360°",
+      "index": 37,
+      "rings": [[[2000, 2000], [2200, 2000], [2200, 2200], [2000, 2200]]],
+      "shape": "skillion",
+      "orientation": "along",
+      "direction": 360
+    },
+    {
+      "label": "gabled toward 45°",
+      "index": 38,
+      "rings": [[[2000, 2000], [2200, 2000], [2200, 2200], [2000, 2200]]],
+      "shape": "gabled",
+      "orientation": "along",
+      "direction": 45
+    }
+  ],
+  "expected": {
+    "vertex_count": 1574,
+    "index_count": 3402,
+    "segments": [[0, 0, 1574, 3402]],
+    "ranges": [
+      [0, 0, 20],
+      [1, 20, 30],
+      [2, 50, 28],
+      [3, 78, 44],
+      [4, 122, 28],
+      [5, 150, 20],
+      [6, 170, 50],
+      [7, 220, 97],
+      [8, 317, 40],
+      [9, 357, 30],
+      [10, 387, 52],
+      [11, 439, 53],
+      [12, 492, 36],
+      [13, 528, 72],
+      [14, 600, 48],
+      [15, 648, 24],
+      [16, 672, 20],
+      [17, 692, 30],
+      [18, 722, 28],
+      [19, 750, 44],
+      [20, 794, 20],
+      [21, 814, 50],
+      [22, 864, 97],
+      [23, 961, 40],
+      [24, 1001, 30],
+      [25, 1031, 52],
+      [26, 1083, 36],
+      [27, 1119, 72],
+      [28, 1191, 30],
+      [29, 1221, 28],
+      [30, 1249, 20],
+      [31, 1269, 20],
+      [32, 1289, 30],
+      [33, 1319, 30],
+      [34, 1349, 97],
+      [35, 1446, 50],
+      [36, 1496, 28],
+      [37, 1524, 20],
+      [38, 1544, 30]
+    ],
+    "summaries": [
+      {
+        "vertices": 20,
+        "triangles": 10,
+        "sum_pos": [42000, 42000, 0],
+        "sum_roof": [12, 16, 0, 0],
+        "weighted": 44138.7,
+        "moment": 4115
+      },
+      {
+        "vertices": 30,
+        "triangles": 18,
+        "sum_pos": [63000, 63000, 3000],
+        "sum_roof": [8, 30, 0, 0],
+        "weighted": 66616.1416667,
+        "moment": 19844
+      },
+      {
+        "vertices": 28,
+        "triangles": 12,
+        "sum_pos": [58800, 58800, 2800],
+        "sum_roof": [4, 32, 0, 0],
+        "weighted": 62353.8278571,
+        "moment": 7658
+      },
+      {
+        "vertices": 44,
+        "triangles": 28,
+        "sum_pos": [92400.0003662, 92400, 4400],
+        "sum_roof": [16.0000002384, 52, 0, 0],
+        "weighted": 96675.8316865,
+        "moment": 66033
+      },
+      {
+        "vertices": 28,
+        "triangles": 12,
+        "sum_pos": [58800, 58800, 2800],
+        "sum_roof": [4, 32, 0, 0],
+        "weighted": 62375.3571429,
+        "moment": 7658
+      },
+      {
+        "vertices": 20,
+        "triangles": 10,
+        "sum_pos": [42000, 42000, 4000],
+        "sum_roof": [6, 16, 0, -0.019999999553],
+        "weighted": 46234.5315,
+        "moment": 4115
+      },
+      {
+        "vertices": 50,
+        "triangles": 34,
+        "sum_pos": [105000.000244, 105000.001221, 5000],
+        "sum_roof": [18.6666669846, 58, 0, 0],
+        "weighted": 109538.1812,
+        "moment": 113756
+      },
+      {
+        "vertices": 97,
+        "triangles": 98,
+        "sum_pos": [203700, 203700, 9700],
+        "sum_roof": [37.9787701368, 104, 0, 0],
+        "weighted": 210349.596832,
+        "moment": 1985164
+      },
+      {
+        "vertices": 40,
+        "triangles": 26,
+        "sum_pos": [84000, 84000, 1200],
+        "sum_roof": [16, 44, 0, 0],
+        "weighted": 86642.2958333,
+        "moment": 54002
+      },
+      {
+        "vertices": 30,
+        "triangles": 18,
+        "sum_pos": [63080, 62600, 4200],
+        "sum_roof": [11.4285715818, 30, 0, 0],
+        "weighted": 67037.8345239,
+        "moment": 19844
+      },
+      {
+        "vertices": 52,
+        "triangles": 28,
+        "sum_pos": [109200.000244, 109200.001221, 5200],
+        "sum_roof": [21.3333337307, 80, 0, 0],
+        "weighted": 113960.751038,
+        "moment": 79923
+      },
+      {
+        "vertices": 53,
+        "triangles": 76,
+        "sum_pos": [111300, 111300, 5300],
+        "sum_roof": [17.0000003278, 82, 0, 0],
+        "weighted": 116206.961752,
+        "moment": 682908
+      },
+      {
+        "vertices": 36,
+        "triangles": 18,
+        "sum_pos": [75600, 75600, 1080],
+        "sum_roof": [12, 48, 0, 0],
+        "weighted": 78253.4185185,
+        "moment": 23793
+      },
+      {
+        "vertices": 72,
+        "triangles": 66,
+        "sum_pos": [151199.999878, 151199.999146, 7200],
+        "sum_roof": [24.9270536304, 78, 0, 0],
+        "weighted": 156785.491328,
+        "moment": 658570
+      },
+      {
+        "vertices": 48,
+        "triangles": 44,
+        "sum_pos": [100800, 100800, 4800],
+        "sum_roof": [15.5199999809, 80, 0, 0],
+        "weighted": 105480.235499,
+        "moment": 202808
+      },
+      {
+        "vertices": 24,
+        "triangles": 12,
+        "sum_pos": [50400, 50400, 2400],
+        "sum_roof": [4, 24, 0, 0],
+        "weighted": 53795.456875,
+        "moment": 6941
+      },
+      {
+        "vertices": 20,
+        "triangles": 10,
+        "sum_pos": [42000, 42000, 0],
+        "sum_roof": [12, 16, 0, 0],
+        "weighted": 44138.7,
+        "moment": 4115
+      },
+      {
+        "vertices": 30,
+        "triangles": 18,
+        "sum_pos": [63000, 63000, 3000],
+        "sum_roof": [8, 30, 0, 0],
+        "weighted": 66810.5916667,
+        "moment": 19543
+      },
+      {
+        "vertices": 28,
+        "triangles": 12,
+        "sum_pos": [58800, 58800, 2800],
+        "sum_roof": [4, 32, 0, 0],
+        "weighted": 62396.6785714,
+        "moment": 7658
+      },
+      {
+        "vertices": 44,
+        "triangles": 28,
+        "sum_pos": [92400, 92400.0003662, 4400],
+        "sum_roof": [16.0000002384, 52, 0, 0],
+        "weighted": 96970.2260379,
+        "moment": 65200
+      },
+      {
+        "vertices": 20,
+        "triangles": 10,
+        "sum_pos": [42000, 42000, 4000],
+        "sum_roof": [6, 16, 0.019999999553, 0],
+        "weighted": 46234.6685,
+        "moment": 4115
+      },
+      {
+        "vertices": 50,
+        "triangles": 34,
+        "sum_pos": [105000.001221, 105000.000244, 5000],
+        "sum_roof": [18.6666669846, 58, 0, 0],
+        "weighted": 109969.167314,
+        "moment": 112247
+      },
+      {
+        "vertices": 97,
+        "triangles": 98,
+        "sum_pos": [203700, 203700, 9700],
+        "sum_roof": [37.9787701368, 104, 0, 0],
+        "weighted": 211290.619054,
+        "moment": 1970432
+      },
+      {
+        "vertices": 40,
+        "triangles": 26,
+        "sum_pos": [84000, 84000, 1200],
+        "sum_roof": [16, 44, 0, 0],
+        "weighted": 86960.8041667,
+        "moment": 53193
+      },
+      {
+        "vertices": 30,
+        "triangles": 18,
+        "sum_pos": [63400, 62920, 4200],
+        "sum_roof": [11.4285715818, 30, 0, 0],
+        "weighted": 67613.7178572,
+        "moment": 19543
+      },
+      {
+        "vertices": 52,
+        "triangles": 28,
+        "sum_pos": [109200.001221, 109200.000244, 5200],
+        "sum_roof": [21.3333337307, 80, 0, 0],
+        "weighted": 114051.524042,
+        "moment": 79928
+      },
+      {
+        "vertices": 36,
+        "triangles": 18,
+        "sum_pos": [75600, 75600, 1080],
+        "sum_roof": [12, 48, 0, 0],
+        "weighted": 78321.1666667,
+        "moment": 23753
+      },
+      {
+        "vertices": 72,
+        "triangles": 66,
+        "sum_pos": [151199.999146, 151199.999878, 7200],
+        "sum_roof": [24.9270536304, 78, 0, 0],
+        "weighted": 157318.197801,
+        "moment": 651838
+      },
+      {
+        "vertices": 30,
+        "triangles": 18,
+        "sum_pos": [63000, 63000, 3000],
+        "sum_roof": [8, 30, 0, 0],
+        "weighted": 66682.7916667,
+        "moment": 19844
+      },
+      {
+        "vertices": 28,
+        "triangles": 12,
+        "sum_pos": [58800, 58800, 2800],
+        "sum_roof": [4, 32, 0, 0],
+        "weighted": 62439.5292857,
+        "moment": 7658
+      },
+      {
+        "vertices": 20,
+        "triangles": 10,
+        "sum_pos": [42000, 42000, 5464.1015625],
+        "sum_roof": [6.00000008941, 16, -0.0073205078952, 0.0126794921234],
+        "weighted": 47003.9716749,
+        "moment": 4115
+      },
+      {
+        "vertices": 20,
+        "triangles": 10,
+        "sum_pos": [42000, 42000, 5126.85119629],
+        "sum_roof": [6, 16, 0.00533692352474, -0.0146630769596],
+        "weighted": 46826.164936,
+        "moment": 4115
+      },
+      {
+        "vertices": 30,
+        "triangles": 18,
+        "sum_pos": [63080, 62600, 4200],
+        "sum_roof": [11.4285715818, 30, 0, 0],
+        "weighted": 67037.8345239,
+        "moment": 19844
+      },
+      {
+        "vertices": 30,
+        "triangles": 18,
+        "sum_pos": [63400, 62920, 4200],
+        "sum_roof": [11.4285715818, 30, 0, 0],
+        "weighted": 67613.7178572,
+        "moment": 19543
+      },
+      {
+        "vertices": 97,
+        "triangles": 98,
+        "sum_pos": [203700, 203700, 9700],
+        "sum_roof": [37.9787701368, 104, 0, 0],
+        "weighted": 211719.354716,
+        "moment": 1990732
+      },
+      {
+        "vertices": 50,
+        "triangles": 34,
+        "sum_pos": [105000.000244, 105000.001221, 5000],
+        "sum_roof": [18.6666669846, 58, 0, 0],
+        "weighted": 109636.820685,
+        "moment": 113756
+      },
+      {
+        "vertices": 28,
+        "triangles": 12,
+        "sum_pos": [58800, 58800, 2800],
+        "sum_roof": [4, 32, 0, 0],
+        "weighted": 62375.3571429,
+        "moment": 7658
+      },
+      {
+        "vertices": 20,
+        "triangles": 10,
+        "sum_pos": [42000, 42000, 4000],
+        "sum_roof": [6, 16, 0, 0.019999999553],
+        "weighted": 46235.3685,
+        "moment": 4115
+      },
+      {
+        "vertices": 30,
+        "triangles": 18,
+        "sum_pos": [63000, 63000, 3000],
+        "sum_roof": [8, 30, 0, 0],
+        "weighted": 66682.7916667,
+        "moment": 19844
+      }
+    ]
+  }
+}

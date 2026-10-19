@@ -68,14 +68,18 @@ From `patches/maplibre-native-ffi/` this plugin uses:
 
 | Patch                             | Used for                                                                                              |
 | --------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| `0001` source-free plugin layers  | `build_frame`, camera/geographic helpers and double-precision position paint; the layer has no source |
-| `0002` plugin rotation properties | `bearing` transitions along the shortest arc                                                          |
-| `0003` plugin frame queries       | rendered-feature hit envelopes for the puck and arrow                                                 |
+| `0002` source-free plugin layers  | `build_frame`, camera/geographic helpers and double-precision position paint; the layer has no source |
+| `0003` plugin rotation properties | `bearing` transitions along the shortest arc                                                          |
+| `0004` plugin frame queries       | rendered-feature hit envelopes for the puck and arrow                                                 |
 
-All three remain necessary at FFI `4da98bb2` / Native `254d0a87`: upstream's C
+All three remain necessary at FFI `44d24a1c` / Native `254d0a87`: upstream's C
 plugin API still has none of these extensions. Their inner Native patch numbers
-are `0042`, `0043` and `0044`, respectively. The plugin does not use `0004`
-static textures; its shapes are procedural.
+are `0043`, `0044` and `0045`, respectively. The plugin uses no feature of
+`0001` (the fill-extrusion rendering API from Native #4685), `0005` static
+textures (its shapes are procedural) or `0006` feature layout properties. The
+patches form one stacked series, so a host carries `0001` to `0006`, and the
+library must be built against that host's header: `0001` renumbers `DOUBLE2` and
+`ROTATION` and grows the descriptor structs.
 
 For OpenGL, the FFI also carries attribute-name matching (`0035`), which binds
 the puck's vertex inputs correctly. The large-uniform-block fix (`0034`) is
@@ -87,7 +91,8 @@ FFI's bearing-accuracy patches for Native's built-in location-indicator layer
 are separate from this `location-puck` plugin and do not replace these patches.
 
 The puck has no animation of its own; paint transitions repaint through the
-host.
+host. The plugin-API gaps these patches fill, and those still open, are
+collected in [docs/plugin-api-gaps.md](../../docs/plugin-api-gaps.md).
 
 ## Web
 

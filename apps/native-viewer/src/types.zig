@@ -28,11 +28,13 @@ pub const Viewport = struct {
     scale_factor: f64,
 };
 
-/// A GeoJSON source from `--geojson <id>=<file>`. main fills `json`, the
+/// A GeoJSON source from `--geojson <id>=<file>`, with the source options of
+/// `--geojson-options <id>=<source.json>` when given. main fills `json`, the
 /// source JSON with the file inlined as its data, before the map starts.
 pub const GeoJsonSource = struct {
     id: []const u8,
     path: []const u8,
+    options_path: ?[]const u8 = null,
     json: []const u8 = "",
 };
 

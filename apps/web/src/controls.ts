@@ -1,6 +1,7 @@
 // Spec-driven control rows shared by the plugin panels: a section heading,
 // a slider for a float property, a slider pair for a float2 property, a
-// dropdown for an enum property, and a color picker with an alpha field.
+// dropdown for an enum property, a checkbox for a boolean property, and a
+// color picker with an alpha field.
 // Each row's setter also takes a value it cannot show, such as a style
 // expression: the row then says "expr" until a control sets a literal.
 // renderSpecControls, further down, builds a whole panel from a spec.json
@@ -181,6 +182,40 @@ export function selectRow(
   show(options.initial);
   select.addEventListener("change", () => options.onInput(select.value));
   row.append(label, select);
+  parent.append(row);
+  return show;
+}
+
+export interface BooleanRowOptions {
+  name: string;
+  doc: string;
+  initial: boolean;
+  onInput(value: boolean): void;
+}
+
+/**
+ * Adds a checkbox row for a boolean property and returns a setter that
+ * updates it without firing onInput; null shows that an expression drives
+ * the property.
+ */
+export function booleanRow(
+  parent: HTMLElement,
+  options: BooleanRowOptions,
+): (value: boolean | null) => void {
+  const row = document.createElement("div");
+  row.className = "row wide";
+  const label = document.createElement("label");
+  label.textContent = options.name;
+  label.title = options.doc;
+  const input = document.createElement("input");
+  input.type = "checkbox";
+  const show = (value: boolean | null) => {
+    input.indeterminate = value === null;
+    if (value !== null) input.checked = value;
+  };
+  show(options.initial);
+  input.addEventListener("change", () => options.onInput(input.checked));
+  row.append(label, input);
   parent.append(row);
   return show;
 }
@@ -490,6 +525,15 @@ function specRow(
       });
       return (value) => show(typeof value === "string" ? value : null);
     }
+    case "boolean": {
+      const show = booleanRow(parent, {
+        name,
+        doc,
+        initial: spec.default,
+        onInput: apply,
+      });
+      return (value) => show(typeof value === "boolean" ? value : null);
+    }
     case "float2": {
       const component = (i: 0 | 1) => spec.components?.[i];
       const range = (i: 0 | 1) => toRange(component(i)?.ui, [-100, 100, 0.1]);
@@ -555,6 +599,8 @@ function isLiteral(spec: PaintPropertySpec, value: unknown): boolean {
   switch (spec.type) {
     case "enum":
       return typeof value === "string";
+    case "boolean":
+      return typeof value === "boolean";
     case "color":
       return typeof value === "string" || isNumbers(value, 4);
     case "float2":

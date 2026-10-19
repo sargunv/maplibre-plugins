@@ -1,0 +1,150 @@
+{
+  "description": "Footprints near the tile's edge, none of them cut. Every tile draws every copy it has with its whole roof, buffer copies included, as core fill-extrusion draws its buffer copies. Two turned footprints further out keep the tile's bounds beyond the others' walls, so their axis-aligned walls in the buffer are not taken for cuts.",
+  "extent": 8192,
+  "features": [
+    {
+      "label": "only in the buffer, east",
+      "index": 0,
+      "rings": [[[8200, 3000], [8300, 3000], [8300, 3160], [8200, 3160]]],
+      "shape": "gabled"
+    },
+    {
+      "label": "only in the buffer, north-west",
+      "index": 1,
+      "rings": [[[-120, -100], [-20, -100], [-20, -10], [-120, -10]]],
+      "shape": "gabled"
+    },
+    {
+      "label": "crossing the east edge",
+      "index": 2,
+      "rings": [[[8100, 3000], [8300, 3000], [8300, 3160], [8100, 3160]]],
+      "shape": "gabled"
+    },
+    {
+      "label": "ending on x = extent",
+      "index": 3,
+      "rings": [[[7900, 4000], [8192, 4000], [8192, 4160], [7900, 4160]]],
+      "shape": "gabled"
+    },
+    {
+      "label": "starting on x = 0",
+      "index": 4,
+      "rings": [[[0, 4000], [300, 4000], [300, 4160], [0, 4160]]],
+      "shape": "gabled"
+    },
+    {
+      "label": "starting on y = 0",
+      "index": 5,
+      "rings": [[[3000, 0], [3300, 0], [3300, 160], [3000, 160]]],
+      "shape": "gabled"
+    },
+    {
+      "label": "ending on y = extent",
+      "index": 6,
+      "rings": [[[3000, 8032], [3300, 8032], [3300, 8192], [3000, 8192]]],
+      "shape": "gabled"
+    },
+    {
+      "label": "turned, east of the others",
+      "index": 7,
+      "rings": [[[8340, 5000], [8400, 4940], [8460, 5000], [8400, 5060]]],
+      "shape": "gabled"
+    },
+    {
+      "label": "turned, north-west of the others",
+      "index": 8,
+      "rings": [[[-260, -200], [-200, -260], [-140, -200], [-200, -140]]],
+      "shape": "gabled"
+    }
+  ],
+  "expected": {
+    "vertex_count": 270,
+    "index_count": 486,
+    "segments": [[0, 0, 270, 486]],
+    "ranges": [
+      [0, 0, 30],
+      [1, 30, 30],
+      [2, 60, 30],
+      [3, 90, 30],
+      [4, 120, 30],
+      [5, 150, 30],
+      [6, 180, 30],
+      [7, 210, 30],
+      [8, 240, 30]
+    ],
+    "summaries": [
+      {
+        "vertices": 30,
+        "triangles": 18,
+        "sum_pos": [247500, 92400, 1500],
+        "sum_roof": [8, 30, 0, 0],
+        "weighted": 176550.916667,
+        "moment": 19543
+      },
+      {
+        "vertices": 30,
+        "triangles": 18,
+        "sum_pos": [-2100, -1650, 1350],
+        "sum_roof": [8, 30, 0, 0],
+        "weighted": -1249.01481481,
+        "moment": 19844
+      },
+      {
+        "vertices": 30,
+        "triangles": 18,
+        "sum_pos": [246000, 92400, 2400],
+        "sum_roof": [8, 30, 0, 0],
+        "weighted": 176025.477083,
+        "moment": 19844
+      },
+      {
+        "vertices": 30,
+        "triangles": 18,
+        "sum_pos": [241380, 122400, 2400],
+        "sum_roof": [8, 30, 0, 0],
+        "weighted": 189063.34375,
+        "moment": 19844
+      },
+      {
+        "vertices": 30,
+        "triangles": 18,
+        "sum_pos": [4500, 122400, 2400],
+        "sum_roof": [8, 30, 0, 0],
+        "weighted": 66668.8104167,
+        "moment": 19844
+      },
+      {
+        "vertices": 30,
+        "triangles": 18,
+        "sum_pos": [94500, 2400, 2400],
+        "sum_roof": [8, 30, 0, 0],
+        "weighted": 51168.8104167,
+        "moment": 19844
+      },
+      {
+        "vertices": 30,
+        "triangles": 18,
+        "sum_pos": [94500, 243360, 2400],
+        "sum_roof": [8, 30, 0, 0],
+        "weighted": 175664.810417,
+        "moment": 19844
+      },
+      {
+        "vertices": 30,
+        "triangles": 18,
+        "sum_pos": [252000, 150000, 1272.79220581],
+        "sum_roof": [8, 30, 0, 0],
+        "weighted": 208448.322702,
+        "moment": 19844
+      },
+      {
+        "vertices": 30,
+        "triangles": 18,
+        "sum_pos": [-6000, -6000, 1272.79220581],
+        "sum_roof": [8, 30, 0, 0],
+        "weighted": -5451.67729783,
+        "moment": 19844
+      }
+    ]
+  }
+}

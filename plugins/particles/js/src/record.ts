@@ -170,7 +170,7 @@ function clamp(x: number, lo: number, hi: number): number {
 
 /** A property's bounds, infinite where it has none. */
 function bounds(spec: PaintPropertySpec): [number, number] {
-  return spec.type === "enum"
+  return spec.type === "enum" || spec.type === "boolean"
     ? [-Infinity, Infinity]
     : [spec.minimum ?? -Infinity, spec.maximum ?? Infinity];
 }

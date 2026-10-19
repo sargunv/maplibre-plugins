@@ -7,8 +7,9 @@
 // recursively, while a data-driven target snaps and a data-driven prior holds
 // until the transition ends. Enum properties evaluate to the index of their
 // value, as the host's ENUM_FLOAT encoding hands them to shaders, and never
-// interpolate. Data-driven values become per-vertex attributes through
-// binder.ts.
+// interpolate. Booleans evaluate to [0] or [1], as the host's BOOLEAN_FLOAT
+// encoding hands them over, and transition like enums. Data-driven values
+// become per-vertex attributes through binder.ts.
 
 import { type Current } from "./binder.ts";
 import {
@@ -32,6 +33,7 @@ export {
   type VertexRange,
 } from "./binder.ts";
 export {
+  type BooleanPaintPropertySpec,
   type Compiled,
   compile,
   type CompiledValue,
@@ -123,7 +125,7 @@ function interpolate(
   // MapLibre Native transitions every plugin property with the style's
   // transition, and a string one is uninterpolated: it keeps the prior value
   // until the transition ends, then snaps.
-  if (type === "enum") return from;
+  if (type === "enum" || type === "boolean") return from;
   if (type === "rotation") {
     // The shorter way round, like the host's Interpolator<Rotation>. The
     // host also wraps the result to [0, 360) and this does not; a shader's

@@ -13,6 +13,10 @@ sub="$repo_root/third_party/maplibre-native-ffi"
 patches="$repo_root/patches/maplibre-native-ffi"
 # The index entry covers both a committed and a freshly staged submodule pin.
 pin="$(git -C "$repo_root" rev-parse ":third_party/maplibre-native-ffi")"
+# Git hooks run with GIT_DIR and GIT_INDEX_FILE pointing at the outer repo,
+# which would send every `git -C "$sub"` below there instead. The pin above
+# already read the index the hook is checking.
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR GIT_PREFIX
 
 # `git add -A` records whatever the submodule's HEAD is, including the
 # applied patch commits, which only exist locally. Refuse a pin like that.

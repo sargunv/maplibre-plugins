@@ -1,0 +1,224 @@
+// Reads the polygon features of one tile, the same features the native host
+// feeds the plugin's layout callbacks, filtered and scaled the same way, and
+// lays them out with their layout properties. maplibre-gl-js has already
+// decoded the tile (gljs.ts hands over the feature index's layers, MVT, MLT
+// or a GeoJSON source's tiles alike); layout.ts builds the walls and roofs,
+// and the paint binder and queries read each feature's properties, rings
+// and state id.
+
+import type { EvaluationFeature } from "@maplibre-plugins/paint";
+import {
+  type FeatureFilter,
+  featureFilter,
+  type FilterSpecification,
+  type ICanonicalTileID,
+} from "@maplibre/maplibre-gl-style-spec";
+
+import type { Point } from "./footprint.ts";
+import type { VectorFeatureLike, VectorLayerLike } from "./gljs.ts";
+import { BuildingLayout, type LayoutValues, tileBounds } from "./layout.ts";
+import type { LayoutEvaluator } from "./paint.ts";
+import { EXTENT } from "./spec.ts";
+
+export interface CanonicalTile {
+  z: number;
+  x: number;
+  y: number;
+}
+
+/** The tile identity a filter expression may inspect (`within`, distance). */
+class FilterTileID implements ICanonicalTileID {
+  readonly key: string;
+  constructor(
+    readonly z: number,
+    readonly x: number,
+    readonly y: number,
+  ) {
+    this.key = `${z}/${x}/${y}`;
+  }
+  equals(id: ICanonicalTileID): boolean {
+    return id.z === this.z && id.x === this.x && id.y === this.y;
+  }
+  url(): string {
+    return "";
+  }
+  isChildOf(parent: ICanonicalTileID): boolean {
+    const dz = this.z - parent.z;
+    return dz > 0 && parent.x === this.x >> dz && parent.y === this.y >> dz;
+  }
+  getTilePoint(coord: { x: number; y: number }): { x: number; y: number } {
+    const tiles = 2 ** this.z;
+    return {
+      x: (coord.x * tiles - this.x) * EXTENT,
+      y: (coord.y * tiles - this.y) * EXTENT,
+    };
+  }
+  toString(): string {
+    return this.key;
+  }
+}
+
+export interface PolygonFeature {
+  /** The feature's index in its source layer. */
+  readonly index: number;
+  /** Its rings in layout coordinates, as read (closing points kept). */
+  readonly rings: Point[][];
+  /** What paint expressions read: decoded properties and the feature's own id. */
+  readonly evaluation: EvaluationFeature;
+  /** The layout properties it was laid out with. */
+  readonly layout: Required<LayoutValues>;
+  /** The feature-state id (the id, or the promoted property), if any. */
+  readonly id: number | string | undefined;
+  /** String(id): the key of the feature's state; undefined without an id. */
+  readonly stateKey: string | undefined;
+}
+
+/** Compiles a style filter, or null for "everything". Throws on invalid filters. */
+export function compileFilter(
+  filter: FilterSpecification | undefined,
+): FeatureFilter | null {
+  if (filter === undefined) return null;
+  return featureFilter(filter, "filter");
+}
+
+/**
+ * maplibre-gl-js's GeoJSON worker stores object and array properties as
+ * strings with this prefix in the tiles it encodes; MapLibre Native reads
+ * the GeoJSON itself, so its expressions see the values.
+ */
+const JSON_PREFIX = "__$json__:";
+
+/**
+ * A copy of the properties, never the tile's own object (an MLT layer
+ * shares it between reads), with a GeoJSON source's encoded values decoded.
+ */
+function readProperties(
+  properties: Readonly<Record<string, unknown>> | undefined,
+  geojson: boolean,
+): Record<string, unknown> {
+  const copy: Record<string, unknown> = { ...properties };
+  if (!geojson) return copy;
+  for (const [key, value] of Object.entries(copy)) {
+    if (typeof value === "string" && value.startsWith(JSON_PREFIX)) {
+      try {
+        copy[key] = JSON.parse(value.slice(JSON_PREFIX.length));
+      } catch {
+        // Not maplibre-gl-js's encoding after all; keep the string.
+      }
+    }
+  }
+  return copy;
+}
+
+/** An id as a feature carries it: MLT gives NaN for none. */
+function presentId(id: unknown): number | string | undefined {
+  if (typeof id === "number") return Number.isNaN(id) ? undefined : id;
+  return typeof id === "string" ? id : undefined;
+}
+
+/**
+ * Scales a tile coordinate to EXTENT like MapLibre Native's vector tile
+ * reader: in single precision, then `roundf`, which rounds halves away from
+ * zero where Math.round rounds them up.
+ */
+function toLayout(value: number, scale: number): number {
+  const scaled = Math.fround(Math.fround(value) * scale);
+  // `0 -` turns a negative that rounds to zero into 0 rather than -0.
+  return scaled < 0 ? 0 - Math.round(-scaled) : Math.round(scaled);
+}
+
+export interface ReadOptions {
+  /** A GeoJSON source, whose tiles encode object and array properties. */
+  readonly geojson: boolean;
+  readonly filter: FeatureFilter | null;
+  /** The tile's overscaled zoom, which the filter and layout see. */
+  readonly zoom: number;
+  readonly canonical: CanonicalTile;
+  /** The layer's layout properties. */
+  readonly layout: LayoutEvaluator;
+  /** The feature-state id of a feature (gl-js's FeatureIndex.getId). */
+  stateId(feature: VectorFeatureLike): unknown;
+}
+
+/** One tile laid out: the GPU data and the features its ranges index. */
+export interface TileLayout {
+  readonly vertices: Float32Array;
+  readonly indices: Uint16Array;
+  readonly layout: BuildingLayout;
+  /** The polygon features drawn, in source order; ranges index this. */
+  readonly features: PolygonFeature[];
+}
+
+/**
+ * Lays out the polygon features of one source layer of a decoded tile, in
+ * source order. A missing layer lays out nothing. The features are read
+ * first, so the layout knows the bounds of all of them, which locate the
+ * source's cut lines, as the native plugin lays out its tile in
+ * finish_layout.
+ */
+export function layoutTile(
+  layer: VectorLayerLike | undefined,
+  options: ReadOptions,
+): TileLayout {
+  const { geojson, filter, zoom, canonical, layout: values } = options;
+  const read: {
+    index: number;
+    id: number | string | undefined;
+    rings: Point[][];
+    evaluation: EvaluationFeature;
+  }[] = [];
+  const tileID = new FilterTileID(canonical.z, canonical.x, canonical.y);
+  for (let i = 0; layer && i < layer.length; i++) {
+    const feature = layer.feature(i);
+    if (feature.type !== 3) continue;
+    const scale = Math.fround(EXTENT / Math.fround(feature.extent));
+    const rings = feature
+      .loadGeometry()
+      .map((ring) =>
+        ring.map((p) => ({ x: toLayout(p.x, scale), y: toLayout(p.y, scale) })),
+      );
+    const properties = readProperties(feature.properties, geojson);
+    const ownId = presentId(feature.id);
+    const evaluation: EvaluationFeature =
+      ownId === undefined
+        ? { type: 3, properties }
+        : { type: 3, id: ownId, properties };
+    if (filter) {
+      // `within` and `distance` read a `geometry` field in layout
+      // coordinates, which the host's filter sees.
+      const filtered = filter.needGeometry
+        ? { ...evaluation, geometry: rings }
+        : evaluation;
+      if (!filter.filter({ zoom }, filtered as never, tileID)) continue;
+    }
+    // The id now: a layer may reuse its feature object between reads.
+    const id = presentId(options.stateId(feature));
+    read.push({ index: i, id, rings, evaluation });
+  }
+  const layout = new BuildingLayout(
+    EXTENT,
+    tileBounds(read.map((r) => r.rings)),
+  );
+  const features: PolygonFeature[] = [];
+  for (const { index, id, rings, evaluation } of read) {
+    const featureLayout = values.evaluate(zoom, evaluation);
+    const before = layout.ranges.length;
+    layout.addFeature(rings, features.length, featureLayout);
+    // A degenerate footprint draws nothing.
+    if (layout.ranges.length === before) continue;
+    features.push({
+      index,
+      rings,
+      evaluation,
+      layout: featureLayout,
+      id,
+      stateKey: id === undefined ? undefined : String(id),
+    });
+  }
+  return {
+    vertices: layout.vertices(),
+    indices: layout.indices(),
+    layout,
+    features,
+  };
+}

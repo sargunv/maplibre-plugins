@@ -377,10 +377,16 @@ From `patches/maplibre-native-ffi/` this plugin needs:
 
 | Patch                            | `particle-emitter` | `particle-features` | Used for                                                                                                                                 |
 | -------------------------------- | ------------------ | ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| `0001` source-free plugin layers | ✓                  | ✓ (library)         | `build_frame` and the DOUBLE2 `emitter-position`. Both types live in one descriptor, so a host without `0001` rejects the whole library. |
-| `0002` rotation properties       | –                  | –                   | not used: azimuths are float2 components, which transition linearly                                                                      |
-| `0003` frame queries             | –                  | –                   | not used: particles are not hit-testable                                                                                                 |
-| `0004` plugin static textures    | –                  | –                   | not used: the shapes are procedural. The library builds against the header with the texture fields and leaves them zero.                 |
+| `0002` source-free plugin layers | ✓                  | ✓ (library)         | `build_frame` and the DOUBLE2 `emitter-position`. Both types live in one descriptor, so a host without `0002` rejects the whole library. |
+| `0003` rotation properties       | –                  | –                   | not used: azimuths are float2 components, which transition linearly                                                                      |
+| `0004` frame queries             | –                  | –                   | not used: particles are not hit-testable                                                                                                 |
+| `0005` plugin static textures    | –                  | –                   | not used: the shapes are procedural. The library builds against the header with the texture fields and leaves them zero.                 |
+
+`0001` (the fill-extrusion rendering API from Native #4685) and `0006` (feature
+layout properties) are not used either; the library leaves their fields zero,
+which keeps the host's previous behavior. `0002` stacks on `0001`, which
+renumbers `DOUBLE2` and grows the descriptor structs, so a host carries `0001`
+to `0006`.
 
 The FFI itself carries OpenGL attribute-name matching, required by
 `particle-features` when uniform properties leave gaps in declared locations.
@@ -395,7 +401,8 @@ than its own (see Limits).
 ## Limits and future improvements
 
 Each entry gives the gap, what it costs here, and the ABI change that would
-close it.
+close it. [docs/plugin-api-gaps.md](../../docs/plugin-api-gaps.md) collects the
+plugin-API gaps of every plugin.
 
 1. **Bindings cost vertex-attribute slots even when uniform.**
    `particle-features` takes 14 properties to the emitter's 35: no drag, wind,
@@ -446,7 +453,7 @@ close it.
    vertex bytes, so about 0.04 ms per frame while nothing changes. _Fix:_ an
    "unchanged" flag or retained buffers.
 9. **No sprite textures, render targets or compute.** Procedural shapes only: no
-   sprite images, trails, bloom or rain distortion. Patch `0004` adds static
+   sprite images, trails, bloom or rain distortion. Patch `0005` adds static
    RGBA32F data textures read by exact texel, which suits lookup tables, not
    filtered sprites.
 10. **Fixed premultiplied-over blending.** Additive light comes only from alpha
@@ -474,8 +481,12 @@ close it.
     `plugin_layout.cpp`; the built-in layouts pass it), so a filter reading
     `["global-state", …]` sees no values. _Fix:_ the canonical tile id and
     overscale in the layout context, and global state in the filter context.
+    Patch `0006` now supplies the tile id (the context's zoom is the overscaled
+    z); the plugin does not read it yet.
 14. **The uniform context lacks zoom, latitude and meters per pixel.** No world
-    space on `particle-features`.
+    space on `particle-features`. Patch `0001` adds the render zoom and the
+    canonical tile id, from which latitude and meters per pixel follow; the
+    plugin does not read them yet.
 15. **`should_animate` gets no visibility, zoom range or expression
     information.** Both types always animate, so a hidden particle layer keeps
     the map repainting: remove the layer instead of hiding it. Native now sets
@@ -520,16 +531,17 @@ close it.
     data).
 24. **`struct_size` versioning works only if hosts accept older sizes.** A host
     patch that grows a v1 descriptor struct and rejects the old `struct_size`
-    breaks every existing plugin binary. Patch `0004` grows
+    breaks every existing plugin binary. Patch `0005` grows
     `mln_plugin_shader_descriptor_v1` by its texture fields and marks them
     optional in the header, but the registry still requires `struct_size` of at
-    least its own size (`plugin_registry.cpp`), so a host with `0004` refuses a
+    least its own size (`plugin_registry.cpp`), so a host with `0005` refuses a
     library built against an older header ("plugin shader descriptor is
-    malformed") until it is rebuilt. The plugin holds itself to the rule in the
-    other direction: it refuses an output bucket too short for the fields it
-    writes and writes nothing past the host's size. _Fix:_ hosts accept every
-    `struct_size` since the first v1 layout and read missing trailing fields as
-    zero.
+    malformed") until it is rebuilt. `0001` (Native #4685) grows or reorders
+    several more descriptor structs the same way. The plugin holds itself to the
+    rule in the other direction: it refuses an output bucket too short for the
+    fields it writes and writes nothing past the host's size. _Fix:_ hosts
+    accept every `struct_size` since the first v1 layout and read missing
+    trailing fields as zero.
 
 Considered and rejected: rebuilding every particle's clip position on the CPU
 (rebuilds on every camera move), a float hi/lo camera stash (fast-math drift), a
@@ -539,14 +551,15 @@ matrix (limit 14), and JS world copies (breaks parity with native).
 ### Upstream API work to watch
 
 [Native #4685](https://github.com/maplibre/maplibre-native/pull/4685) proposes
-several ways to reduce these limits. These are future implementation options;
-this plugin does not use the proposed API yet.
+several ways to reduce these limits. The host now carries it as patch `0001` and
+the library builds against its header, but these are future implementation
+options; this plugin does not use the API yet.
 
 - **Instance `particle-features` quads (limit 7).** Store one particle record
-  instead of repeating it for four corners, and reuse one quad's indices. The
-  implementation admits Metal and Vulkan, although its header comments still say
-  Vulkan-only. Keep the existing path for OpenGL. The source-free emitter would
-  also need its carried `build_frame` host path extended for instancing.
+  instead of repeating it for four corners, and reuse one quad's indices.
+  Instancing is Metal and Vulkan only; keep the existing path for OpenGL. The
+  source-free emitter would also need its carried `build_frame` host path
+  extended for instancing.
 - **Add sprite-based particles (limit 9).** IMAGE properties, tile-atlas access
   and crossfade inputs could supply snowflake, spark or rain sprites to the
   tile-driven layer on Metal/Vulkan. These do not supply arbitrary textures,
@@ -556,10 +569,11 @@ this plugin does not use the proposed API yet.
   scale. They could support world-anchored particle motion. Host time, pitch,
   roll and the emitter's frame matrix are still absent, so the frame table
   remains necessary (limits 2–5).
-- **Expose geometry controls to layout (limit 13).** Camera-only layout
-  properties could configure spacing or density when slots are built, without
-  paint transitions. The proposal does not add canonical tile identity to the
-  layout callback, cross-tile identity or the missing filter global state.
+- **Expose geometry controls to layout (limit 13).** Layout properties could
+  configure spacing or density when slots are built, without paint transitions;
+  patch `0006` lets them depend on the feature and adds the canonical tile id to
+  the layout callback. Neither adds cross-tile identity or the missing filter
+  global state.
 - **Reduce paint-buffer work.** Packed RGBA8 colors, shared equal zoom endpoints
   and skipping state updates for paint that does not depend on feature-state
   could reduce attribute storage and refills. Uniform-only bindings and the
@@ -569,11 +583,9 @@ this plugin does not use the proposed API yet.
   and shading. They do not automatically fix particle world depth or expose
   additive/max blending, offscreen trails or collisions.
 
-Adoption requires rebasing our extensions and rebuilding the plugins: the
-proposal's BOOLEAN/IMAGE value IDs collide with our DOUBLE2/ROTATION IDs, and
-its descriptor and render-pass layout differs from our current ABI. It retires
-none of our four carried patches. Prioritize tile-driven instancing and the
-paint-buffer improvements; they do not require solving emitter layer identity.
+The proposal retires none of our other carried patches (`0002` to `0005`).
+Prioritize tile-driven instancing and the paint-buffer improvements; they do not
+require solving emitter layer identity.
 
 ## Native
 

@@ -1,0 +1,8 @@
+.{
+    .name = .building,
+    .version = "0.1.0",
+    .minimum_zig_version = "0.16.0",
+    .dependencies = .{},
+    .paths = .{""},
+    .fingerprint = 0xe16f61d46738abe5,
+}

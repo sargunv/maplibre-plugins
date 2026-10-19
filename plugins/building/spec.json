@@ -1,0 +1,132 @@
+{
+  "$comment": "Shared contract for OSM-style buildings: walls plus a roof:shape roof, a replacement for fill-extrusion. Both the native Zig plugin and the maplibre-gl-js layer are tested against this file. The layout table holds the properties that change the geometry: the host evaluates them once per feature when it lays out a tile (feature expressions, and zoom at the tile's zoom), so they take no transitions and no feature-state, like core layout properties. The paint table follows fill-extrusion: `\"expressions\"` is \"camera\" (constants and zoom expressions) or \"data-driven\" (also feature and composite expressions, and feature-state unless `\"featureState\"` is false); absent means \"camera\". `\"transition\"` says whether a `<name>-transition` key is accepted; absent means true for numeric and color types and false for enums and booleans. Heights are in meters; the Simple 3D Buildings rules (3 m per level, roof:levels, min_height, building:min_level) belong in style expressions, not in the plugin.",
+  "id": "building",
+  "layerType": "building",
+  "native": {
+    "pluginId": "org.maplibre.plugins.building",
+    "pluginVersion": "0.1.0",
+    "library": "maplibre-building",
+    "entryPoint": "mln_building_register"
+  },
+  "geometry": "polygon",
+  "layout": {
+    "building-roof-shape": {
+      "type": "enum",
+      "values": [
+        "flat",
+        "gabled",
+        "hipped",
+        "half-hipped",
+        "pyramidal",
+        "skillion",
+        "gambrel",
+        "round",
+        "double_saltbox",
+        "saltbox",
+        "mansard",
+        "dome",
+        "quadruple_saltbox",
+        "round_gabled",
+        "onion",
+        "cone",
+        "many"
+      ],
+      "default": "flat",
+      "expressions": "data-driven",
+      "featureState": false,
+      "transition": false,
+      "doc": "The roof:shape of the building, from StreetComplete's roof shape quest. many draws a flat roof. Alias other OSM values with a match expression. Footprints a shape cannot be built on (holes, radial shapes whose center is outside the footprint's kernel, slivers) get a flat roof. A copy of a footprint that the source cut at a tile's buffer draws roofless: walls to the eaves and a flat lid there."
+    },
+    "building-roof-orientation": {
+      "type": "enum",
+      "values": ["along", "across"],
+      "default": "along",
+      "expressions": "data-driven",
+      "featureState": false,
+      "transition": false,
+      "doc": "The roof:orientation: along runs the ridge along the longer side of the footprint's minimum-area bounding rectangle, across along the shorter one. Ignored while building-roof-direction is set."
+    },
+    "building-roof-direction": {
+      "type": "float",
+      "default": -1,
+      "minimum": -1,
+      "maximum": 360,
+      "units": "degrees",
+      "expressions": "data-driven",
+      "featureState": false,
+      "transition": false,
+      "doc": "The roof:direction, in degrees clockwise from north: the direction the main roof face looks, downslope from the ridge toward the eaves. The ridge runs along the bounding rectangle side closest to perpendicular to it; skillion roofs slope exactly this way and saltbox roofs turn their long face this way. Negative values leave it unset, and building-roof-orientation decides."
+    }
+  },
+  "paint": {
+    "building-height": {
+      "type": "float",
+      "default": 0,
+      "minimum": 0,
+      "units": "meters",
+      "expressions": "data-driven",
+      "doc": "Height of the top of the roof above the ground, as OSM height."
+    },
+    "building-base": {
+      "type": "float",
+      "default": 0,
+      "minimum": 0,
+      "units": "meters",
+      "expressions": "data-driven",
+      "doc": "Height of the bottom of the walls above the ground, as OSM min_height."
+    },
+    "building-roof-height": {
+      "type": "float",
+      "default": 3,
+      "minimum": 0,
+      "units": "meters",
+      "expressions": "data-driven",
+      "doc": "Height of the roof from the eaves to the ridge, as OSM roof:height. The walls stop at building-height minus this, and the roof is clamped to fit between building-base and building-height. Flat roofs ignore it."
+    },
+    "building-roof-angle": {
+      "type": "float",
+      "default": 0,
+      "minimum": 0,
+      "maximum": 89,
+      "units": "degrees",
+      "expressions": "data-driven",
+      "doc": "Slope of the roof, as OSM roof:angle. When above 0 it replaces building-roof-height with tan(angle) times the footprint's horizontal eave-to-ridge distance (half the bounding rectangle's width for most shapes), still clamped to fit the building."
+    },
+    "building-color": {
+      "type": "color",
+      "default": [0, 0, 0, 1],
+      "expressions": "data-driven",
+      "doc": "Color of the walls."
+    },
+    "building-roof-color": {
+      "type": "color",
+      "default": [0, 0, 0, 1],
+      "expressions": "data-driven",
+      "doc": "Color of the roof."
+    },
+    "building-opacity": {
+      "type": "float",
+      "default": 1,
+      "minimum": 0,
+      "maximum": 1,
+      "doc": "Opacity of the whole layer, applied after the buildings are drawn, so walls and roofs never show through each other."
+    },
+    "building-translate": {
+      "type": "float2",
+      "default": [0, 0],
+      "units": "pixels",
+      "doc": "Offset [right, down] of the buildings, in logical pixels."
+    },
+    "building-translate-anchor": {
+      "type": "enum",
+      "values": ["map", "viewport"],
+      "default": "map",
+      "doc": "Frame of building-translate: map turns it with the map, viewport keeps it relative to the screen."
+    },
+    "building-vertical-gradient": {
+      "type": "boolean",
+      "default": true,
+      "doc": "Whether the walls darken toward the ground, as fill-extrusion-vertical-gradient."
+    }
+  }
+}

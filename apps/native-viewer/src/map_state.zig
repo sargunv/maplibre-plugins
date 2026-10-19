@@ -197,7 +197,9 @@ pub const MapState = struct {
                 diagnostics.logError("add source failed", err, self.diagnostic_store);
                 continue;
             };
-            std.debug.print("source \"{s}\": added from {s}\n", .{ source.id, source.path });
+            if (source.options_path) |options| {
+                std.debug.print("source \"{s}\": added from {s} with the options of {s}\n", .{ source.id, source.path, options });
+            } else std.debug.print("source \"{s}\": added from {s}\n", .{ source.id, source.path });
         }
     }
 
