@@ -1,5 +1,5 @@
 // Generates buildings.geojson: a synthetic grid of buildings showing every
-// roof shape of the building layer on four footprints, with the orientation,
+// roof shape of the building layer on seven footprints, with the orientation,
 // direction and roof-angle variants. It stands in Letenské sady, Prague, an
 // empty stretch of park about 500 m north of the OSM example (../osm).
 //
@@ -149,6 +149,50 @@ const VARIANTS = [
     ring: RECTANGLE,
     angle: ROOF_ANGLE,
   },
+  {
+    variant: "along",
+    footprint: "T",
+    ring: [
+      [-9, 7],
+      [9, 7],
+      [9, 1],
+      [3, 1],
+      [3, -7],
+      [-3, -7],
+      [-3, 1],
+      [-9, 1],
+    ].reverse(),
+    flat: RADIAL,
+  },
+  {
+    variant: "along",
+    footprint: "U",
+    ring: [
+      [-9, -7],
+      [9, -7],
+      [9, 7],
+      [3, 7],
+      [3, -1],
+      [-3, -1],
+      [-3, 7],
+      [-9, 7],
+    ],
+    flat: RADIAL,
+  },
+  {
+    variant: "along",
+    footprint: "courtyard",
+    ring: RECTANGLE,
+    holes: [
+      [
+        [-4, -2],
+        [-4, 2],
+        [4, 2],
+        [4, -2],
+      ],
+    ],
+    flat: RADIAL,
+  },
 ];
 
 // ------------------------------------------------------------- projection
@@ -177,11 +221,14 @@ VARIANTS.forEach((row, r) => {
     const cx = x0 + (c + 0.5) * cell;
     const cy = y0 + (r + 0.5) * cell;
     const scale = metersPerWorld(latOf(cy));
-    const ring = row.ring.map(([x, y]) => [
-      round7(lonOf(cx + x / scale)),
-      round7(latOf(cy - y / scale)),
-    ]);
-    ring.push(ring[0]);
+    const rings = [row.ring, ...(row.holes ?? [])].map((points) => {
+      const ring = points.map(([x, y]) => [
+        round7(lonOf(cx + x / scale)),
+        round7(latOf(cy - y / scale)),
+      ]);
+      ring.push(ring[0]);
+      return ring;
+    });
     const roofHeight = ROOF_HEIGHT[shape];
     const properties = {
       label: `${shape}, ${row.footprint}, ${row.variant}`,
@@ -205,7 +252,7 @@ VARIANTS.forEach((row, r) => {
       type: "Feature",
       id: r * SHAPES.length + c + 1,
       properties,
-      geometry: { type: "Polygon", coordinates: [ring] },
+      geometry: { type: "Polygon", coordinates: rings },
     });
   });
 });
@@ -247,13 +294,15 @@ for (const f of features) {
   const ty = Math.floor(worldY(ring[0][1]) * n);
   // Tile coordinates: y down, so the ring turns clockwise on screen with a
   // positive area, as MVT and geojson-vt deliver exteriors.
-  const points = ring.map(([lon, lat]) => ({
-    x: Math.round((worldX(lon) * n - tx) * EXTENT),
-    y: Math.round((worldY(lat) * n - ty) * EXTENT),
-  }));
+  const points = f.geometry.coordinates.map((r) =>
+    r.slice(0, -1).map(([lon, lat]) => ({
+      x: Math.round((worldX(lon) * n - tx) * EXTENT),
+      y: Math.round((worldY(lat) * n - ty) * EXTENT),
+    })),
+  );
   const p = f.properties;
   const layout = new BuildingLayout(EXTENT);
-  layout.addFeature([points], 0, {
+  layout.addFeature(points, 0, {
     shape: p["roof:shape"],
     orientation: p["roof:orientation"],
     direction: p["roof:direction"],

@@ -42,6 +42,7 @@ import {
   isClipEdge,
   minimumAreaRectangle,
   NO_CUTS,
+  signedArea2,
   type Point,
   type Polygon,
   type TileBounds,
@@ -56,7 +57,7 @@ import {
   type RoofModel,
   stripGradient,
 } from "./roof.ts";
-import { straightSkeleton, type SkeletonPoint } from "./skeleton.ts";
+import { gableEnds, straightSkeleton, type SkeletonPoint } from "./skeleton.ts";
 import {
   ROOF_ORIENTATIONS,
   ROOF_SHAPES,
@@ -86,6 +87,8 @@ export const MAX_SEGMENT_VERTICES = 65535;
  * every edge of the footprint.
  */
 export const MIN_KERNEL_DISTANCE = 0.5;
+/** Keep frame roofs on rectangles despite tile-grid rounding. */
+const RECTANGLE_FILL = 0.98;
 /** Clipped roof pieces with less area (tile units²) are dropped. */
 const MIN_PIECE_AREA = 1e-6;
 /**
@@ -317,7 +320,13 @@ export class BuildingLayout {
   ): void {
     const run = model.type === "flat" ? 0 : model.run;
     [polygon.outer, ...polygon.holes].forEach((ring, r) =>
-      this.addWalls(ring, walls[r]!, model, run),
+      this.addWalls(
+        ring,
+        walls[r]!,
+        model,
+        run,
+        model.type === "skeleton" && r === 0 ? model.stationary : undefined,
+      ),
     );
     switch (model.type) {
       case "flat":
@@ -325,7 +334,7 @@ export class BuildingLayout {
       case "roofless":
         return this.addFlatRoof(polygon, 0, run);
       case "planes":
-        return this.addPlaneRoof(polygon.outer, model);
+        return this.addPlaneRoof(polygon, model);
       case "radial":
         return this.addRadialRoof(polygon.outer, model);
       case "skeleton":
@@ -344,7 +353,6 @@ export class BuildingLayout {
           : face.points;
         if (points.length < 3) continue;
         const slope = model.mansard ? (band === 0 ? 2 : 0.5) : 1;
-        const intercept = model.mansard && band === 1 ? 0.5 : 0;
         const mesh = new Mesh();
         // A center fan preserves collinear event vertices shared with adjacent
         // faces. Triangles need no extra center, which can collapse in float32.
@@ -359,10 +367,7 @@ export class BuildingLayout {
             x: p.x,
             y: p.y,
             run: model.run,
-            n: Math.max(
-              0,
-              Math.min(1, (slope * p.time) / model.run + intercept),
-            ),
+            n: skeletonHeight(p.time, model.run, model.mansard),
             kind: ROOF,
             gx: (slope * face.normal.x) / model.run,
             gy: (slope * face.normal.y) / model.run,
@@ -392,6 +397,7 @@ export class BuildingLayout {
     walls: readonly boolean[],
     model: RoofModel,
     run: number,
+    stationary: readonly boolean[] = [],
   ): void {
     for (let i = 0; i < ring.length; i++) {
       if (!walls[i]) continue;
@@ -404,7 +410,7 @@ export class BuildingLayout {
       // the courtyard for negative-area holes.
       const gx = dy / length;
       const gy = -dx / length;
-      const stops = this.wallStops(a, b, model);
+      const stops = this.wallStops(a, b, model, stationary[i] ?? false);
       const mesh = new Mesh();
       for (const p of stops) {
         mesh.add({ x: p.x, y: p.y, run, n: 0, kind: WALL_BOTTOM, gx, gy });
@@ -427,7 +433,43 @@ export class BuildingLayout {
     a: Point,
     b: Point,
     model: RoofModel,
+    stationary: boolean,
   ): { x: number; y: number; n: number }[] {
+    if (model.type === "skeleton" && stationary) {
+      const dx = b.x - a.x,
+        dy = b.y - a.y;
+      const length2 = dx * dx + dy * dy;
+      const stops = [
+        { ...a, time: 0, t: 0 },
+        { ...b, time: 0, t: 1 },
+      ];
+      for (const face of model.faces) {
+        for (const band of model.mansard ? [0, 1] : [0]) {
+          const points = model.mansard
+            ? clipSkeletonFace(face.points, model.run / 3, band === 0)
+            : face.points;
+          for (const p of points) {
+            const t = ((p.x - a.x) * dx + (p.y - a.y) * dy) / length2;
+            if (
+              t < -1e-9 ||
+              t > 1 + 1e-9 ||
+              Math.abs(dx * (p.y - a.y) - dy * (p.x - a.x)) > 1e-7 * length2
+            )
+              continue;
+            // Use the frame-wall merge tolerance for events that collapse in float32.
+            const found = stops.find((s) => near(s, p));
+            if (found) found.time = Math.max(found.time, p.time);
+            else stops.push({ ...p, t });
+          }
+        }
+      }
+      stops.sort((p, q) => p.t - q.t);
+      return stops.map((p) => ({
+        x: p.x,
+        y: p.y,
+        n: skeletonHeight(p.time, model.run, model.mansard),
+      }));
+    }
     if (model.type !== "planes") {
       const n = model.type === "flat" ? 1 : 0;
       return [
@@ -501,10 +543,10 @@ export class BuildingLayout {
    * points.
    */
   private addPlaneRoof(
-    outer: readonly Point[],
+    polygon: Polygon,
     model: Extract<RoofModel, { type: "planes" }>,
   ): void {
-    const { points, triangles } = triangulate(outer);
+    const { points, triangles } = triangulate(polygon.outer, polygon.holes);
     const { planes, strips, run, frame } = model;
     // Facets that share vertices: one per plane, or one per strip group.
     const groups: number[][] = [];
@@ -798,7 +840,30 @@ function modelFor(
       ? { type: "skeleton", mansard: shape === "mansard", ...skeleton }
       : { type: "flat" };
   }
-  if (polygon.holes.length > 0) return { type: "flat" };
+  if (
+    (shape === "gabled" || shape === "gambrel") &&
+    (polygon.holes.length > 0 ||
+      signedArea2(polygon.outer) <
+        RECTANGLE_FILL * 8 * rect.halfLong * rect.halfShort)
+  ) {
+    const hips = straightSkeleton(polygon);
+    if (!hips) return { type: "flat" };
+    const ends = gableEnds(polygon.outer, hips);
+    if (ends.some(Boolean) || polygon.holes.length > 0) {
+      const skeleton = ends.some(Boolean)
+        ? straightSkeleton(polygon, ends)
+        : hips;
+      return skeleton && skeleton.run >= MIN_HALF_WIDTH
+        ? {
+            type: "skeleton",
+            mansard: shape === "gambrel",
+            stationary: ends,
+            ...skeleton,
+          }
+        : { type: "flat" };
+    }
+  }
+  if (polygon.holes.length > 0 && isRadial(shape)) return { type: "flat" };
   const frame = frameFor(rect, orientation, direction);
   return roofModel(shape, rect, frame, polygon.outer, direction);
 }
@@ -819,7 +884,7 @@ function cutModel(
   if (
     shape === "flat" ||
     shape === "many" ||
-    (polygon.holes.length > 0 && shape !== "hipped" && shape !== "mansard")
+    (polygon.holes.length > 0 && isRadial(shape))
   )
     return { type: "flat" };
   const rect = minimumAreaRectangle(polygon.outer);
@@ -832,6 +897,22 @@ function cutModel(
   };
 }
 
+function isRadial(shape: RoofShape): boolean {
+  return ["pyramidal", "cone", "dome", "onion"].includes(shape);
+}
+
+function skeletonHeight(time: number, run: number, mansard: boolean): number {
+  return Math.max(
+    0,
+    Math.min(
+      1,
+      mansard
+        ? Math.min((2 * time) / run, 0.5 + (0.5 * time) / run)
+        : time / run,
+    ),
+  );
+}
+
 function clipSkeletonFace(
   points: readonly SkeletonPoint[],
   time: number,
@@ -841,10 +922,11 @@ function clipSkeletonFace(
   for (let i = 0; i < points.length; i++) {
     const a = points[i]!;
     const b = points[(i + 1) % points.length]!;
-    const insideA = below ? a.time <= time : a.time >= time;
-    const insideB = below ? b.time <= time : b.time >= time;
-    if (insideA) result.push(a);
-    if (insideA !== insideB) {
+    // Retain event vertices on the break in both bands, including collinear ones.
+    const sa = side((a.time - time) / time);
+    const sb = side((b.time - time) / time);
+    if (below ? sa <= 0 : sa >= 0) result.push(a);
+    if (sa * sb < 0) {
       const t = (time - a.time) / (b.time - a.time);
       result.push({ x: a.x + t * (b.x - a.x), y: a.y + t * (b.y - a.y), time });
     }

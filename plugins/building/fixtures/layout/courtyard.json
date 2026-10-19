@@ -1,5 +1,5 @@
 {
-  "description": "A footprint with a courtyard: hipped and mansard follow the courtyard eaves; other shapes fall back to flat. Courtyard walls face into it.",
+  "description": "A courtyard: skeleton roofs follow the eaves, frame roofs clip around the hole, radial roofs stay flat. Courtyard walls face into it and follow the roof profile.",
   "extent": 8192,
   "features": [
     {
@@ -191,37 +191,29 @@
     }
   ],
   "expected": {
-    "vertex_count": 844,
-    "index_count": 1584,
-    "segments": [[0, 0, 844, 1584]],
+    "vertex_count": 1326,
+    "index_count": 3006,
+    "segments": [[0, 0, 1326, 3006]],
     "ranges": [
       [0, 0, 40],
-      [1, 40, 40],
-      [2, 80, 102],
-      [3, 182, 40],
-      [4, 222, 40],
-      [5, 262, 40],
-      [6, 302, 40],
-      [7, 342, 40],
-      [8, 382, 40],
-      [9, 422, 40],
-      [10, 462, 142],
-      [11, 604, 40],
-      [12, 644, 40],
-      [13, 684, 40],
-      [14, 724, 40],
-      [15, 764, 40],
-      [16, 804, 40]
+      [1, 40, 102],
+      [2, 142, 102],
+      [3, 244, 74],
+      [4, 318, 40],
+      [5, 358, 40],
+      [6, 398, 142],
+      [7, 540, 162],
+      [8, 702, 72],
+      [9, 774, 58],
+      [10, 832, 142],
+      [11, 974, 40],
+      [12, 1014, 72],
+      [13, 1086, 120],
+      [14, 1206, 40],
+      [15, 1246, 40],
+      [16, 1286, 40]
     ],
     "summaries": [
-      {
-        "vertices": 40,
-        "triangles": 24,
-        "sum_pos": [48000, 46000, 0],
-        "sum_roof": [24, 32, 0, 0],
-        "weighted": 48244.9,
-        "moment": 51377
-      },
       {
         "vertices": 40,
         "triangles": 24,
@@ -239,12 +231,20 @@
         "moment": 972445
       },
       {
-        "vertices": 40,
-        "triangles": 24,
-        "sum_pos": [48000, 46000, 0],
-        "sum_roof": [24, 32, 0, 0],
-        "weighted": 48244.9,
-        "moment": 51377
+        "vertices": 102,
+        "triangles": 68,
+        "sum_pos": [122400, 117300, 6120],
+        "sum_roof": [44.499999404, 156, 0, 0],
+        "weighted": 124811.205393,
+        "moment": 972445
+      },
+      {
+        "vertices": 74,
+        "triangles": 50,
+        "sum_pos": [88800, 85100, 11100],
+        "sum_roof": [32.0000004768, 82, 0, 0],
+        "weighted": 93616.7930634,
+        "moment": 366198
       },
       {
         "vertices": 40,
@@ -257,42 +257,42 @@
       {
         "vertices": 40,
         "triangles": 24,
-        "sum_pos": [48000, 46000, 0],
-        "sum_roof": [24, 32, 0, 0],
-        "weighted": 48244.9,
+        "sum_pos": [48000, 46000, 12000],
+        "sum_roof": [12.0000001788, 32, 0, -0.0266666673124],
+        "weighted": 54387.4256668,
         "moment": 51377
       },
       {
-        "vertices": 40,
-        "triangles": 24,
-        "sum_pos": [48000, 46000, 0],
-        "sum_roof": [24, 32, 0, 0],
-        "weighted": 48244.9,
-        "moment": 51377
+        "vertices": 142,
+        "triangles": 100,
+        "sum_pos": [170400, 163300, 8520],
+        "sum_roof": [73.8055568933, 236, 0, 0],
+        "weighted": 173262.828948,
+        "moment": 2901137
       },
       {
-        "vertices": 40,
-        "triangles": 24,
-        "sum_pos": [48000, 46000, 0],
-        "sum_roof": [24, 32, 0, 0],
-        "weighted": 48244.9,
-        "moment": 51377
+        "vertices": 162,
+        "triangles": 184,
+        "sum_pos": [193607.191284, 185388.283142, 24300],
+        "sum_roof": [77.850467205, 192, 0, 0.113196659833],
+        "weighted": 202749.064368,
+        "moment": 11999898
       },
       {
-        "vertices": 40,
-        "triangles": 24,
-        "sum_pos": [48000, 46000, 0],
-        "sum_roof": [24, 32, 0, 0],
-        "weighted": 48244.9,
-        "moment": 51377
+        "vertices": 72,
+        "triangles": 52,
+        "sum_pos": [86104, 82380, 3240],
+        "sum_roof": [40, 84, 0, 0.0444444455206],
+        "weighted": 86678.2398148,
+        "moment": 402329
       },
       {
-        "vertices": 40,
-        "triangles": 24,
-        "sum_pos": [48000, 46000, 0],
-        "sum_roof": [24, 32, 0, 0],
-        "weighted": 48244.9,
-        "moment": 51377
+        "vertices": 58,
+        "triangles": 40,
+        "sum_pos": [69704, 65620, 12180],
+        "sum_roof": [28.0000001788, 62, 0, -0.0190476197749],
+        "weighted": 74793.1967981,
+        "moment": 196734
       },
       {
         "vertices": 142,
@@ -311,20 +311,20 @@
         "moment": 51377
       },
       {
-        "vertices": 40,
-        "triangles": 24,
-        "sum_pos": [48000, 46000, 0],
-        "sum_roof": [24, 32, 0, 0],
-        "weighted": 48244.9,
-        "moment": 51377
+        "vertices": 72,
+        "triangles": 48,
+        "sum_pos": [86104, 82500, 3240],
+        "sum_roof": [40, 96, 0, 0],
+        "weighted": 86991.717284,
+        "moment": 340626
       },
       {
-        "vertices": 40,
-        "triangles": 24,
-        "sum_pos": [48000, 46000, 0],
-        "sum_roof": [24, 32, 0, 0],
-        "weighted": 48244.9,
-        "moment": 51377
+        "vertices": 120,
+        "triangles": 124,
+        "sum_pos": [143574.382629, 137376.564514, 18000],
+        "sum_roof": [53.3112196922, 144, 0, 0.0608063722029],
+        "weighted": 150717.827171,
+        "moment": 3998718
       },
       {
         "vertices": 40,

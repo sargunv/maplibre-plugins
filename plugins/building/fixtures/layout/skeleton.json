@@ -1,5 +1,5 @@
 {
-  "description": "Straight-skeleton event regressions, including simultaneous collapses and touching courtyard boundaries; hipped and mansard twins must agree.",
+  "description": "Straight-skeleton event regressions, including stationary gable ends, simultaneous collapses and touching courtyard boundaries.",
   "extent": 8192,
   "features": [
     {
@@ -19,8 +19,24 @@
       "direction": -1
     },
     {
-      "label": "square simultaneous collapse: hipped",
+      "label": "rectangle: gabled",
       "index": 2,
+      "rings": [[[1000, 1000], [1300, 1000], [1300, 1160], [1000, 1160]]],
+      "shape": "gabled",
+      "orientation": "along",
+      "direction": -1
+    },
+    {
+      "label": "rectangle: gambrel",
+      "index": 3,
+      "rings": [[[1000, 1000], [1300, 1000], [1300, 1160], [1000, 1160]]],
+      "shape": "gambrel",
+      "orientation": "along",
+      "direction": -1
+    },
+    {
+      "label": "square simultaneous collapse: hipped",
+      "index": 4,
       "rings": [[[1000, 1000], [1200, 1000], [1200, 1200], [1000, 1200]]],
       "shape": "hipped",
       "orientation": "along",
@@ -28,15 +44,31 @@
     },
     {
       "label": "square simultaneous collapse: mansard",
-      "index": 3,
+      "index": 5,
       "rings": [[[1000, 1000], [1200, 1000], [1200, 1200], [1000, 1200]]],
       "shape": "mansard",
       "orientation": "along",
       "direction": -1
     },
     {
+      "label": "square simultaneous collapse: gabled",
+      "index": 6,
+      "rings": [[[1000, 1000], [1200, 1000], [1200, 1200], [1000, 1200]]],
+      "shape": "gabled",
+      "orientation": "along",
+      "direction": -1
+    },
+    {
+      "label": "square simultaneous collapse: gambrel",
+      "index": 7,
+      "rings": [[[1000, 1000], [1200, 1000], [1200, 1200], [1000, 1200]]],
+      "shape": "gambrel",
+      "orientation": "along",
+      "direction": -1
+    },
+    {
       "label": "central courtyard: hipped",
-      "index": 4,
+      "index": 8,
       "rings": [
         [[1000, 1000], [1300, 1000], [1300, 1300], [1000, 1300]],
         [[1100, 1100], [1100, 1200], [1200, 1200], [1200, 1100]]
@@ -47,7 +79,7 @@
     },
     {
       "label": "central courtyard: mansard",
-      "index": 5,
+      "index": 9,
       "rings": [
         [[1000, 1000], [1300, 1000], [1300, 1300], [1000, 1300]],
         [[1100, 1100], [1100, 1200], [1200, 1200], [1200, 1100]]
@@ -57,8 +89,30 @@
       "direction": -1
     },
     {
+      "label": "central courtyard: gabled",
+      "index": 10,
+      "rings": [
+        [[1000, 1000], [1300, 1000], [1300, 1300], [1000, 1300]],
+        [[1100, 1100], [1100, 1200], [1200, 1200], [1200, 1100]]
+      ],
+      "shape": "gabled",
+      "orientation": "along",
+      "direction": -1
+    },
+    {
+      "label": "central courtyard: gambrel",
+      "index": 11,
+      "rings": [
+        [[1000, 1000], [1300, 1000], [1300, 1300], [1000, 1300]],
+        [[1100, 1100], [1100, 1200], [1200, 1200], [1200, 1100]]
+      ],
+      "shape": "gambrel",
+      "orientation": "along",
+      "direction": -1
+    },
+    {
       "label": "reflex split: hipped",
-      "index": 6,
+      "index": 12,
       "rings": [
         [
           [1000, 1000],
@@ -77,7 +131,7 @@
     },
     {
       "label": "reflex split: mansard",
-      "index": 7,
+      "index": 13,
       "rings": [
         [
           [1000, 1000],
@@ -95,8 +149,46 @@
       "direction": -1
     },
     {
+      "label": "reflex split: gabled",
+      "index": 14,
+      "rings": [
+        [
+          [1000, 1000],
+          [1300, 1000],
+          [1300, 1300],
+          [1200, 1300],
+          [1200, 1100],
+          [1100, 1100],
+          [1100, 1300],
+          [1000, 1300]
+        ]
+      ],
+      "shape": "gabled",
+      "orientation": "along",
+      "direction": -1
+    },
+    {
+      "label": "reflex split: gambrel",
+      "index": 15,
+      "rings": [
+        [
+          [1000, 1000],
+          [1300, 1000],
+          [1300, 1300],
+          [1200, 1300],
+          [1200, 1100],
+          [1100, 1100],
+          [1100, 1300],
+          [1000, 1300]
+        ]
+      ],
+      "shape": "gambrel",
+      "orientation": "along",
+      "direction": -1
+    },
+    {
       "label": "unequal wings: hipped",
-      "index": 8,
+      "index": 16,
       "rings": [
         [
           [1000, 1000],
@@ -113,7 +205,7 @@
     },
     {
       "label": "unequal wings: mansard",
-      "index": 9,
+      "index": 17,
       "rings": [
         [
           [1000, 1000],
@@ -129,8 +221,42 @@
       "direction": -1
     },
     {
+      "label": "unequal wings: gabled",
+      "index": 18,
+      "rings": [
+        [
+          [1000, 1000],
+          [1300, 1000],
+          [1300, 1120],
+          [1160, 1120],
+          [1160, 1300],
+          [1000, 1300]
+        ]
+      ],
+      "shape": "gabled",
+      "orientation": "along",
+      "direction": -1
+    },
+    {
+      "label": "unequal wings: gambrel",
+      "index": 19,
+      "rings": [
+        [
+          [1000, 1000],
+          [1300, 1000],
+          [1300, 1120],
+          [1160, 1120],
+          [1160, 1300],
+          [1000, 1300]
+        ]
+      ],
+      "shape": "gambrel",
+      "orientation": "along",
+      "direction": -1
+    },
+    {
       "label": "two courtyards: hipped",
-      "index": 10,
+      "index": 20,
       "rings": [
         [[1000, 1000], [1500, 1000], [1500, 1300], [1000, 1300]],
         [[1050, 1060], [1050, 1240], [1170, 1240], [1170, 1060]],
@@ -142,7 +268,7 @@
     },
     {
       "label": "two courtyards: mansard",
-      "index": 11,
+      "index": 21,
       "rings": [
         [[1000, 1000], [1500, 1000], [1500, 1300], [1000, 1300]],
         [[1050, 1060], [1050, 1240], [1170, 1240], [1170, 1060]],
@@ -153,8 +279,32 @@
       "direction": -1
     },
     {
+      "label": "two courtyards: gabled",
+      "index": 22,
+      "rings": [
+        [[1000, 1000], [1500, 1000], [1500, 1300], [1000, 1300]],
+        [[1050, 1060], [1050, 1240], [1170, 1240], [1170, 1060]],
+        [[1260, 1100], [1260, 1220], [1430, 1220], [1430, 1100]]
+      ],
+      "shape": "gabled",
+      "orientation": "along",
+      "direction": -1
+    },
+    {
+      "label": "two courtyards: gambrel",
+      "index": 23,
+      "rings": [
+        [[1000, 1000], [1500, 1000], [1500, 1300], [1000, 1300]],
+        [[1050, 1060], [1050, 1240], [1170, 1240], [1170, 1060]],
+        [[1260, 1100], [1260, 1220], [1430, 1220], [1430, 1100]]
+      ],
+      "shape": "gambrel",
+      "orientation": "along",
+      "direction": -1
+    },
+    {
       "label": "holes sharing an edge: hipped",
-      "index": 12,
+      "index": 24,
       "rings": [
         [[1000, 1000], [1400, 1000], [1400, 1300], [1000, 1300]],
         [[1100, 1100], [1100, 1200], [1200, 1200], [1200, 1100]],
@@ -166,7 +316,7 @@
     },
     {
       "label": "holes sharing an edge: mansard",
-      "index": 13,
+      "index": 25,
       "rings": [
         [[1000, 1000], [1400, 1000], [1400, 1300], [1000, 1300]],
         [[1100, 1100], [1100, 1200], [1200, 1200], [1200, 1100]],
@@ -177,8 +327,32 @@
       "direction": -1
     },
     {
+      "label": "holes sharing an edge: gabled",
+      "index": 26,
+      "rings": [
+        [[1000, 1000], [1400, 1000], [1400, 1300], [1000, 1300]],
+        [[1100, 1100], [1100, 1200], [1200, 1200], [1200, 1100]],
+        [[1200, 1100], [1200, 1200], [1300, 1200], [1300, 1100]]
+      ],
+      "shape": "gabled",
+      "orientation": "along",
+      "direction": -1
+    },
+    {
+      "label": "holes sharing an edge: gambrel",
+      "index": 27,
+      "rings": [
+        [[1000, 1000], [1400, 1000], [1400, 1300], [1000, 1300]],
+        [[1100, 1100], [1100, 1200], [1200, 1200], [1200, 1100]],
+        [[1200, 1100], [1200, 1200], [1300, 1200], [1300, 1100]]
+      ],
+      "shape": "gambrel",
+      "orientation": "along",
+      "direction": -1
+    },
+    {
       "label": "holes touching at a vertex: hipped",
-      "index": 14,
+      "index": 28,
       "rings": [
         [[1000, 1000], [1400, 1000], [1400, 1400], [1000, 1400]],
         [[1100, 1100], [1100, 1200], [1200, 1200], [1200, 1100]],
@@ -190,7 +364,7 @@
     },
     {
       "label": "holes touching at a vertex: mansard",
-      "index": 15,
+      "index": 29,
       "rings": [
         [[1000, 1000], [1400, 1000], [1400, 1400], [1000, 1400]],
         [[1100, 1100], [1100, 1200], [1200, 1200], [1200, 1100]],
@@ -199,29 +373,69 @@
       "shape": "mansard",
       "orientation": "along",
       "direction": -1
+    },
+    {
+      "label": "holes touching at a vertex: gabled",
+      "index": 30,
+      "rings": [
+        [[1000, 1000], [1400, 1000], [1400, 1400], [1000, 1400]],
+        [[1100, 1100], [1100, 1200], [1200, 1200], [1200, 1100]],
+        [[1200, 1200], [1200, 1300], [1300, 1300], [1300, 1200]]
+      ],
+      "shape": "gabled",
+      "orientation": "along",
+      "direction": -1
+    },
+    {
+      "label": "holes touching at a vertex: gambrel",
+      "index": 31,
+      "rings": [
+        [[1000, 1000], [1400, 1000], [1400, 1400], [1000, 1400]],
+        [[1100, 1100], [1100, 1200], [1200, 1200], [1200, 1100]],
+        [[1200, 1200], [1200, 1300], [1300, 1300], [1300, 1200]]
+      ],
+      "shape": "gambrel",
+      "orientation": "along",
+      "direction": -1
     }
   ],
   "expected": {
-    "vertex_count": 1674,
-    "index_count": 3384,
-    "segments": [[0, 0, 1674, 3384]],
+    "vertex_count": 3336,
+    "index_count": 6822,
+    "segments": [[0, 0, 3336, 6822]],
     "ranges": [
       [0, 0, 32],
       [1, 32, 52],
-      [2, 84, 28],
-      [3, 112, 48],
-      [4, 160, 72],
-      [5, 232, 112],
-      [6, 344, 68],
-      [7, 412, 108],
-      [8, 520, 62],
-      [9, 582, 92],
-      [10, 674, 194],
-      [11, 868, 254],
-      [12, 1122, 90],
-      [13, 1212, 130],
-      [14, 1342, 136],
-      [15, 1478, 196]
+      [2, 84, 30],
+      [3, 114, 50],
+      [4, 164, 28],
+      [5, 192, 48],
+      [6, 240, 30],
+      [7, 270, 50],
+      [8, 320, 72],
+      [9, 392, 112],
+      [10, 504, 72],
+      [11, 576, 112],
+      [12, 688, 68],
+      [13, 756, 108],
+      [14, 864, 66],
+      [15, 930, 104],
+      [16, 1034, 62],
+      [17, 1096, 92],
+      [18, 1188, 60],
+      [19, 1248, 88],
+      [20, 1336, 194],
+      [21, 1530, 254],
+      [22, 1784, 194],
+      [23, 1978, 254],
+      [24, 2232, 90],
+      [25, 2322, 130],
+      [26, 2452, 90],
+      [27, 2542, 130],
+      [28, 2672, 136],
+      [29, 2808, 196],
+      [30, 3004, 136],
+      [31, 3140, 196]
     ],
     "summaries": [
       {
@@ -241,6 +455,22 @@
         "moment": 123837
       },
       {
+        "vertices": 30,
+        "triangles": 18,
+        "sum_pos": [34500, 32400, 2400],
+        "sum_roof": [8, 30, 0, 0],
+        "weighted": 35668.8104167,
+        "moment": 19844
+      },
+      {
+        "vertices": 50,
+        "triangles": 34,
+        "sum_pos": [57500, 54000, 4000],
+        "sum_roof": [18.6666669846, 58, 0, 0],
+        "weighted": 58677.5169734,
+        "moment": 113756
+      },
+      {
         "vertices": 28,
         "triangles": 12,
         "sum_pos": [30800, 30800, 2800],
@@ -255,6 +485,38 @@
         "sum_roof": [16.0000003576, 72, 0, 0],
         "weighted": 56406.1389629,
         "moment": 76954
+      },
+      {
+        "vertices": 30,
+        "triangles": 18,
+        "sum_pos": [33000, 33000, 3000],
+        "sum_roof": [8, 30, 0, 0],
+        "weighted": 35616.1416667,
+        "moment": 19844
+      },
+      {
+        "vertices": 50,
+        "triangles": 34,
+        "sum_pos": [55000, 55000, 5000],
+        "sum_roof": [18.6666669846, 58, 0, 0],
+        "weighted": 58538.1802848,
+        "moment": 113756
+      },
+      {
+        "vertices": 72,
+        "triangles": 48,
+        "sum_pos": [82800, 82800, 3600],
+        "sum_roof": [20, 96, 0, 0],
+        "weighted": 85852.0277778,
+        "moment": 358840
+      },
+      {
+        "vertices": 112,
+        "triangles": 80,
+        "sum_pos": [128800.000427, 128800.000427, 5600],
+        "sum_roof": [46.666667223, 176, 0, 0],
+        "weighted": 132911.821843,
+        "moment": 1513272
       },
       {
         "vertices": 72,
@@ -289,6 +551,22 @@
         "moment": 1240605
       },
       {
+        "vertices": 66,
+        "triangles": 44,
+        "sum_pos": [75900, 76800, 3300],
+        "sum_roof": [17, 78, 0, 12],
+        "weighted": 78429.9848485,
+        "moment": 274614
+      },
+      {
+        "vertices": 104,
+        "triangles": 76,
+        "sum_pos": [119600.000427, 121200.000427, 5200],
+        "sum_roof": [39.6666671634, 142, 0, 20],
+        "weighted": 122757.088705,
+        "moment": 1251774
+      },
+      {
         "vertices": 62,
         "triangles": 40,
         "sum_pos": [70389, 70173, 4960],
@@ -303,6 +581,38 @@
         "sum_roof": [41.1645838022, 148, 3.83124999749, 3.86874999804],
         "weighted": 109079.295925,
         "moment": 795438
+      },
+      {
+        "vertices": 60,
+        "triangles": 41,
+        "sum_pos": [68231, 68334, 4800],
+        "sum_roof": [19.125, 75, 5.94999999925, 8.05000000075],
+        "weighted": 71394.7502083,
+        "moment": 211822
+      },
+      {
+        "vertices": 88,
+        "triangles": 65,
+        "sum_pos": [100446.999939, 100169.999939, 7040],
+        "sum_roof": [37.0291670561, 119, 9.97499999963, 12.0250000004],
+        "weighted": 104253.042321,
+        "moment": 761244
+      },
+      {
+        "vertices": 194,
+        "triangles": 138,
+        "sum_pos": [241286.416565, 222957.916687, 9700],
+        "sum_roof": [81.2416667938, 316, 0.019999999553, -0.179999995977],
+        "weighted": 240728.662286,
+        "moment": 7649959
+      },
+      {
+        "vertices": 254,
+        "triangles": 186,
+        "sum_pos": [315387.805908, 292157.917053, 12700],
+        "sum_roof": [138.440279067, 436, 0.00999999977648, -0.0899999979883],
+        "weighted": 315660.627368,
+        "moment": 18042631
       },
       {
         "vertices": 194,
@@ -335,6 +645,38 @@
         "sum_roof": [46.5333338976, 188, 0, 0],
         "weighted": 157432.099655,
         "moment": 2254003
+      },
+      {
+        "vertices": 90,
+        "triangles": 58,
+        "sum_pos": [108000, 103500, 4500],
+        "sum_roof": [19.8000000119, 108, 0, 0],
+        "weighted": 109408.709778,
+        "moment": 661729
+      },
+      {
+        "vertices": 130,
+        "triangles": 90,
+        "sum_pos": [156000.000427, 149500.000427, 6500],
+        "sum_roof": [46.5333338976, 188, 0, 0],
+        "weighted": 157432.099655,
+        "moment": 2254003
+      },
+      {
+        "vertices": 136,
+        "triangles": 84,
+        "sum_pos": [163200, 163200, 13600],
+        "sum_roof": [33.2000000477, 200, 0, 0],
+        "weighted": 171587.225,
+        "moment": 1869702
+      },
+      {
+        "vertices": 196,
+        "triangles": 132,
+        "sum_pos": [235200.000061, 235200.000061, 19600],
+        "sum_roof": [85.533334136, 320, 0, 0],
+        "weighted": 246624.713987,
+        "moment": 6693974
       },
       {
         "vertices": 136,

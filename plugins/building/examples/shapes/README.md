@@ -1,11 +1,11 @@
 # Roof shapes example
 
 A synthetic grid of buildings showing every roof shape of the `building` layer.
-It stands in an empty part of Letenské sady in Prague (50.0956–50.0986 N,
+It stands in an empty part of Letenské sady in Prague (50.0947–50.0986 N,
 14.4113–14.4191 E), about 500 m north of the [OSM example](../osm/README.md).
 The only things in the way are two flights of park steps and a shed.
 
-- `buildings.geojson`: 170 Polygon features, one per line, with ids 1 to 170.
+- `buildings.geojson`: 221 Polygon features, one per line, with ids 1 to 221.
   dprint does not format `.geojson`.
 - `source.json`: the GeoJSON source options, as the OSM example uses (see its
   [Source options](../osm/README.md#source-options)). Apps add `data`. The
@@ -26,22 +26,26 @@ order: `flat`, `gabled`, `hipped`, `half-hipped`, `pyramidal`, `skillion`,
 `quadruple_saltbox`, `round_gabled`, `onion`, `cone` and `many`. Rows, north to
 south:
 
-| Row | Footprint                    | Variant                                  |
-| --: | ---------------------------- | ---------------------------------------- |
-|   1 | rectangle, 18 m × 11 m       | `along`                                  |
-|   2 | rectangle                    | `across`                                 |
-|   3 | rectangle                    | `roof:direction` 200                     |
-|   4 | the rectangle turned 30°     | `along`                                  |
-|   5 | turned rectangle             | `across`                                 |
-|   6 | turned rectangle             | `roof:direction` 75                      |
-|   7 | L, 18 m × 14 m with 8 m arms | `along`                                  |
-|   8 | L                            | `across`                                 |
-|   9 | 24-gon of radius 8 m         | `along`                                  |
-|  10 | rectangle                    | `roof:angle` 35 instead of `roof:height` |
+| Row | Footprint                             | Variant                                  |
+| --: | ------------------------------------- | ---------------------------------------- |
+|   1 | rectangle, 18 m × 11 m                | `along`                                  |
+|   2 | rectangle                             | `across`                                 |
+|   3 | rectangle                             | `roof:direction` 200                     |
+|   4 | the rectangle turned 30°              | `along`                                  |
+|   5 | turned rectangle                      | `across`                                 |
+|   6 | turned rectangle                      | `roof:direction` 75                      |
+|   7 | L, 18 m × 14 m with 8 m arms          | `along`                                  |
+|   8 | L                                     | `across`                                 |
+|   9 | 24-gon of radius 8 m                  | `along`                                  |
+|  10 | rectangle                             | `roof:angle` 35 instead of `roof:height` |
+|  11 | T, 18 m × 14 m with 6 m arms          | `along`                                  |
+|  12 | U, 18 m × 14 m with 6 m arms          | `along`                                  |
+|  13 | rectangle with an 8 m × 4 m courtyard | `along`                                  |
 
-The radial shapes (`pyramidal`, `cone`, `dome`, `onion`) on the L-shape draw
-flat roofs: the center of the L's bounding rectangle is outside its kernel, one
-of the documented fallbacks.
+The radial shapes (`pyramidal`, `cone`, `dome`, `onion`) on the L, T, U and
+courtyard rows draw flat roofs. Gabled and gambrel follow the arms, and frame
+roofs clip around the courtyard. These are the documented geometry paths and
+fallbacks.
 
 Walls are 7 m high. `height` adds the shape's `roof:height`: 3 m for `skillion`,
 4 m for `double_saltbox` and `quadruple_saltbox`, 5 m for most shapes, 6 m for
@@ -59,7 +63,7 @@ values are already numbers and the layout's enum strings, so
 
 ## Tile edges
 
-A footprint that crosses a tile edge gets a flat roof (README, "Fallbacks"). The
+A copy cut at the source buffer draws roofless (README, "Tile copies"). The
 grid's cells are one third of a zoom-18 tile in Web Mercator, about 32.7 m here,
 aligned to zoom-18 tiles, and every building sits inside its cell. Every tile
 edge at zoom 18 and below therefore runs between buildings. This holds with

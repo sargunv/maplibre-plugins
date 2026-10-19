@@ -1,4 +1,4 @@
-//! Equal-speed straight skeleton with courtyard boundaries. The wavefront
+//! Zero/one-speed straight skeleton with courtyard boundaries. The wavefront
 //! keeps the building on its left. At each event its contacts are split and
 //! opposing segments canceled before reconnection, including simultaneous
 //! collapses and hole/outer merges. ../../js/src/skeleton.ts is its twin.
@@ -19,7 +19,7 @@ pub const SkeletonPoint = struct {
 };
 pub const Face = struct { points: []SkeletonPoint, normal: Point };
 pub const Skeleton = struct { faces: []Face, run: f64 };
-const Edge = struct { normal: Point, start: SkeletonPoint, end: SkeletonPoint };
+const Edge = struct { normal: Point, speed: f64 = 1, start: SkeletonPoint, end: SkeletonPoint };
 const Vertex = struct { p: Point, velocity: Point };
 const Loop = struct { edges: []Edge, vertices: []Vertex };
 const Segment = struct { a: usize, b: usize, edge: Edge, parent: usize };
@@ -35,10 +35,12 @@ fn dot(a: Point, b: Point) f64 {
     return a.x * b.x + a.y * b.y;
 }
 
-fn velocity(a: Point, b: Point) ?Point {
+fn velocity(left: Edge, right: Edge) ?Point {
+    const a = left.normal;
+    const b = right.normal;
     const det = a.x * b.y - a.y * b.x;
     if (@abs(det) <= parallel) return null;
-    return .{ .x = (b.y - a.y) / det, .y = (a.x - b.x) / det };
+    return .{ .x = (left.speed * b.y - right.speed * a.y) / det, .y = (right.speed * a.x - left.speed * b.x) / det };
 }
 
 fn at(v: Vertex, dt: f64) Point {
@@ -77,7 +79,7 @@ fn nextEvent(loops: []const Loop) f64 {
                     const a = other.vertices[j];
                     const b = other.vertices[(j + 1) % other.edges.len];
                     const gap = edge.normal.x * (v.p.x - a.p.x) + edge.normal.y * (v.p.y - a.p.y);
-                    const speed = dot(edge.normal, v.velocity) - 1;
+                    const speed = dot(edge.normal, v.velocity) - edge.speed;
                     if (gap <= contact or speed >= -parallel) continue;
                     const dt = -gap / speed;
                     if (dt <= contact or dt > time + contact) continue;
@@ -201,7 +203,7 @@ fn advance(allocator: Allocator, loops: []const Loop, dt: f64, time: f64, faces:
                 const current = segments.items[id];
                 const a = before.edge.normal;
                 const b = current.edge.normal;
-                if (@abs(a.x * b.y - a.y * b.x) <= parallel and dot(a, b) > 0) {
+                if (before.edge.speed == current.edge.speed and @abs(a.x * b.y - a.y * b.x) <= parallel and dot(a, b) > 0) {
                     before.b = current.b;
                     before.parent = none;
                     _ = cycle.orderedRemove(i);
@@ -217,12 +219,12 @@ fn advance(allocator: Allocator, loops: []const Loop, dt: f64, time: f64, faces:
             const s = segments.items[id];
             const prev = segments.items[cycle.items[(i + cycle.items.len - 1) % cycle.items.len]];
             const next = segments.items[cycle.items[(i + 1) % cycle.items.len]];
-            const motion = velocity(prev.edge.normal, s.edge.normal) orelse return null;
+            const motion = velocity(prev.edge, s.edge) orelse return null;
             if (s.parent != none and prev.parent == old.items[s.parent].prev and next.parent == old.items[s.parent].next) {
                 continued[s.parent] = true;
                 edges[i] = s.edge;
             } else {
-                edges[i] = .{ .normal = s.edge.normal, .start = timed(points.items[s.a], time), .end = timed(points.items[s.b], time) };
+                edges[i] = .{ .normal = s.edge.normal, .speed = s.edge.speed, .start = timed(points.items[s.a], time), .end = timed(points.items[s.b], time) };
             }
             vertices[i] = .{ .p = points.items[s.a], .velocity = motion };
         }
@@ -231,7 +233,7 @@ fn advance(allocator: Allocator, loops: []const Loop, dt: f64, time: f64, faces:
     for (old.items, 0..) |item, i| {
         if (continued[i]) continue;
         const polygon = [_]SkeletonPoint{ item.edge.start, item.edge.end, timed(item.b, time), timed(item.a, time) };
-        if (area2(&polygon) > contact * contact) try faces.append(allocator, .{ .points = try allocator.dupe(SkeletonPoint, &polygon), .normal = item.edge.normal });
+        if (item.edge.speed > 0 and area2(&polygon) > contact * contact) try faces.append(allocator, .{ .points = try allocator.dupe(SkeletonPoint, &polygon), .normal = item.edge.normal });
     }
     return try result.toOwnedSlice(allocator);
 }
@@ -249,6 +251,10 @@ fn lessFaceStop(_: void, a: FaceStop, b: FaceStop) bool {
 pub const max_skeleton_vertices = 192;
 
 pub fn straightSkeleton(allocator: Allocator, polygon: Polygon) Allocator.Error!?Skeleton {
+    return weightedSkeleton(allocator, polygon, &.{});
+}
+
+pub fn weightedSkeleton(allocator: Allocator, polygon: Polygon, stationary: []const bool) Allocator.Error!?Skeleton {
     var total = polygon.outer.len;
     for (polygon.holes.items) |hole| total += hole.len;
     if (total > max_skeleton_vertices) return null;
@@ -270,7 +276,7 @@ pub fn straightSkeleton(allocator: Allocator, polygon: Polygon) Allocator.Error!
     var loops = try allocator.alloc(Loop, all.len);
     var count: usize = 0;
     var area: f64 = 0;
-    for (all, loops) |ring, *loop| {
+    for (all, loops, 0..) |ring, *loop, r| {
         if (ring.len < 3) return null;
         const points = try allocator.alloc(SkeletonPoint, ring.len);
         for (ring, points) |p, *q| q.* = .{ .x = (p.x - min_x) / scale, .y = (p.y - min_y) / scale, .time = 0 };
@@ -280,11 +286,11 @@ pub fn straightSkeleton(allocator: Allocator, polygon: Polygon) Allocator.Error!
             const dx = b.x - a.x;
             const dy = b.y - a.y;
             const length = @sqrt(dx * dx + dy * dy);
-            edge.* = .{ .normal = .{ .x = -dy / length, .y = dx / length }, .start = a, .end = b };
+            edge.* = .{ .normal = .{ .x = -dy / length, .y = dx / length }, .speed = if (r == 0 and i < stationary.len and stationary[i]) 0 else 1, .start = a, .end = b };
         }
         const vertices = try allocator.alloc(Vertex, ring.len);
         for (vertices, 0..) |*v, i| {
-            const motion = velocity(edges[(i + edges.len - 1) % edges.len].normal, edges[i].normal) orelse return null;
+            const motion = velocity(edges[(i + edges.len - 1) % edges.len], edges[i]) orelse return null;
             v.* = .{ .p = points[i].point(), .velocity = motion };
         }
         loop.* = .{ .edges = edges, .vertices = vertices };
@@ -348,6 +354,55 @@ pub fn straightSkeleton(allocator: Allocator, polygon: Polygon) Allocator.Error!
         p.time *= scale;
     };
     return .{ .faces = try faces.toOwnedSlice(allocator), .run = time * scale };
+}
+
+/// Terminal hip faces between roughly parallel sides become vertical gables.
+pub fn gableEnds(allocator: Allocator, outer: []const Point, skeleton: Skeleton) Allocator.Error![]bool {
+    const result = try allocator.alloc(bool, outer.len);
+    @memset(result, false);
+    const tolerance = skeleton.run * 1e-7;
+    for (outer, 0..) |a, i| {
+        const b = outer[(i + 1) % outer.len];
+        const prev = outer[(i + outer.len - 1) % outer.len];
+        const next = outer[(i + 2) % outer.len];
+        if (footprint.cross(prev, a, b) <= 0 or footprint.cross(a, b, next) <= 0) continue;
+        const ux = a.x - prev.x;
+        const uy = a.y - prev.y;
+        const vx = next.x - b.x;
+        const vy = next.y - b.y;
+        if (ux * vx + uy * vy > -0.8 * @sqrt((ux * ux + uy * uy) * (vx * vx + vy * vy))) continue;
+        const dx = b.x - a.x;
+        const dy = b.y - a.y;
+        const length = @sqrt(dx * dx + dy * dy);
+        const nx = -dy / length;
+        const ny = dx / length;
+        // Events on neighboring arms can divide one terminal hip into several faces.
+        var points: std.ArrayList(SkeletonPoint) = .empty;
+        var area: f64 = 0;
+        for (skeleton.faces) |face| {
+            if (@abs(face.normal.x - nx) >= 1e-7 or @abs(face.normal.y - ny) >= 1e-7) continue;
+            var matches = true;
+            for (face.points) |p| {
+                const along = (dx * (p.x - a.x) + dy * (p.y - a.y)) / length;
+                if (along < -tolerance or along > length + tolerance or @abs(nx * (p.x - a.x) + ny * (p.y - a.y) - p.time) > tolerance) matches = false;
+            }
+            if (!matches) continue;
+            area += area2(face.points);
+            try points.appendSlice(allocator, face.points);
+        }
+        var apex: ?SkeletonPoint = null;
+        for (points.items) |p| {
+            if (apex == null or p.time > apex.?.time) apex = p;
+        }
+        const tip = apex orelse continue;
+        if (tip.time <= tolerance or @abs(area - footprint.cross(a, b, tip.point())) > tolerance * length) continue;
+        var inside = true;
+        for (points.items) |p| {
+            if (footprint.cross(b, tip.point(), p.point()) < -tolerance * length or footprint.cross(tip.point(), a, p.point()) < -tolerance * length) inside = false;
+        }
+        result[i] = inside;
+    }
+    return result;
 }
 
 /// A regular n-gon of radius 2000 tile units, with positive area.
