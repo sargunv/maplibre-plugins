@@ -221,7 +221,7 @@ const fixtures = {
   },
   "gable-family-arms": {
     description:
-      "Unequal-width arms exercise local half-hip switch times and directional saltbox speeds, including oblique slopes.",
+      "Unequal-width arms exercise local half-hip switch times and delayed saltbox eaves, including oblique slopes.",
     features: ["half-hipped", "saltbox"].flatMap((shape, i) =>
       [-1, 0, 45, 180].map((direction, j) => ({
         index: 4 * i + j,
@@ -975,6 +975,28 @@ const ridge = graph(
   ],
   [[0, 1]],
 );
+const stepVertices = [
+  [1000, 1000, 0.3],
+  [1150, 1000, 0.3],
+  [1150, 1160, 0.3],
+  [1000, 1160, 0.3],
+  [1150, 1000, 0.8],
+  [1300, 1000, 0.8],
+  [1300, 1160, 0.8],
+  [1150, 1160, 0.8],
+];
+const stepEdges = [
+  [0, 1],
+  [1, 2],
+  [2, 3],
+  [3, 0],
+  [4, 5],
+  [5, 6],
+  [6, 7],
+  [7, 4],
+  [1, 4],
+  [2, 7],
+];
 const cases = [
   {
     label: "Bamberg way/36941229",
@@ -1072,6 +1094,93 @@ fixtures["roof-lines"] = {
     "Explicit roof graphs: OSM Bamberg way/36941229, gables, apex heights, invalid input and whole tile copies. Real data © OpenStreetMap contributors, ODbL; see ../../examples/osm/buildings.geojson.LICENSE.txt.",
   full: true,
   features: cases.flatMap((f, i) =>
+    [0, 1, -1].map((offset, k) => ({
+      ...f,
+      index: i * 3 + k,
+      shape: "complex",
+      tile: { ...tile, x: tile.x - offset },
+      rings: f.rings.map((r) => r.map(([x, y]) => [x + offset * EXTENT, y])),
+    })),
+  ),
+};
+
+fixtures["saltbox-steps"] = {
+  description:
+    "Equal-slope saltbox T and L arms: raised back eaves, interior vertical steps, and symmetric arms along the direction.",
+  full: true,
+  features: ["t-shape", "l-shape"].flatMap((name, i) =>
+    [0, 180].map((direction, j) => ({
+      index: i * 2 + j,
+      label: name,
+      shape: "saltbox",
+      direction,
+      rings: fixtures[name].features[0].rings,
+    })),
+  ),
+};
+
+fixtures["roof-lines-steps"] = {
+  description:
+    "Coincident graph nodes define both sides of a vertical face; missing side connections are ambiguous and fall back. Copies retain the same surface.",
+  full: true,
+  features: [
+    {
+      label: "vertical roof-line step",
+      rings: [rectangle],
+      lines: graph(stepVertices, stepEdges),
+    },
+    {
+      label: "ambiguous coincident roof nodes",
+      rings: [rectangle],
+      lines: graph(stepVertices, [
+        [1, 2],
+        [4, 7],
+      ]),
+    },
+    {
+      label: "step tapering to a triangle",
+      rings: [rectangle],
+      lines: graph(
+        stepVertices.map((v, i) => (i === 7 ? [v[0], v[1], 0.3] : v)),
+        stepEdges,
+      ),
+    },
+    {
+      label: "vertical roof part on the outline",
+      rings: [rectangle],
+      lines: graph(
+        [
+          [1000, 1000, 0],
+          [1300, 1000, 0],
+          [1300, 1160, 0],
+          [1000, 1160, 0],
+          [1000, 1000, 0.5],
+          [1300, 1000, 0.5],
+          [1300, 1160, 0.5],
+          [1000, 1160, 0.5],
+          [1150, 1080, 1],
+        ],
+        [
+          [0, 1],
+          [1, 2],
+          [2, 3],
+          [3, 0],
+          [4, 5],
+          [5, 6],
+          [6, 7],
+          [7, 4],
+          [4, 8],
+          [5, 8],
+          [6, 8],
+          [7, 8],
+          [0, 4],
+          [1, 5],
+          [2, 6],
+          [3, 7],
+        ],
+      ),
+    },
+  ].flatMap((f, i) =>
     [0, 1, -1].map((offset, k) => ({
       ...f,
       index: i * 3 + k,

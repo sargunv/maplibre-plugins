@@ -110,8 +110,10 @@ give opaque or translucent buildings (see [Rendering](#rendering)).
      planar gradient. Eaves default to `n = 0`; graph vertices carry `n` in `[0,
      1]`, including gable peaks on the outline. Walls split at graph vertices on
      their boundary. Input is capped at 192 total vertices and 576 constraints,
-     and the emitted roof and wall-top edges must pair before the mesh is
-     accepted.
+     and the emitted roof and wall edges must pair before the mesh is accepted.
+     Coincident graph nodes retain different heights: duplicate projected edges
+     separate roof sectors, whose connecting edges assign their heights. A
+     vertical wall joins the two sides; ambiguous sectors fall back to flat.
    - **Skeleton shapes** (hipped and mansard) move every eave inward at equal
      speed, including courtyard boundaries, which expand into the building. Edge
      collapses and contacts split or merge wavefront loops. The swept faces form
@@ -143,17 +145,18 @@ give opaque or translucent buildings (see [Rendering](#rendering)).
      `width/2 - inset`, then move at speed one. Here `width` is that end edge's
      length and `inset` is the smaller of `width/6` and `0.4` times its shorter
      adjacent side. Thus each arm has its own small hip above a vertical gable;
-     time increases upward, so the speed change is 0 to 1. Saltbox eaves move at
-     `1 + 0.4 * dot(outwardNormal, front)`, with stationary gable ends. A front
-     facing the direction travels 70% across an arm, and its opposite 30%; arms
-     along the direction are symmetric. An unset direction uses the
+     time increases upward, so the speed change is 0 to 1. Saltbox back eaves
+     stay still until `0.4 × width × max(0, -dot(outwardNormal, front))`, then
+     move at speed one. Width is the nearest boundary hit along inward rays from
+     the eave's endpoints and midpoint. Thus a perpendicular arm has equal
+     slopes, a ridge 70% from the front and a back eave at `n = 4/7`; arms along
+     the direction stay symmetric. Unequal-width arms share one time scale, so
+     narrower arms can have lower ridges and eaves. An unset direction uses the
      orientation's frame front, following OSM2World's orientation-based choice.
-     Arm saltboxes keep level eaves and unequal slopes: heights use one
-     wavefront clock and each face's gradient divides by its speed. OSM2World's
-     equal slopes and raised back eave stay on the frame path only. On arms,
-     delaying the back edges gives that ridge but leaves a vertical step inside
-     the footprint where a back face meets another arm at a reflex corner, which
-     the roof-facet model cannot draw.
+     Facet boundaries are split in plan view while keeping each face's own
+     height. Where those heights differ, a vertical step wall faces the lower
+     surface. The same wall primitive joins complex roof sectors. Closure checks
+     include these walls and the vertical intervals at their ends.
    - **Frame shapes** are concave height functions over the frame, written as
      the minimum of planes. The footprint is ear-clipped, and every triangle is
      clipped to every plane's facet, so each output triangle is planar. Holes
@@ -179,7 +182,7 @@ The Source column names where each profile's constants come from.
 
 | Shape             | Definition                                                                                                                                                                   | Source                                                                           |
 | ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
-| complex           | Mapped roof graph, with planar triangles and explicit relative elevations.                                                                                                   | OSM2World `ComplexRoof` height rules; constrained triangulation                  |
+| complex           | Mapped roof graph, with planar triangles, explicit relative elevations and vertical step walls.                                                                              | OSM2World `ComplexRoof` height rules; constrained triangulation                  |
 | flat, many        | `n = 1`                                                                                                                                                                      |                                                                                  |
 | gabled            | Frame: `1 - abs(v)/b`; on arms and courtyards, stationary-end skeleton                                                                                                       | OSM2World                                                                        |
 | hipped            | Equal slopes over the straight skeleton of the footprint, including courtyard eaves.                                                                                         | [Straight skeleton](https://en.wikipedia.org/wiki/Straight_skeleton)             |
@@ -187,7 +190,7 @@ The Source column names where each profile's constants come from.
 | skillion          | One plane. A set direction slopes it down exactly that way, over the footprint's extent along it. Otherwise it falls toward `+v` over `2b`.                                  | OSM2World                                                                        |
 | gambrel           | Frame: `min(1 - abs(v)/2b, 2 - 2·abs(v)/b)`; on arms and courtyards, stationary-end skeleton with the mansard profile                                                        | OSM2World `GambrelRoof`                                                          |
 | mansard           | Straight skeleton with `n = min(2t/run, 0.5 + 0.5t/run)`, where `t` is inward distance from an eave.                                                                         | Gambrel slope profile on the straight skeleton                                   |
-| saltbox           | Frame: equal slopes, ridge at 0.7 of the width from the front, back eaves at `n = 4/7`. Arms: directional 70/30 ridges, unequal slopes and level eaves; see the limit above. | OSM2World `SaltboxRoof` (Streets GL uses a back eave at 0.2 instead)             |
+| saltbox           | Equal slopes, ridge at 0.7 of the width from the front, back eaves at `n = 4/7`. Arms delay back eaves and close internal steps with walls.                                  | OSM2World `SaltboxRoof` (Streets GL uses a back eave at 0.2 instead)             |
 | round             | Semicircular barrel in 15° strips, with smooth gradients and arc-shaped gable walls. On arms, uses stationary-end skeleton time.                                             | OSM2World / Streets GL (Streets GL uses 10° steps)                               |
 | round_gabled      | Equilateral pointed arch: arcs of radius `2b` centered on opposite eaves, with a crisp ridge. On arms, uses stationary-end skeleton time.                                    | OSM wiki: "gabled, but the 2 roof slopes are rounded"                            |
 | double_saltbox    | Gabled with a flat top: faces rise over `0.3b` in the frame, or `0.3` of the stationary-end skeleton run on arms.                                                            | StreetComplete `roof_double_saltbox` drawing                                     |
@@ -217,9 +220,9 @@ bounding rectangle's short side for radial shapes without a terrace (the
 circular base radius for radial roofs with a terrace). For skeleton roofs it is
 the maximum wavefront time before the footprint disappears (or `0.3` of that
 time for the capped shapes). Saltbox arms use that time as their reference run,
-with slopes `1 / (speed * run)`; other moving eaves travel at speed one. Capped
-roofs use only the distance to the flat top for `building-roof-angle`. Mansard
-lower faces have slope `2/run`, and upper faces `0.5/run` in relative height;
+with slopes `1 / run`; all moving eaves travel at speed one. Capped roofs use
+only the distance to the flat top for `building-roof-angle`. Mansard lower faces
+have slope `2/run`, and upper faces `0.5/run` in relative height;
 `building-roof-angle` still sets the total height from `run`.
 
 ### Tile copies
@@ -291,10 +294,10 @@ cut draw roofless instead, see [Tile copies](#tile-copies)):
   cubic, and the web layer lays tiles out on the main thread. Gable-end
   selection can require two skeleton builds; the cap is unchanged. Sampled
   barrel profiles split the swept faces into bands after the skeleton is built.
-  Arm skeletons also check the emitted roof and wall-top edges for closure in
-  linear time, after band clipping and float32 sliver removal. If those edges do
-  not pair, the gable-family roof keeps its frame model; this avoids open seams
-  from collapsed faces or merged stationary wall stops.
+  Arm skeletons also check the emitted roof and wall edges for closure in linear
+  time, after band clipping and float32 sliver removal. If those edges do not
+  pair, the gable-family roof keeps its frame model; this avoids open seams from
+  collapsed faces or merged stationary wall stops.
 - Footprints whose bounding rectangle is thinner than 2 tile units, or a
   skillion whose extent along its direction is less than 2 tile units.
 - Pyramidal roofs whose center is not at least 0.5 tile units inside every edge
@@ -318,8 +321,11 @@ The layout writes 7 float32 per vertex, and the shaders rely on this layout:
     tops and lid (kind 2, gradient 0), so they stop at `wallTop`, the eaves of
     the real roof. The shaders need nothing else to tell them apart.
   - `kind`: 0 is a wall bottom (`z = base`). 1 is a wall top (`n` follows the
-    roof along the wall, so gable ends rise). 2 is the roof. 3 is a roof
-    underside: an overhang (the onion's bulge), whose normal points down.
+    roof along the wall, so gable ends rise). Both edges of an interior step
+    wall use kind 1, at the lower and upper `n`; it uses `building-color` and
+    the wall-top vertical-gradient term (`t = 1`) throughout. 2 is the roof. 3
+    is a roof underside: an overhang (the onion's bulge), whose normal points
+    down.
   - For walls, `(gx, gy)` is the outward unit normal in tile coordinates. For
     roofs it is the gradient of `n` per tile unit, and the surface normal is
     `±normalize(-roofHeight·gx, -roofHeight·gy, 1)` with heights converted to
@@ -649,12 +655,18 @@ The [OSM example](examples/osm/README.md#roof-lines) resolves OSM height tags
 before layout. A graph is already normalized: changing paint height or angle
 scales it without reparsing the graph. The graph supports holes, shared
 junctions, boundary peaks and isolated apex points, but crossings must have an
-explicit shared vertex. Multipolygon features assign vertices to their exterior
-component (respecting holes), and retain edges within that component. An edge
-joining two components makes both fall back to flat; other components keep their
-roofs. Coordinates, heights and edge indices must be JSON numbers, not numeric
-strings. Vertices on a cleaned-up eave snap to it within 0.75 tile units; points
-farther outside cause a flat fallback.
+explicit shared vertex. Vertical steps use distinct vertices at the same
+position with different heights, linked by their own roof edges, as in the
+[roof-lines proposal's vertical parts](https://wiki.openstreetmap.org/wiki/ProposedRoofLines#Step_3:_add_vertical_parts).
+The edges on each side must identify its height; a duplicate pair alone cannot
+say which side is high and falls back. This extends OSM2World's `ComplexRoof`,
+which stores only one height per position. Overlapping roof surfaces and
+roof-line overhangs remain unsupported. Multipolygon features assign vertices to
+their exterior component (respecting holes), and retain edges within that
+component. An edge joining two components makes both fall back to flat; other
+components keep their roofs. Coordinates, heights and edge indices must be JSON
+numbers, not numeric strings. Vertices on a cleaned-up eave snap to it within
+2.2 tile units; points farther outside cause a flat fallback.
 
 Paint properties follow `fill-extrusion`'s:
 
@@ -822,10 +834,10 @@ would close them. The ones that limit this layer are under
    hips identify their ends; irregular outlines without a clear end keep the
    frame. End selection and half-hip widths come from the footprint, not roof
    ridges in the source. Half-hip insets use the shorter adjacent side as the
-   local arm length. Saltbox arms use unequal slopes with level eaves; the frame
-   keeps OSM2World's equal slopes and raised back eave. Hipped and mansard
-   always use the skeleton. Skeleton roofs use one global time scale, so
-   narrower arms can have lower ridges.
+   local arm length. Saltbox arm widths come from inward boundary rays; delayed
+   back eaves give equal slopes and raised eaves, with walls at interior steps.
+   Hipped and mansard always use the skeleton. Skeleton roofs use one global
+   time scale, so narrower arms can have lower ridges.
 2. **Circular roofs are inferred.** Cone, dome and onion on non-round footprints
    use one inscribed circle with a flat terrace. On an L or a courtyard it sits
    in one wing; this does not infer multiple domes or the building's real roof

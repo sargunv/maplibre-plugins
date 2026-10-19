@@ -103,6 +103,7 @@ pub const SkeletonRoof = struct {
     /// Capped roofs reach their top before the wavefront disappears.
     eave_run: ?f64 = null,
     stationary: []const bool = &.{},
+    stepped: bool = false,
 };
 
 pub const PlaneRoof = struct {

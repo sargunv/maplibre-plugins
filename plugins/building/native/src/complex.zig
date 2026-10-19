@@ -15,7 +15,7 @@ pub const RoofPoint = struct {
         return .{ .x = p.x, .y = p.y };
     }
 };
-pub const ComplexRoof = struct { points: []const RoofPoint, triangles: []const usize, run: f64 };
+pub const ComplexRoof = struct { points: []const RoofPoint, triangles: []const usize, run: f64, stepped: bool = false };
 const eps = 1e-7;
 // 4096→8192 footprints err by 1 unit/axis, graph rounding by 0.5: √2 × 1.5 < 2.2.
 const snap_tolerance = 2.2;
@@ -200,6 +200,8 @@ pub fn complexRoof(scratch: Allocator, polygon: Polygon, graph: ?RoofGraph, orig
     var triangles: std.ArrayList(usize) = .empty;
     for (base.triangles) |i| try triangles.append(scratch, i);
     var ids: std.ArrayList(usize) = .empty;
+    var stepped = false;
+    var heights: std.AutoHashMapUnmanaged(usize, f64) = .empty;
     for (data.vertices.items) |v| {
         const p = snap(.{ .x = v.x - origin.x, .y = v.y - origin.y, .n = v.n }, polygon);
         var found: ?usize = null;
@@ -208,6 +210,10 @@ pub fn complexRoof(scratch: Allocator, polygon: Polygon, graph: ?RoofGraph, orig
             break;
         };
         if (found) |i| {
+            if (heights.get(i)) |n| {
+                if (@abs(n - p.n) > eps) stepped = true;
+            }
+            try heights.put(scratch, i, p.n);
             points.items[i].n = p.n;
             try ids.append(scratch, i);
             continue;
@@ -233,6 +239,7 @@ pub fn complexRoof(scratch: Allocator, polygon: Polygon, graph: ?RoofGraph, orig
         if (!inserted) return null;
         triangles = next;
         try points.append(scratch, p);
+        try heights.put(scratch, id, p.n);
         try ids.append(scratch, id);
     }
     var constraints: std.ArrayList([2]usize) = .empty;
@@ -339,6 +346,7 @@ pub fn complexRoof(scratch: Allocator, polygon: Polygon, graph: ?RoofGraph, orig
             try fixed.put(scratch, target, {});
         }
     }
+    if (stepped) return try splitHeights(scratch, points.items, triangles.items, data, ids.items, run);
     return .{ .points = points.items, .triangles = triangles.items, .run = run };
 }
 
@@ -351,4 +359,123 @@ pub fn complexStops(scratch: Allocator, a: Point, b: Point, model: ComplexRoof) 
     const result = try scratch.alloc(RoofPoint, stops.items.len);
     for (result, stops.items) |*p, s| p.* = model.points[s.i];
     return result;
+}
+
+const HeightEdge = struct {
+    corners: std.ArrayList([2]usize) = .empty,
+    values: std.ArrayList([2]f64) = .empty,
+};
+fn root(parent: []usize, initial: usize) usize {
+    var i = initial;
+    while (parent[i] != i) {
+        parent[i] = parent[parent[i]];
+        i = parent[i];
+    }
+    return i;
+}
+fn assignHeight(parent: []usize, heights: []?f64, corner: usize, n: f64) bool {
+    const r = root(parent, corner);
+    if (heights[r]) |previous| {
+        if (@abs(previous - n) > eps) return false;
+    }
+    heights[r] = n;
+    return true;
+}
+
+/// Duplicate projected graph edges separate triangle fans. Ordinary graph edges
+/// in each sector seed its height; ambiguous sectors fail without guessing.
+fn splitHeights(scratch: Allocator, points: []const RoofPoint, triangles: []const usize, graph: RoofGraph, ids: []const usize, run: f64) Allocator.Error!?ComplexRoof {
+    const parent = try scratch.alloc(usize, triangles.len);
+    for (parent, 0..) |*p, i| p.* = i;
+    const variants = try scratch.alloc(std.ArrayList(f64), points.len);
+    for (variants, points, 0..) |*values, p, id| {
+        values.* = .empty;
+        for (graph.vertices.items, ids) |v, i| if (i == id and std.mem.indexOfScalar(f64, values.items, v.n) == null) {
+            try values.append(scratch, v.n);
+        };
+        if (values.items.len == 0) try values.append(scratch, p.n);
+    }
+    var edges: std.AutoArrayHashMapUnmanaged([2]usize, HeightEdge) = .empty;
+    var t: usize = 0;
+    while (t < triangles.len) : (t += 3) for (0..3) |k| {
+        var a = t + k;
+        var b = t + (k + 1) % 3;
+        if (triangles[a] > triangles[b]) std.mem.swap(usize, &a, &b);
+        const u = triangles[a];
+        const v = triangles[b];
+        const entry = try edges.getOrPut(scratch, .{ u, v });
+        if (!entry.found_existing) {
+            entry.value_ptr.* = .{};
+            for (graph.edges.items) |e| {
+                const i = ids[e[0]];
+                const j = ids[e[1]];
+                if (i == j or !on(points[i].point(), points[j].point(), points[u].point()) or !on(points[i].point(), points[j].point(), points[v].point())) continue;
+                const ni = graph.vertices.items[e[0]].n;
+                const nj = graph.vertices.items[e[1]].n;
+                var pair: [2]f64 = undefined;
+                for (&pair, [_]usize{ u, v }) |*n, id| n.* = ni + std.math.clamp(along(points[i].point(), points[j].point(), points[id].point()), 0, 1) * (nj - ni);
+                var found = false;
+                for (entry.value_ptr.values.items) |p| if (@abs(p[0] - pair[0]) < eps and @abs(p[1] - pair[1]) < eps) {
+                    found = true;
+                };
+                if (!found) try entry.value_ptr.values.append(scratch, pair);
+            }
+            if (entry.value_ptr.values.items.len > 2) return null;
+        }
+        try entry.value_ptr.corners.append(scratch, .{ a, b });
+    };
+    for (edges.values()) |edge| if (edge.values.items.len < 2 and edge.corners.items.len == 2) {
+        for (0..2) |k| parent[root(parent, edge.corners.items[1][k])] = root(parent, edge.corners.items[0][k]);
+    };
+    const heights = try scratch.alloc(?f64, triangles.len);
+    @memset(heights, null);
+    for (triangles, 0..) |id, c| {
+        const values = variants[id].items;
+        if (values.len == 1 and !assignHeight(parent, heights, c, values[0])) return null;
+    }
+    for (edges.values()) |edge| if (edge.values.items.len == 1) {
+        for (edge.corners.items) |pair| for (0..2) |k| {
+            if (!assignHeight(parent, heights, pair[k], edge.values.items[0][k])) return null;
+        };
+    };
+    for (triangles, 0..) |_, c| if (heights[root(parent, c)] == null) {
+        return null;
+    };
+    for (edges.values()) |edge| if (edge.values.items.len == 2) {
+        if (edge.corners.items.len > 2) return null;
+        var used: [2]?usize = .{ null, null };
+        for (edge.corners.items, 0..) |pair, j| for (edge.values.items, 0..) |v, i| {
+            if (@abs(heights[root(parent, pair[0])].? - v[0]) < eps and @abs(heights[root(parent, pair[1])].? - v[1]) < eps) {
+                used[j] = i;
+                break;
+            }
+        };
+        if (used[0] == null) return null;
+        if (edge.corners.items.len == 2) {
+            if (used[1] == null or used[0] == used[1]) return null;
+        } else {
+            // A raised eave's facade fills the vertical part down to the base.
+            for (0..2) |k| if (edge.values.items[used[0].?][k] < edge.values.items[1 - used[0].?][k] - eps) return null;
+        }
+    };
+    var output: std.ArrayList(RoofPoint) = .empty;
+    var original: std.ArrayList(usize) = .empty;
+    const result = try scratch.alloc(usize, triangles.len);
+    for (triangles, result, 0..) |id, *out, c| {
+        const n = heights[root(parent, c)].?;
+        var found: ?usize = null;
+        for (output.items, original.items, 0..) |p, old, i| if (id == old and n == p.n) {
+            found = i;
+            break;
+        };
+        if (found) |i| {
+            out.* = i;
+        } else {
+            if (output.items.len >= 192) return null;
+            out.* = output.items.len;
+            try output.append(scratch, .{ .x = points[id].x, .y = points[id].y, .n = n });
+            try original.append(scratch, id);
+        }
+    }
+    return .{ .points = output.items, .triangles = result, .run = run, .stepped = true };
 }

@@ -13,6 +13,7 @@ export interface ComplexRoof {
   points: RoofPoint[];
   triangles: number[];
   run: number;
+  stepped?: boolean;
 }
 const EPS = 1e-7;
 // 4096→8192 footprints err by 1 unit/axis, graph rounding by 0.5: √2 × 1.5 < 2.2.
@@ -225,12 +226,17 @@ export function complexRoof(
   const points: RoofPoint[] = base.points.map((p) => ({ ...p, n: 0 }));
   let triangles = base.triangles;
   const ids: number[] = [];
+  let stepped = false;
+  const heights = new Map<number, number>();
   for (const v of data.vertices) {
     const p = snap({ x: v.x - origin.x, y: v.y - origin.y, n: v.n }, polygon);
     const found = points.findIndex(
       (q) => Math.abs(p.x - q.x) < EPS && Math.abs(p.y - q.y) < EPS,
     );
     if (found >= 0) {
+      if (heights.has(found) && Math.abs(heights.get(found)! - p.n) > EPS)
+        stepped = true;
+      heights.set(found, p.n);
       points[found]!.n = p.n;
       ids.push(found);
       continue;
@@ -255,6 +261,7 @@ export function complexRoof(
     if (!inserted) return null;
     triangles = next;
     points.push(p);
+    heights.set(id, p.n);
     ids.push(id);
   }
   const edgeKey = (a: number, b: number) => (a < b ? `${a},${b}` : `${b},${a}`);
@@ -348,6 +355,11 @@ export function complexRoof(
       fixed.add(key);
     }
   }
+  if (stepped) {
+    const resolved = splitHeights(points, triangles, data, ids);
+    if (!resolved) return null;
+    return { ...resolved, run, stepped: true };
+  }
   return { points, triangles, run };
 }
 
@@ -359,4 +371,133 @@ export function complexStops(
   return model.points
     .filter((p) => on(a, b, p))
     .sort((p, q) => along(a, b, p) - along(a, b, q));
+}
+
+/** Coincident graph nodes retain their identity. Duplicate projected edges cut
+ * the triangle fans into sectors; the ordinary graph edges in each sector
+ * specify its height. Ambiguous sectors fail instead of guessing a side. */
+function splitHeights(
+  points: RoofPoint[],
+  triangles: number[],
+  graph: RoofGraph,
+  ids: number[],
+): Pick<ComplexRoof, "points" | "triangles"> | null {
+  const parent = triangles.map((_, i) => i);
+  const root = (i: number): number => {
+    while (parent[i] !== i) {
+      parent[i] = parent[parent[i]!]!;
+      i = parent[i]!;
+    }
+    return i;
+  };
+  const variants = points.map((p, id) => {
+    const values = graph.vertices
+      .filter((_, i) => ids[i] === id)
+      .map((v) => v.n);
+    return [...new Set(values.length ? values : [p.n])];
+  });
+  type Edge = { corners: [number, number][]; values: [number, number][] };
+  const edges = new Map<string, Edge>();
+  for (let t = 0; t < triangles.length; t += 3)
+    for (let k = 0; k < 3; k++) {
+      let a = t + k,
+        b = t + ((k + 1) % 3);
+      if (triangles[a]! > triangles[b]!) [a, b] = [b, a];
+      const u = triangles[a]!,
+        v = triangles[b]!,
+        key = `${u},${v}`;
+      let edge = edges.get(key);
+      if (!edge) {
+        const values: [number, number][] = [];
+        for (const [gi, gj] of graph.edges) {
+          const i = ids[gi!]!,
+            j = ids[gj!]!;
+          if (
+            i === j ||
+            !on(points[i]!, points[j]!, points[u]!) ||
+            !on(points[i]!, points[j]!, points[v]!)
+          )
+            continue;
+          const ni = graph.vertices[gi!]!.n,
+            nj = graph.vertices[gj!]!.n;
+          const pair: [number, number] = [u, v].map(
+            (id) =>
+              ni +
+              Math.max(
+                0,
+                Math.min(1, along(points[i]!, points[j]!, points[id]!)),
+              ) *
+                (nj - ni),
+          ) as [number, number];
+          if (
+            !values.some(
+              (p) =>
+                Math.abs(p[0] - pair[0]) < EPS &&
+                Math.abs(p[1] - pair[1]) < EPS,
+            )
+          )
+            values.push(pair);
+        }
+        if (values.length > 2) return null;
+        edge = { corners: [], values };
+        edges.set(key, edge);
+      }
+      edge.corners.push([a, b]);
+    }
+  for (const edge of edges.values())
+    if (edge.values.length < 2 && edge.corners.length === 2) {
+      for (const k of [0, 1])
+        parent[root(edge.corners[1]![k]!)] = root(edge.corners[0]![k]!);
+    }
+  const heights = new Map<number, number>();
+  const assign = (corner: number, n: number): boolean => {
+    const r = root(corner),
+      previous = heights.get(r);
+    if (previous !== undefined && Math.abs(previous - n) > EPS) return false;
+    heights.set(r, n);
+    return true;
+  };
+  for (let c = 0; c < triangles.length; c++) {
+    const values = variants[triangles[c]!]!;
+    if (values.length === 1 && !assign(c, values[0]!)) return null;
+  }
+  for (const edge of edges.values())
+    if (edge.values.length === 1)
+      for (const pair of edge.corners)
+        for (const k of [0, 1])
+          if (!assign(pair[k]!, edge.values[0]![k]!)) return null;
+  if (triangles.some((_, c) => !heights.has(root(c)))) return null;
+  for (const edge of edges.values())
+    if (edge.values.length === 2) {
+      if (edge.corners.length > 2) return null;
+      const used = edge.corners.map((pair) =>
+        edge.values.findIndex((v) =>
+          pair.every((c, k) => Math.abs(heights.get(root(c))! - v[k]!) < EPS),
+        ),
+      );
+      if (used.includes(-1) || used[0] === used[1]) return null;
+      // On the footprint outline the higher edge joins the roof; the ordinary
+      // facade already fills the vertical part down to the building base.
+      if (
+        used.length === 1 &&
+        edge.values[used[0]!]!.some(
+          (n, k) => n < edge.values[1 - used[0]!]![k]! - EPS,
+        )
+      )
+        return null;
+    }
+  const output: RoofPoint[] = [];
+  const mapped = new Map<string, number>();
+  const result = triangles.map((id, c) => {
+    const n = heights.get(root(c))!,
+      key = `${id},${n}`;
+    if (!mapped.has(key)) {
+      mapped.set(key, output.length);
+      output.push({ ...points[id]!, n });
+    }
+    return mapped.get(key)!;
+  });
+  // Count unique surface vertices, including distinct heights at one position.
+  if (mapped.size > 192) return null;
+  return { points: output, triangles: result };
 }

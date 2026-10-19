@@ -76,6 +76,7 @@ export type RoofModel =
       /** Capped roofs reach their top before the wavefront disappears. */
       eaveRun?: number;
       stationary?: readonly boolean[];
+      stepped?: boolean;
     } & Skeleton)
   | {
       /**

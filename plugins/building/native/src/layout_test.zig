@@ -196,7 +196,11 @@ fn checkInvariants(allocator: Allocator, result: *const BuildingLayout, shape_of
             for (corners, 0..) |v, i| {
                 if (v.kind == wall_top) tops += 1 else other = i;
             }
-            if (tops == 2) try edges.add(corners[(other + 1) % 3], corners[(other + 2) % 3]);
+            if (tops == 3) {
+                try edges.add(a, b);
+                try edges.add(b, c);
+                try edges.add(c, a);
+            } else if (tops == 2) try edges.add(corners[(other + 1) % 3], corners[(other + 2) % 3]);
             continue;
         }
         try testing.expect(a.kind == b.kind and b.kind == c.kind);
@@ -231,7 +235,7 @@ fn checkInvariants(allocator: Allocator, result: *const BuildingLayout, shape_of
         const a = ends[0];
         const b = ends[1];
         const on_cut = isClipEdge(.{ .x = a.x, .y = a.y }, .{ .x = b.x, .y = b.y }, result.extent, result.bounds);
-        if (!on_cut or isWall(a)) {
+        if ((!on_cut or isWall(a)) and !(a.x == b.x and a.y == b.y)) {
             std.debug.print("open edge ({d}, {d}, n {d}, kind {d}) → ({d}, {d}, n {d})\n", .{ a.x, a.y, a.n, a.kind, b.x, b.y, b.n });
             return error.TestOpenEdge;
         }
@@ -502,7 +506,7 @@ test "sizes half hips from each L arm's width" {
     try expectCloseTo(south, 160.0 / 3.0, 4);
 }
 
-test "weights saltbox T arms by direction and keeps their height continuous" {
+test "raises saltbox back eaves with equal slopes and closes interior steps" {
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();
     const ring = [_]Point{
@@ -521,11 +525,15 @@ test "weights saltbox T arms by direction and keeps their height continuous" {
             }
             if (v.y == 1320) try expectCloseTo(v.x, 1200, 4);
         }
-        try testing.expectEqual(@as(usize, 2), ends);
+        try testing.expect(ends >= 2);
+        var raised = false;
+        for (tops) |v| if (v.y == (if (direction == 0) @as(f32, 1120) else 1000) and @abs(v.n - 4.0 / 7.0) < 1e-6) {
+            raised = true;
+        };
+        try testing.expect(raised);
         const vertices = try roofOf(arena.allocator(), &.{&ring}, values);
         for (vertices) |v| {
-            const speed: f64 = if (v.gy == 0) 1 else if ((v.gy > 0) == (direction == 0)) 1.4 else 0.6;
-            try expectCloseTo(@sqrt(@as(f64, v.gx) * v.gx + @as(f64, v.gy) * v.gy) * v.run * speed, 1, 6);
+            try expectCloseTo(@sqrt(@as(f64, v.gx) * v.gx + @as(f64, v.gy) * v.gy) * v.run, 1, 6);
         }
     }
 }

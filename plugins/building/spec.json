@@ -64,7 +64,7 @@
       "expressions": "data-driven",
       "featureState": false,
       "transition": false,
-      "doc": "JSON roof graph: vertices [longitude, latitude, relative elevation 0..1], edges [vertex index, vertex index]. Used by complex roofs; empty or invalid graphs draw flat roofs."
+      "doc": "JSON roof graph: vertices [longitude, latitude, relative elevation 0..1], edges [vertex index, vertex index]. Coincident vertices at different heights form vertical steps when their connecting edges identify both sides. Used by complex roofs; empty, ambiguous or invalid graphs draw flat roofs."
     }
   },
   "paint": {

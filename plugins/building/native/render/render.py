@@ -260,6 +260,33 @@ for footprint, feature_id in [("l", 104), ("t", 172), ("u", 189), ("courtyard", 
 for footprint, feature_id in [("l", 104), ("t", 172), ("u", 189)]:
     for shape, offset in [("half-hipped", 2), ("saltbox", 8), ("double_saltbox", 7), ("quadruple_saltbox", 11), ("round", 6), ("round_gabled", 12)]:
         case(f"shapes-{shape}-{footprint}", shapes_style, (*centroid(shape_by_id[feature_id + offset]), 20.0, 30, 55))
+# Shared step-wall fixtures, projected back to geographic coordinates. These
+# synthetic roof-line faces are explicitly tagged, not inferred from Bamberg.
+step_tile = {"z": 16, "x": 34748, "y": 22254}
+def fixture_feature(f, id):
+    tile = f.get("tile", step_tile)
+    scale = 8192 * 2 ** tile["z"]
+    def geographic(p):
+        x, y = p
+        return [(x + tile["x"] * 8192) / scale * 360 - 180,
+                math.degrees(math.atan(math.sinh(math.pi * (1 - 2 * (y + tile["y"] * 8192) / scale))))]
+    rings = [[geographic(p) for p in ring + [ring[0]]] for ring in f["rings"]]
+    return {"type": "Feature", "id": id, "geometry": {"type": "Polygon", "coordinates": rings},
+            "properties": {"height": 12, "roof:height": 6, "roof:shape": f["shape"],
+                           "roof:direction": f.get("direction", -1), "roof_lines": json.loads(f.get("lines", "{}"))}}
+
+salt_steps = load(plugin_dir / "fixtures/layout/saltbox-steps.json")["features"]
+graph_steps = load(plugin_dir / "fixtures/layout/roof-lines-steps.json")["features"]
+for name, fixture in [("saltbox-t", salt_steps[0]), ("saltbox-l", salt_steps[2]), ("roof-lines", graph_steps[0])]:
+    feature = fixture_feature(fixture, 1)
+    layer = json.loads(json.dumps(shapes_layer))
+    layer["paint"]["building-color"] = "#dfccaa"
+    layer["paint"]["building-roof-color"] = "#b35a3c"
+    sources = {"building-shapes": geojson_source({"type": "FeatureCollection", "features": [feature]})}
+    for bearing in [30, 210]:
+        case(f"steps-{name}-{bearing}", style(f"steps-{name}", sources, [layer], default_light),
+             (*centroid(feature), 19.8, bearing, 55))
+
 case("shapes-opacity", style("shapes-opacity", shapes_sources, [with_paint(shapes_layer, building_opacity=0.55)], default_light),
      (*centroid(shape_by_id[12]), 19.2, 20, 50))
 case("shapes-translate", style("shapes-translate", shapes_sources,

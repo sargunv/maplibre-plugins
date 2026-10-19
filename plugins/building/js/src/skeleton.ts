@@ -395,6 +395,7 @@ export function straightSkeleton(
   if (Math.abs(covered - area) > Math.max(area, 1) * 1e-7) return null;
   // A face can continue through an event on its neighbor. Insert the event's
   // vertices on both faces, so the roof triangulation has no T-junctions.
+  // Keep each face's own time: delayed eaves can meet it at a different height.
   const corners = faces.flatMap((face) => face.points);
   // Zero-time hole merges may remove a collinear eave vertex. Keep the roof
   // boundary split there so it still matches the original wall edges.
@@ -418,13 +419,9 @@ export function straightSkeleton(
       for (const p of corners) {
         const u = ((p.x - a.x) * dx + (p.y - a.y) * dy) / (length * length);
         if (u <= CONTACT || u >= 1 - CONTACT) continue;
-        if (
-          Math.abs(cross(a, b, p)) > CONTACT * length ||
-          Math.abs(p.time - (a.time + u * (b.time - a.time))) > CONTACT
-        )
-          continue;
+        if (Math.abs(cross(a, b, p)) > CONTACT * length) continue;
         if (!stops.some((s) => Math.abs(s.u - u) * length <= CONTACT))
-          stops.push({ u, p });
+          stops.push({ u, p: { ...p, time: a.time + u * (b.time - a.time) } });
       }
       stops.sort((a, b) => a.u - b.u);
       boundary.push(...stops.map((s) => s.p));
