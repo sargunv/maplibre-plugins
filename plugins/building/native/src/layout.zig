@@ -30,6 +30,13 @@
 //! group with interpolated gradients. Each wall edge is one planar strip,
 //! split where the roof's break lines cross it.
 //!
+//! Tile copies: every tile draws every footprint it has, buffer copies
+//! included, as core fill-extrusion does. A copy the source did not cut is
+//! the same footprint in every tile up to a translation, so it is built in
+//! a frame anchored on the footprint itself (its floored minimum corner):
+//! every copy computes the same roof, bit for bit for integer coordinates.
+//! A cut copy cannot know its roof, and draws roofless (see addPolygon).
+//!
 //! Memory: the output buffers use the layout's allocator; everything a
 //! feature needs on the way (cleaned rings, triangulations, meshes) lives in
 //! an arena freed when the feature is done. An allocation failure leaves the
@@ -41,6 +48,7 @@ const Allocator = std.mem.Allocator;
 const footprint = @import("footprint.zig");
 const classifyRings = footprint.classifyRings;
 const isClipEdge = footprint.isClipEdge;
+pub const TileBounds = footprint.TileBounds;
 const minimumAreaRectangle = footprint.minimumAreaRectangle;
 const Polygon = footprint.Polygon;
 const roof = @import("roof.zig");
@@ -128,16 +136,24 @@ pub const LayoutValues = struct {
     direction: f64 = -1,
 };
 
-/// A vertex before it is narrowed to float32.
-fn vertex(x: f64, y: f64, run: f64, n: f64, kind: u8, gx: f64, gy: f64) Vertex {
+/// A vertex in the footprint's frame, before it is moved back to tile
+/// units and narrowed to float32.
+const Local = struct { x: f64, y: f64, run: f64, n: f64, kind: u8, gx: f64, gy: f64 };
+
+fn vertex(x: f64, y: f64, run: f64, n: f64, kind: u8, gx: f64, gy: f64) Local {
+    return .{ .x = x, .y = y, .run = run, .n = n, .kind = kind, .gx = gx, .gy = gy };
+}
+
+/// A vertex as uploaded, moved from the footprint's frame at `origin`.
+fn output(v: Local, origin: Point) Vertex {
     return .{
-        .x = @floatCast(x),
-        .y = @floatCast(y),
-        .run = @floatCast(run),
-        .n = @floatCast(n),
-        .kind = @floatFromInt(kind),
-        .gx = @floatCast(gx),
-        .gy = @floatCast(gy),
+        .x = @floatCast(v.x + origin.x),
+        .y = @floatCast(v.y + origin.y),
+        .run = @floatCast(v.run),
+        .n = @floatCast(v.n),
+        .kind = @floatFromInt(v.kind),
+        .gx = @floatCast(v.gx),
+        .gy = @floatCast(v.gy),
     };
 }
 
@@ -159,7 +175,7 @@ const apex_key: Key = .{ .a = std.math.maxInt(u64), .b = std.math.maxInt(u64) };
 /// A group of vertices and triangles emitted together.
 const Mesh = struct {
     allocator: Allocator,
-    vertices: std.ArrayList(Vertex) = .empty,
+    vertices: std.ArrayList(Local) = .empty,
     triangles: std.ArrayList(u32) = .empty,
     keys: std.AutoHashMapUnmanaged(Key, u32) = .empty,
 
@@ -171,13 +187,13 @@ const Mesh = struct {
         return @intCast(self.vertices.items.len);
     }
 
-    fn add(self: *Mesh, v: Vertex) Allocator.Error!u32 {
+    fn add(self: *Mesh, v: Local) Allocator.Error!u32 {
         try self.vertices.append(self.allocator, v);
         return self.size() - 1;
     }
 
     /// Adds a vertex once per key.
-    fn shared(self: *Mesh, key: Key, v: Vertex) Allocator.Error!u32 {
+    fn shared(self: *Mesh, key: Key, v: Local) Allocator.Error!u32 {
         const entry = try self.keys.getOrPut(self.allocator, key);
         if (!entry.found_existing) entry.value_ptr.* = try self.add(v);
         return entry.value_ptr.*;
@@ -213,6 +229,11 @@ const Cut = struct {
 pub const BuildingLayout = struct {
     allocator: Allocator,
     extent: f64,
+    /// The bounds of every feature of the tile, which locate its cut lines.
+    /// Set them before adding features; the default has no cuts.
+    bounds: TileBounds = .no_cuts,
+    /// Where the polygon being built has its frame, in tile units.
+    origin: Point = .{ .x = 0, .y = 0 },
     vertices: std.ArrayList(Vertex) = .empty,
     /// Segment-relative triangle indices.
     indices: std.ArrayList(u16) = .empty,
@@ -254,13 +275,20 @@ pub const BuildingLayout = struct {
         const shape = std.meta.stringToEnum(RoofShape, values.shape) orelse .flat;
         const orientation = std.meta.stringToEnum(RoofOrientation, values.orientation) orelse .along;
         const direction = directionVector(values.direction);
-        for (try classifyRings(scratch, rings, self.extent)) |polygon|
+        for (try classifyRings(scratch, rings, self.extent, self.bounds)) |polygon|
             try self.addPolygon(scratch, polygon, shape, orientation, direction);
         const vertex_count = self.vertexCount() - first_vertex;
         if (vertex_count > 0)
             try self.ranges.append(self.allocator, .{ .feature_index = feature_index, .first_vertex = first_vertex, .vertex_count = vertex_count });
     }
 
+    /// Builds one polygon in its own frame. Every copy is drawn, in every
+    /// tile that has it. An uncut copy gets its whole roof. A cut copy is
+    /// roofless: walls up to the eaves and a lid there, which the real roof
+    /// of an uncut copy in another tile covers wherever both are drawn (it
+    /// is never below the eaves). Flat shapes and courtyards stay flat, as
+    /// their whole footprint is. Walls on cut edges are skipped, as
+    /// maplibre-gl-js's fill-extrusion does.
     fn addPolygon(
         self: *BuildingLayout,
         scratch: Allocator,
@@ -269,42 +297,42 @@ pub const BuildingLayout = struct {
         orientation: RoofOrientation,
         direction: ?Point,
     ) Allocator.Error!void {
-        // A neighboring tile owns a footprint that is only in this tile's
-        // buffer.
-        if (polygon.placement == .outside) return;
-        const model = try self.modelFor(scratch, polygon, shape, orientation, direction);
-        if (model == .radial and !radialFits(polygon.outer, model.radial.center))
-            return self.build(scratch, polygon, .flat);
-        try self.build(scratch, polygon, model);
+        const rings = try scratch.alloc([]const Point, 1 + polygon.holes.items.len);
+        rings[0] = polygon.outer;
+        for (rings[1..], polygon.holes.items) |*ring, hole| ring.* = hole;
+        const walls = try scratch.alloc([]bool, rings.len);
+        for (walls, rings) |*flags, ring| {
+            flags.* = try scratch.alloc(bool, ring.len);
+            for (flags.*, ring, 0..) |*flag, a, i| flag.* = !isClipEdge(a, ring[(i + 1) % ring.len], self.extent, self.bounds);
+        }
+        var min_x = std.math.inf(f64);
+        var min_y = std.math.inf(f64);
+        for (polygon.outer) |p| {
+            min_x = @min(min_x, p.x);
+            min_y = @min(min_y, p.y);
+        }
+        const origin: Point = .{ .x = @floor(min_x), .y = @floor(min_y) };
+        var local: Polygon = .{ .outer = try toLocal(scratch, polygon.outer, origin), .cut = polygon.cut };
+        for (polygon.holes.items) |hole| try local.holes.append(scratch, try toLocal(scratch, hole, origin));
+        self.origin = origin;
+        const model = if (local.cut)
+            try cutModel(scratch, local, shape, orientation, direction)
+        else
+            try modelFor(scratch, local, shape, orientation, direction);
+        if (model == .radial and !radialFits(local.outer, model.radial.center))
+            return self.build(scratch, local, .flat, walls);
+        try self.build(scratch, local, model, walls);
     }
 
-    /// The roof model, or flat for every footprint a shape cannot take.
-    fn modelFor(
-        self: *BuildingLayout,
-        scratch: Allocator,
-        polygon: Polygon,
-        shape: RoofShape,
-        orientation: RoofOrientation,
-        direction: ?Point,
-    ) Allocator.Error!RoofModel {
-        _ = self;
-        if (shape == .flat or shape == .many) return .flat;
-        // Courtyards have no ridge to follow, and a footprint crossing the
-        // tile's edge may be cut differently in the neighboring tile's
-        // buffer.
-        if (polygon.holes.items.len > 0 or polygon.placement != .inside) return .flat;
-        const rect = try minimumAreaRectangle(scratch, polygon.outer) orelse return .flat;
-        if (rect.half_short < min_half_width) return .flat;
-        const frame = frameFor(rect, orientation, direction);
-        return roofModel(scratch, shape, rect, frame, polygon.outer, direction);
-    }
-
-    fn build(self: *BuildingLayout, scratch: Allocator, polygon: Polygon, model: RoofModel) Allocator.Error!void {
+    /// `walls[r][i]`: whether edge i of ring r (outer, then holes) gets a
+    /// wall.
+    fn build(self: *BuildingLayout, scratch: Allocator, polygon: Polygon, model: RoofModel, walls: []const []const bool) Allocator.Error!void {
         const run = model.run();
-        try self.addWalls(scratch, polygon.outer, model, run);
-        for (polygon.holes.items) |hole| try self.addWalls(scratch, hole, model, run);
+        try self.addWalls(scratch, polygon.outer, walls[0], model, run);
+        for (polygon.holes.items, walls[1..]) |hole, flags| try self.addWalls(scratch, hole, flags, model, run);
         switch (model) {
-            .flat => try self.addFlatRoof(scratch, polygon),
+            .flat => try self.addFlatRoof(scratch, polygon, 1, 0),
+            .roofless => try self.addFlatRoof(scratch, polygon, 0, run),
             .planes => |planes| try self.addPlaneRoof(scratch, polygon.outer, planes),
             .radial => |radial| try self.addRadialRoof(scratch, polygon.outer, radial),
         }
@@ -312,10 +340,10 @@ pub const BuildingLayout = struct {
 
     // ---- Walls ---------------------------------------------------------------
 
-    fn addWalls(self: *BuildingLayout, scratch: Allocator, ring: []const Point, model: RoofModel, run: f64) Allocator.Error!void {
-        for (ring, 0..) |a, i| {
+    fn addWalls(self: *BuildingLayout, scratch: Allocator, ring: []const Point, walls: []const bool, model: RoofModel, run: f64) Allocator.Error!void {
+        for (ring, walls, 0..) |a, wall, i| {
+            if (!wall) continue;
             const b = ring[(i + 1) % ring.len];
-            if (isClipEdge(a, b, self.extent)) continue;
             const dx = b.x - a.x;
             const dy = b.y - a.y;
             const length = @sqrt(dx * dx + dy * dy);
@@ -340,7 +368,8 @@ pub const BuildingLayout = struct {
 
     // ---- Roofs ---------------------------------------------------------------
 
-    fn addFlatRoof(self: *BuildingLayout, scratch: Allocator, polygon: Polygon) Allocator.Error!void {
+    /// A triangulation at one n: 1 for flat roofs, 0 for roofless lids.
+    fn addFlatRoof(self: *BuildingLayout, scratch: Allocator, polygon: Polygon, n: f64, run: f64) Allocator.Error!void {
         const holes = try scratch.alloc([]const Point, polygon.holes.items.len);
         for (holes, polygon.holes.items) |*hole, ring| hole.* = ring;
         const result = try triangulate(scratch, polygon.outer, holes);
@@ -350,7 +379,7 @@ pub const BuildingLayout = struct {
             var ids: [3]u32 = undefined;
             for (&ids, result.triangles[t .. t + 3]) |*id, i| {
                 const p = result.points[i];
-                id.* = try mesh.shared(pointKey(p.x, p.y), vertex(p.x, p.y, 0, 1, roof_kind, 0, 0));
+                id.* = try mesh.shared(pointKey(p.x, p.y), vertex(p.x, p.y, run, n, roof_kind, 0, 0));
             }
             try mesh.triangle(ids[0], ids[1], ids[2]);
         }
@@ -404,7 +433,12 @@ pub const BuildingLayout = struct {
                         );
                     }
                     for (1..piece.len - 1) |i| {
-                        // Skip slivers that would vanish or flip in float32.
+                        // Skip slivers that would vanish or flip in float32,
+                        // judged in the footprint's frame so that every copy
+                        // keeps the same triangles. (At its tile position, a
+                        // sliver thinner than float32's rounding there may
+                        // still flip: it is culled, a crack under a
+                        // thousandth of a tile unit.)
                         if (triangleArea2(f32Point(piece[0].point()), f32Point(piece[i].point()), f32Point(piece[i + 1].point())) <= 0)
                             continue;
                         try mesh.triangle(ids[0], ids[i], ids[i + 1]);
@@ -492,7 +526,8 @@ pub const BuildingLayout = struct {
                 if (map[v] < 0) {
                     map[v] = @intCast(s.vertex_length);
                     s.vertex_length += 1;
-                    try self.vertices.append(self.allocator, mesh.vertices.items[v]);
+                    // From the footprint's frame back to tile units.
+                    try self.vertices.append(self.allocator, output(mesh.vertices.items[v], self.origin));
                 }
             }
             // Meshes are built facing out by cross(b - a, c - a) in tile
@@ -640,6 +675,50 @@ fn wallStops(scratch: Allocator, a: Point, b: Point, model: RoofModel) Allocator
     }
     try stops.append(scratch, .{ .x = b.x, .y = b.y, .n = envelope(planes, b.x, b.y) });
     return stops.items;
+}
+
+/// A ring moved into the frame at `origin`.
+fn toLocal(scratch: Allocator, ring: []const Point, origin: Point) Allocator.Error![]Point {
+    const result = try scratch.alloc(Point, ring.len);
+    for (result, ring) |*q, p| q.* = .{ .x = p.x - origin.x, .y = p.y - origin.y };
+    return result;
+}
+
+/// The roof model of an uncut footprint, or flat for one a shape cannot
+/// take.
+fn modelFor(
+    scratch: Allocator,
+    polygon: Polygon,
+    shape: RoofShape,
+    orientation: RoofOrientation,
+    direction: ?Point,
+) Allocator.Error!RoofModel {
+    if (shape == .flat or shape == .many) return .flat;
+    // Courtyards have no ridge to follow.
+    if (polygon.holes.items.len > 0) return .flat;
+    const rect = try minimumAreaRectangle(scratch, polygon.outer) orelse return .flat;
+    if (rect.half_short < min_half_width) return .flat;
+    const frame = frameFor(rect, orientation, direction);
+    return roofModel(scratch, shape, rect, frame, polygon.outer, direction);
+}
+
+/// The model of a cut copy: flat where the whole footprint is flat too (a
+/// flat shape, or courtyards, which the whole footprint has as well), else
+/// roofless, with the run the piece would have if it were whole. Its eaves
+/// sit exactly at the real roof's with building-roof-height; with
+/// building-roof-angle the run is an estimate.
+fn cutModel(
+    scratch: Allocator,
+    polygon: Polygon,
+    shape: RoofShape,
+    orientation: RoofOrientation,
+    direction: ?Point,
+) Allocator.Error!RoofModel {
+    if (shape == .flat or shape == .many or polygon.holes.items.len > 0) return .flat;
+    const rect = try minimumAreaRectangle(scratch, polygon.outer) orelse return .{ .roofless = 0 };
+    const frame = frameFor(rect, orientation, direction);
+    const model = try roofModel(scratch, shape, rect, frame, polygon.outer, direction);
+    return .{ .roofless = if (model == .flat) rect.half_short else model.run() };
 }
 
 /// Whether every edge of a positive-area ring is visible from the center.

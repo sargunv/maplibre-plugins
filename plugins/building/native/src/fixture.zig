@@ -72,10 +72,12 @@ pub fn parse(allocator: Allocator, text: []const u8) !std.json.Parsed(Fixture) {
     return std.json.parseFromSlice(Fixture, allocator, text, .{});
 }
 
-/// Lays out a fixture's features. The caller owns the result.
+/// Lays out a fixture's features, as one tile: the bounds of all of them
+/// locate its cut lines. The caller owns the result.
 pub fn layOut(allocator: Allocator, extent: u32, features: []const FixtureFeature) !BuildingLayout {
     var result: BuildingLayout = .init(allocator, extent);
     errdefer result.deinit();
+    for (features) |feature| for (feature.rings) |ring| for (ring) |p| result.bounds.add(.{ .x = p[0], .y = p[1] });
     var points: std.ArrayList(Point) = .empty;
     defer points.deinit(allocator);
     var rings: std.ArrayList([]const Point) = .empty;

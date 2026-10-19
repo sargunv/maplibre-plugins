@@ -90,21 +90,30 @@ feature clipped to one tile plus its buffer, with a tile-local `feature_index`
 and no feature id, and does not know which neighboring tiles are drawn.
 
 - Hits:
-  - building: a roof frame cannot be computed the same way in every tile a
-    building spans. Footprints crossing a tile edge get flat roofs (32 of the
-    Prague example's 739 non-flat roofs), and footprints only in a buffer are
-    skipped, so they are missing while their owning tile loads
-    ([Tile ownership](../plugins/building/README.md#tile-ownership)).
+  - building: a roof frame needs the whole footprint. Every tile draws its own
+    copy, as core fill-extrusion does, and whole copies compute the same roof,
+    but a copy the source cut at its buffer cannot, and draws roofless (walls to
+    the eaves and a lid). So a building larger than the buffer, cut in every
+    tile, draws roofless everywhere; none of the Prague example's 738 sloped
+    roofs does with its buffer of 256
+    ([Tile copies](../plugins/building/README.md#tile-copies)). The cut lines
+    are inferred from the bounds of the tile's features, as the layout context
+    has no buffer.
   - water: bands reaching across a tile edge would draw twice.
   - animated-icon: icons double while parent and child tiles both draw
     ([limit 10](../plugins/animated-icon/README.md#limits-and-future-improvements)).
   - particles: fallback tiles draw twice and plumes vanish with their tile
     (limit 12).
-- Workaround: building owns each footprint by tile and needs large GeoJSON
-  buffers; water's fragment shader owns each fragment by the shoreline point it
-  was extruded from; animated-icon and particles accept the doubling.
-- Host fix: unclipped feature geometry, or a stable feature id with its full
-  bounds; a cross-tile index like symbols', or the set of tiles being drawn.
+- Workaround: building draws every copy, cut copies roofless, and needs GeoJSON
+  buffers larger than its buildings; water's fragment shader owns each fragment
+  by the shoreline point it was extruded from; animated-icon and particles
+  accept the doubling.
+- Host fix: unclipped feature geometry, or each feature's unclipped bounds in
+  the layout callbacks (building), or a stable feature id to stitch pieces
+  across tiles as Mapbox's fill-extrusion does for its edge features, or a
+  polygon analogue of GeoJSON's `lineMetrics`, which already tells a line's
+  clipped range; a cross-tile index like symbols', or the set of tiles being
+  drawn.
 
 **Source-free layers.** Upstream plugin layers need a style source.
 
@@ -262,22 +271,58 @@ because pixels per meter also depend on latitude.
 
 **`query_feature` returns a boolean.** It cannot report depth.
 
-- Hits: building cannot order 3D hits nearest first natively (the web twin
-  does).
+- Hits: building cannot order 3D hits nearest first natively. Its hits come in
+  the host's order, as core fill-extrusion's do: by source order within a tile,
+  last feature first. The web twin sorts nearest first by gl-js's
+  `getIntersectionDistance`, as gl-js orders fill-extrusion
+  ([Hit testing](../plugins/building/README.md#hit-testing)).
 - Host fix: return an intersection distance, as gl-js's
-  `getIntersectionDistance`.
+  `getIntersectionDistance`, and sort 3D layers' hits by it.
 
-**The broad phase searches around the ground point only.** `get_query_radius`
-gets bucket statistics and camera paint but no zoom, latitude or pitch, so it
-cannot pad by a building's projected height.
+**The broad phase searches around the ground point only.** Native unprojects the
+query to the ground and searches each tile's grid around that point, padded by
+`get_query_radius` pixels × `maxPitchScaleFactor` × tile units per pixel at the
+camera zoom (`tile_pyramid.cpp`, `geometry_tile.cpp`, `feature_index.cpp`), and
+only queries the tiles the padded box reaches. The callback gets bucket
+statistics and camera paint but no zoom, latitude or viewport. A prism `H`
+meters tall covers pixels up to `H × ppm × F` from its footprint, `ppm = 512 ×
+2^zoom / (2π × 6378137 × cos latitude)` and `F = hypot(aspect × t, t × cos
+pitch + sin pitch) / cos pitch` with `t = tan(fov / 2)`, so a radius without the
+zoom is either a miss or a scan of every tile. Core fill-extrusion has the same
+broad phase and returns only its translation; its narrow phase tests the 2D
+footprint, so it misses these buildings too.
 
-- Hits: building. Measured at pitch 60, Native misses 48% of the buildings'
-  pixels in the shapes example (zoom 17.3) and 23% in Prague (zoom 16.5); the
-  web twin misses none
+- Hits: building returns `|building-translate|`, as core does, and tests the
+  projected prism of each candidate. The render test's query grids (every 20th
+  pixel's center at 1200 × 800, `mise run
+  //plugins/building/native:render-test`) miss 51% and 50% of the drawn points
+  in the shapes example at pitch 60 and 55 (zoom 17.3 and 17.6), 13% top down,
+  and 22%, 25% and 4% in Prague (pitch 60 at 16.5, 58 at 17.6, top down). The
+  web twin tests every building and misses none
   ([Plugin API gaps](../plugins/building/README.md#plugin-api-gaps)).
-- Workaround: none; padding by a guess would test every building on every tile.
-- Host fix: pass the zoom and tile latitude to `get_query_radius`, or query 3D
-  layers with a camera query geometry as gl-js does.
+- Measured with a test build that took the zoom from the environment: padding by
+  the formula with the bucket's maximum `building-height` brings every grid to
+  0.3% or less, so the formula is right, but Prague's 99 m spire pads the search
+  past a whole tile at pitch 60, and a query takes about 6 ms instead of 0.02 (a
+  radius that scans every rendered tile: 8 ms, the same misses). The prism's sky
+  above sloped roofs then starts to hit too (95 of the shapes grid's 1545
+  undrawn points against 1).
+- Workaround: none that is both safe and cheap.
+- Host fix: query 3D layers (`is_3d` plugins and core fill-extrusion) along a
+  camera query geometry, as gl-js does: the hull of the query's ground points
+  and the ground point under the camera, matched against the grid's cells
+  (gl-js's `cameraQueryGeometry` with `polygonIntersectsBox` in `grid3D`). A
+  building can only cover the query pixel if its footprint is between the ground
+  point and the camera, so this needs no height, zoom or ABI change and offers
+  far fewer candidates than a radius. Alternatively pass the zoom, the tile's
+  latitude and the viewport to `get_query_radius` (an ABI change), at the cost
+  measured above.
+
+Against gl-js, then, the native building layer lacks a camera query geometry, a
+3D grid and depth-ordered results. All three are host gaps that core Native's
+fill-extrusion shares; the layer's narrow phase already matches gl-js's prism
+test (and moves the prism rather than the query by the translation). On both
+platforms the hit volume is the prism, not the roof's shape.
 
 **Query evaluation zoom and context.** FFI `0028` (#4703) evaluates hit-test
 paint at the camera zoom and `0029` (#4704) query filters at the overscaled
@@ -312,7 +357,8 @@ the filtered attribute list by location and crashes on uniform blocks of 8 KiB
 and more.
 
 - Hits: location-indicator, `particle-features` and building (attribute gaps;
-  building's OpenGL path is compile-checked only), animated-icon (both).
+  building's render test passes on OpenGL ES through ANGLE), animated-icon
+  (both).
 - Carried by the FFI: `0035` (#4708) and `0034` (#4707).
 
 **Backend limits not in the header.** Metal's `setVertexBytes` takes at most 4
@@ -347,9 +393,15 @@ OpenGL ES defaults to `mediump` and `lowp` samplers, with no per-plugin control
 - **Native viewer reload.** Properties removed from the layer JSON are not reset
   on reload; only present keys are set. Setting removed keys to `null` would fix
   it.
-- **Zig on macOS 27.** Zig 0.16's Mach-O unwinder panics on macOS 27 system
-  frames, which crashed Debug viewer builds while the debug allocator recorded
-  stack traces. The viewer now records none.
+- **Zig on macOS 27.** Zig 0.16's Mach-O unwinder does not know the arm64
+  compact-unwind mode `FRAME_PAUTH_LR` that macOS 27's system libraries use
+  ([ziglang/zig#37310](https://codeberg.org/ziglang/zig/issues/37310)), so
+  unwinding off the main thread panics and then hangs on its own lock. That hung
+  Debug viewer builds, whose debug allocator recorded a trace per allocation on
+  the runtime thread; the viewer's allocator now records none, and Debug runs.
+  The fix ([#37318](https://codeberg.org/ziglang/zig/pulls/37318), merged
+  2026-10-18) is milestoned for Zig 0.17.1, with no 0.16 backport; see the patch
+  README for what can still hit it.
 
 ## maplibre-gl-js custom layers
 

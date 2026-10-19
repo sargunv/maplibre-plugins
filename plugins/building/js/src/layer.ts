@@ -367,13 +367,15 @@ export class BuildingLayer implements CustomLayerInterface {
 
   /**
    * Every building under a screen point (logical pixels from the map's top
-   * left), nearest first, one per feature. Like maplibre-gl-js's
-   * fill-extrusion query, a building is hit where the point meets its
-   * projected prism from building-base to building-height (the roof's top),
-   * moved by building-translate as it is drawn. Data-driven heights are
-   * evaluated at the camera's zoom with the feature's state, as both
-   * maplibre-gl-js and MapLibre Native evaluate them for queries. The tiles
-   * and matrices come from the last render.
+   * left), nearest first, one per feature id; a building without an id comes
+   * back once for each tile that draws a copy of it there, as core
+   * queryRenderedFeatures may return a feature once per tile. Like
+   * maplibre-gl-js's fill-extrusion query, a building is hit where the point
+   * meets its projected prism from building-base to building-height (the
+   * roof's top), moved by building-translate as it is drawn. Data-driven
+   * heights are evaluated at the camera's zoom with the feature's state, as
+   * both maplibre-gl-js and MapLibre Native evaluate them for queries. The
+   * tiles and matrices come from the last render.
    */
   queryFeatures(point: { x: number; y: number }): BuildingFeature[] {
     const map = this.map;

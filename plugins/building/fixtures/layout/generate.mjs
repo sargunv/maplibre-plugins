@@ -205,7 +205,7 @@ const fixtures = {
   },
   clipped: {
     description:
-      "Tile-clipped footprints: edges on axis-aligned lines outside [0, extent] get no walls, and footprints crossing the tile's edge get flat roofs. An edge exactly on x = 0 is not a cut.",
+      "Tile-clipped footprints, laid out as one tile whose features reach x = -128, x = extent + 64 and y = extent + 128: the source's cut lines. A ring edge on one of them, outside the tile, is a cut (so is a point repeated there, where the cut collapsed): it gets no wall, and the copy draws roofless (walls to the eaves and a lid at n = 0, with the piece's own run), or flat when its shape is flat or it has a courtyard. Axis-aligned walls elsewhere, an edge on x = 0 and footprints crossing the tile's edge uncut get their whole roofs.",
     features: [
       ...["gabled", "hipped", "dome", "flat"].map((shape, i) => ({
         index: i,
@@ -246,32 +246,140 @@ const fixtures = {
         ],
         shape: "gabled",
       },
+      {
+        index: 6,
+        label: "skillion down 200°, cut at x = -128",
+        rings: [
+          [
+            [-128, 4000],
+            [180, 4000],
+            [180, 4240],
+            [-128, 4240],
+          ],
+        ],
+        shape: "skillion",
+        direction: 200,
+      },
+      {
+        index: 7,
+        label: "gabled with a courtyard, cut at x = -128",
+        rings: [
+          [
+            [-128, 4600],
+            [300, 4600],
+            [300, 4900],
+            [-128, 4900],
+          ],
+          [
+            [50, 4700],
+            [50, 4800],
+            [150, 4800],
+            [150, 4700],
+          ],
+        ],
+        shape: "gabled",
+      },
+      {
+        index: 8,
+        label: "gabled in the west buffer, axis-aligned but not on a cut line",
+        rings: [
+          [
+            [-100, 2400],
+            [-20, 2400],
+            [-20, 2560],
+            [-100, 2560],
+          ],
+        ],
+        shape: "gabled",
+      },
+      {
+        index: 9,
+        label: "hipped crossing the east edge, not cut",
+        rings: [
+          [
+            [8100, 3000],
+            [8240, 3000],
+            [8240, 3160],
+            [8100, 3160],
+          ],
+        ],
+        shape: "hipped",
+      },
+      {
+        index: 10,
+        label: "hipped cut at x = -128 in two collinear pieces",
+        rings: [
+          [
+            [-128, 5200],
+            [160, 5200],
+            [160, 5400],
+            [-128, 5400],
+            [-128, 5300],
+          ],
+        ],
+        shape: "hipped",
+      },
+      {
+        index: 11,
+        label:
+          "gabled whose tip beyond x = -128 was clipped away, both crossings rounded to one repeated point",
+        rings: [
+          [
+            [-128, 5700],
+            [-128, 5700],
+            [-60, 5600],
+            [200, 5600],
+            [200, 5800],
+            [-60, 5800],
+          ],
+        ],
+        shape: "gabled",
+      },
     ],
   },
   tiles: {
     description:
-      "Footprints near the tile's edge. The tile owns [0, extent)²: a footprint only in the buffer is skipped (a neighboring tile draws it), one crossing the edge gets a flat roof whether or not it is cut, and one inside, even touching x = 0, gets its roof.",
+      "Footprints near the tile's edge, none of them cut. Every tile draws every copy it has with its whole roof, buffer copies included, as core fill-extrusion draws its buffer copies. Two turned footprints further out keep the tile's bounds beyond the others' walls, so their axis-aligned walls in the buffer are not taken for cuts.",
     features: [
       ["only in the buffer, east", [8200, 3000, 8300, 3160]],
       ["only in the buffer, north-west", [-120, -100, -20, -10]],
-      ["crossing the east edge, not cut", [8100, 3000, 8300, 3160]],
+      ["crossing the east edge", [8100, 3000, 8300, 3160]],
       ["ending on x = extent", [7900, 4000, 8192, 4160]],
       ["starting on x = 0", [0, 4000, 300, 4160]],
       ["starting on y = 0", [3000, 0, 3300, 160]],
       ["ending on y = extent", [3000, 8032, 3300, 8192]],
-    ].map(([label, [x0, y0, x1, y1]], index) => ({
-      index,
-      label,
-      rings: [
-        [
-          [x0, y0],
-          [x1, y0],
-          [x1, y1],
-          [x0, y1],
+    ]
+      .map(([label, [x0, y0, x1, y1]], index) => ({
+        index,
+        label,
+        rings: [
+          [
+            [x0, y0],
+            [x1, y0],
+            [x1, y1],
+            [x0, y1],
+          ],
         ],
-      ],
-      shape: "gabled",
-    })),
+        shape: "gabled",
+      }))
+      .concat(
+        [
+          ["turned, east of the others", [8400, 5000]],
+          ["turned, north-west of the others", [-200, -200]],
+        ].map(([label, [cx, cy]], i) => ({
+          index: 7 + i,
+          label,
+          rings: [
+            [
+              [cx - 60, cy],
+              [cx, cy - 60],
+              [cx + 60, cy],
+              [cx, cy + 60],
+            ],
+          ],
+          shape: "gabled",
+        })),
+      ),
   },
   touching: {
     description:

@@ -20,6 +20,9 @@
 //   kernel (every edge visible from it).
 // - Flat roofs (flat, many and every fallback) are n = 1: the roof sits at
 //   building-height and roof-height does not matter.
+// - Roofless copies (a footprint the source cut, with a shape that is not
+//   flat) are n = 0: walls up to the eaves and a flat lid there, below the
+//   real roof that a whole copy in another tile draws.
 //
 // The constants follow OSM2World (tordanik/OSM2World, core/.../building/
 // roof/*.java) unless noted.
@@ -60,6 +63,18 @@ export interface StripProfile {
 
 export type RoofModel =
   | { type: "flat" }
+  | {
+      /**
+       * A cut copy of a footprint: walls to the eaves and a lid at n = 0.
+       * The roof's frame needs the whole footprint, which this copy lacks.
+       */
+      type: "roofless";
+      /**
+       * The run the copy would have if it were whole, for
+       * building-roof-angle's eave height: the real run is unknown here.
+       */
+      run: number;
+    }
   | {
       type: "planes";
       /** Planes in tile coordinates; n is their minimum. */

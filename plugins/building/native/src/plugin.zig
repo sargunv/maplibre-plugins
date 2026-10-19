@@ -183,14 +183,29 @@ const attribute_bindings = [_]c.mln_plugin_attribute_binding_v1{
     .{ .struct_size = @sizeOf(c.mln_plugin_attribute_binding_v1), .attribute_id = shaders.roof_attribute, .stream_id = 0, .byte_offset = layout.roof_offset },
 };
 
+/// A feature kept until finish_layout: its rings are
+/// `ring_ends[first_ring .. first_ring + ring_count]` into `points`.
+const PendingFeature = struct {
+    first_ring: usize,
+    ring_count: usize,
+    feature_index: u64,
+    values: layout.LayoutValues,
+};
+
 /// One tile's layout: the geometry builder plus the C views handed back to
 /// the host in finish_layout, which must outlive the callback until destroy.
+/// layout_feature only copies each feature; finish_layout lays them all out,
+/// once the bounds of the whole tile, which locate the source's cut lines,
+/// are known.
 const TileLayout = struct {
     geometry: layout.BuildingLayout,
     /// The layout values of the tile, for features the host sends without
     /// their own (an older host).
     tile_values: layout.LayoutValues,
     points: std.ArrayList(layout.Point) = .empty,
+    ring_ends: std.ArrayList(usize) = .empty,
+    pending: std.ArrayList(PendingFeature) = .empty,
+    laid_out: bool = false,
     rings: std.ArrayList([]const layout.Point) = .empty,
     segments: std.ArrayList(c.mln_plugin_segment_v1) = .empty,
     ranges: std.ArrayList(c.mln_plugin_feature_vertex_range_v1) = .empty,
@@ -201,6 +216,8 @@ const TileLayout = struct {
         const a = self.geometry.allocator;
         self.geometry.deinit();
         self.points.deinit(a);
+        self.ring_ends.deinit(a);
+        self.pending.deinit(a);
         self.rings.deinit(a);
         self.segments.deinit(a);
         self.ranges.deinit(a);
@@ -233,25 +250,46 @@ fn layoutFeature(instance: ?*anyopaque, feature: [*c]const c.mln_plugin_feature_
     if (f.points == null or f.path_offsets == null) return c.MLN_PLUGIN_STATUS_INVALID_ARGUMENT;
     const offsets = f.path_offsets[0 .. f.path_count + 1];
     if (offsets[f.path_count] != f.point_count) return c.MLN_PLUGIN_STATUS_INVALID_ARGUMENT;
-    tile.points.clearRetainingCapacity();
-    tile.rings.clearRetainingCapacity();
-    tile.points.ensureTotalCapacity(allocator, f.point_count) catch return c.MLN_PLUGIN_STATUS_CALLBACK_ERROR;
-    for (f.points[0..f.point_count]) |p| tile.points.appendAssumeCapacity(.{ .x = @floatFromInt(p.x), .y = @floatFromInt(p.y) });
-    for (0..f.path_count) |i| {
-        if (offsets[i] > offsets[i + 1]) return c.MLN_PLUGIN_STATUS_INVALID_ARGUMENT;
-        tile.rings.append(allocator, tile.points.items[offsets[i]..offsets[i + 1]]) catch return c.MLN_PLUGIN_STATUS_CALLBACK_ERROR;
-    }
+    for (0..f.path_count) |i| if (offsets[i] > offsets[i + 1]) return c.MLN_PLUGIN_STATUS_INVALID_ARGUMENT;
+    if (tile.laid_out) return c.MLN_PLUGIN_STATUS_INVALID_ARGUMENT;
     const values = if (hasLayoutProperties(feature))
         layoutValues(if (f.layout_property_count > 0) f.layout_properties[0..f.layout_property_count] else &.{})
     else
         tile.tile_values;
-    tile.geometry.addFeature(tile.rings.items, f.feature_index, values) catch return c.MLN_PLUGIN_STATUS_CALLBACK_ERROR;
+    const base = tile.points.items.len;
+    const first_ring = tile.ring_ends.items.len;
+    tile.points.ensureUnusedCapacity(allocator, f.point_count) catch return c.MLN_PLUGIN_STATUS_CALLBACK_ERROR;
+    tile.ring_ends.ensureUnusedCapacity(allocator, f.path_count) catch return c.MLN_PLUGIN_STATUS_CALLBACK_ERROR;
+    tile.pending.ensureUnusedCapacity(allocator, 1) catch return c.MLN_PLUGIN_STATUS_CALLBACK_ERROR;
+    for (f.points[0..f.point_count]) |p| {
+        const point: layout.Point = .{ .x = @floatFromInt(p.x), .y = @floatFromInt(p.y) };
+        tile.points.appendAssumeCapacity(point);
+        tile.geometry.bounds.add(point);
+    }
+    for (offsets[1..]) |end| tile.ring_ends.appendAssumeCapacity(base + end);
+    tile.pending.appendAssumeCapacity(.{ .first_ring = first_ring, .ring_count = f.path_count, .feature_index = f.feature_index, .values = values });
     return c.MLN_PLUGIN_STATUS_OK;
+}
+
+/// Lays out every feature the tile was given, once.
+fn layOutTile(tile: *TileLayout) std.mem.Allocator.Error!void {
+    if (tile.laid_out) return;
+    tile.laid_out = true;
+    for (tile.pending.items) |feature| {
+        tile.rings.clearRetainingCapacity();
+        var start: usize = if (feature.first_ring == 0) 0 else tile.ring_ends.items[feature.first_ring - 1];
+        for (tile.ring_ends.items[feature.first_ring .. feature.first_ring + feature.ring_count]) |end| {
+            try tile.rings.append(allocator, tile.points.items[start..end]);
+            start = end;
+        }
+        try tile.geometry.addFeature(tile.rings.items, feature.feature_index, feature.values);
+    }
 }
 
 fn finishLayout(instance: ?*anyopaque, bucket: [*c]c.mln_plugin_bucket_v1) callconv(.c) c.mln_plugin_status {
     const tile: *TileLayout = @ptrCast(@alignCast(instance orelse return c.MLN_PLUGIN_STATUS_INVALID_ARGUMENT));
     if (bucket == null or bucket.*.struct_size < @sizeOf(c.mln_plugin_bucket_v1)) return c.MLN_PLUGIN_STATUS_INVALID_ARGUMENT;
+    layOutTile(tile) catch return c.MLN_PLUGIN_STATUS_CALLBACK_ERROR;
     const geometry = &tile.geometry;
     tile.segments.clearRetainingCapacity();
     tile.ranges.clearRetainingCapacity();
@@ -350,9 +388,15 @@ fn evaluateLayer(props: [*c]const c.mln_plugin_property_value_v1, count: usize, 
     return c.MLN_PLUGIN_STATUS_OK;
 }
 
-/// The broad phase needs no padding beyond the translation: the precise test
-/// projects the prism (see ../../README.md, "Plugin API gaps", for the tall
-/// buildings this misses).
+/// |building-translate|, as core fill-extrusion and #4685's plugin return.
+/// The host pads its ground-point grid search by this many pixels times
+/// maxPitchScaleFactor times tile units per pixel at the camera zoom. A
+/// prism H meters tall can cover a pixel up to H · ppm · F pixels from its
+/// footprint, where ppm = 512 · 2^zoom / (2π · R · cos latitude) and
+/// F = hypot(aspect · t, t · cos pitch + sin pitch) / cos pitch with
+/// t = tan(fov / 2); this callback gets neither the zoom nor the latitude,
+/// so it cannot pad by height (../../README.md, "Plugin API gaps", has the
+/// misses this leaves and what padding would cost).
 fn queryRadius(_: [*c]const c.mln_plugin_property_statistics_v1, _: usize, props: [*c]const c.mln_plugin_property_value_v1, count: usize) callconv(.c) f32 {
     if (props == null or count == 0) return 0;
     const translate = float2Value(props[0..count], "building-translate");
@@ -699,6 +743,37 @@ test "layout callbacks build a bucket from each feature's own layout values" {
     try std.testing.expect(roof.count > 0);
     try std.testing.expectEqual(@as(f32, 1), roof.max_n);
     try std.testing.expectApproxEqAbs(@as(f32, 500), roof.max_run, 1e-3);
+}
+
+test "finish_layout finds the tile's cut lines in the bounds of every feature" {
+    const tile_props = propertyArray(3);
+    const context = c.mln_plugin_layout_context_v1{ .struct_size = @sizeOf(c.mln_plugin_layout_context_v1), .zoom = 15, .extent = 8192, .properties = &tile_props, .property_count = tile_props.len };
+    var instance: ?*anyopaque = null;
+    try std.testing.expectEqual(@as(c.mln_plugin_status, c.MLN_PLUGIN_STATUS_OK), createLayout(&context, &instance));
+    defer destroyLayout(instance);
+    var gabled = propertyArray(3);
+    gabled[propertyIndex("building-roof-shape")].value.data.string_value = str("gabled");
+    // Whole, across the tile's west edge: its west wall at x = -100 is not
+    // the tile's outermost point once the next feature arrives.
+    const across = [_]c.mln_plugin_tile_point_v1{ .{ .x = -100, .y = 1000 }, .{ .x = 300, .y = 1000 }, .{ .x = 300, .y = 1200 }, .{ .x = -100, .y = 1200 }, .{ .x = -100, .y = 1000 } };
+    // Cut at x = -200, the source's clip line.
+    const cut = [_]c.mln_plugin_tile_point_v1{ .{ .x = -200, .y = 3000 }, .{ .x = 300, .y = 3000 }, .{ .x = 300, .y = 3200 }, .{ .x = -200, .y = 3200 }, .{ .x = -200, .y = 3000 } };
+    const offsets = [_]u32{ 0, across.len };
+    try std.testing.expectEqual(@as(c.mln_plugin_status, c.MLN_PLUGIN_STATUS_OK), layoutFeature(instance, &testFeature(&across, &offsets, 1, &gabled)));
+    try std.testing.expectEqual(@as(c.mln_plugin_status, c.MLN_PLUGIN_STATUS_OK), layoutFeature(instance, &testFeature(&cut, &offsets, 2, &gabled)));
+    const bucket = try layoutBucket(instance);
+    try std.testing.expectEqual(@as(usize, 2), bucket.feature_vertex_range_count);
+    const vertices: []const Vertex = @as([*]const Vertex, @ptrCast(@alignCast(bucket.vertex_streams[0].data)))[0..bucket.vertex_streams[0].vertex_count];
+    for (bucket.feature_vertex_ranges[0..2], [_]f32{ 1, 0 }) |range, top| {
+        var max_n: f32 = 0;
+        for (vertices[range.first_vertex..][0..range.vertex_count]) |v| max_n = @max(max_n, v.n);
+        // The whole copy has its ridge; the cut one is roofless.
+        try std.testing.expectEqual(top, max_n);
+    }
+    // Finishing again returns the same bucket; features after it are refused.
+    const again = try layoutBucket(instance);
+    try std.testing.expectEqual(bucket.vertex_streams[0].vertex_count, again.vertex_streams[0].vertex_count);
+    try std.testing.expectEqual(@as(c.mln_plugin_status, c.MLN_PLUGIN_STATUS_INVALID_ARGUMENT), layoutFeature(instance, &testFeature(&cut, &offsets, 3, &gabled)));
 }
 
 test "features without their own layout values take the tile's" {

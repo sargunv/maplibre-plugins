@@ -20,6 +20,9 @@
 //!   kernel (every edge visible from it).
 //! - Flat roofs (flat, many and every fallback) are n = 1: the roof sits at
 //!   building-height and roof-height does not matter.
+//! - Roofless copies (a footprint the source cut, with a shape that is not
+//!   flat) are n = 0: walls up to the eaves and a flat lid there, below the
+//!   real roof that a whole copy in another tile draws.
 //!
 //! The constants follow OSM2World (tordanik/OSM2World, core/.../building/
 //! roof/*.java) unless noted. Every constant is computed in f64 one operation
@@ -66,6 +69,11 @@ pub const Step = [2]f64;
 
 pub const RoofModel = union(enum) {
     flat,
+    /// A cut copy of a footprint: walls to the eaves and a lid at n = 0.
+    /// The roof's frame needs the whole footprint, which this copy lacks.
+    /// The payload is the run the copy would have if it were whole, for
+    /// building-roof-angle's eave height: the real run is unknown here.
+    roofless: f64,
     planes: PlaneRoof,
     radial: RadialRoof,
 
@@ -73,6 +81,7 @@ pub const RoofModel = union(enum) {
     pub fn run(self: RoofModel) f64 {
         return switch (self) {
             .flat => 0,
+            .roofless => |r| r,
             .planes => |p| p.run,
             .radial => |r| r.run,
         };

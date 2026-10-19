@@ -35,7 +35,7 @@
       "expressions": "data-driven",
       "featureState": false,
       "transition": false,
-      "doc": "The roof:shape of the building, from StreetComplete's roof shape quest. many draws a flat roof. Alias other OSM values with a match expression. Footprints a shape cannot be built on (holes, footprints crossing a tile edge, radial shapes whose center is outside the footprint's kernel, slivers) get a flat roof."
+      "doc": "The roof:shape of the building, from StreetComplete's roof shape quest. many draws a flat roof. Alias other OSM values with a match expression. Footprints a shape cannot be built on (holes, radial shapes whose center is outside the footprint's kernel, slivers) get a flat roof. A copy of a footprint that the source cut at a tile's buffer draws roofless: walls to the eaves and a flat lid there."
     },
     "building-roof-orientation": {
       "type": "enum",

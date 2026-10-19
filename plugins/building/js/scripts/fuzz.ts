@@ -1,11 +1,14 @@
 // Lays out random footprints with every roof shape, orientation and a
 // random direction, and checks the invariants the shaders rely on: n in
 // [0, 1], finite values, unit wall normals, outward walls, roofs facing up,
-// planar triangles for piecewise-linear shapes and a closed surface. It
-// also triangulates random courtyards that touch each other and the
-// exterior at points, and checks that the triangles cover exactly the
-// footprint. A tool for hunting robustness bugs; the fixtures and unit tests
-// are the regression suite.
+// planar triangles for piecewise-linear shapes and a closed surface. Each
+// footprint is also laid out as a copy moved by ±extent, which must build
+// the same geometry, and cut along an axis-aligned line as a source clips
+// it, which must draw roofless and keep the invariants. It also
+// triangulates random courtyards that touch each other and the exterior at
+// points, and checks that the triangles cover exactly the footprint. A
+// tool for hunting robustness bugs; the fixtures and unit tests are the
+// regression suite.
 //
 //   node plugins/building/js/scripts/fuzz.ts [seed] [iterations]
 //
@@ -14,7 +17,13 @@
 // 0.05 tile units and float32 rounding of n are tolerated.
 
 import { triangles } from "../src/fixture.ts";
-import { classifyRings, type Point, signedArea2 } from "../src/footprint.ts";
+import {
+  classifyRings,
+  isClipEdge,
+  type Point,
+  signedArea2,
+  tileBounds,
+} from "../src/footprint.ts";
 import {
   BuildingLayout,
   type LayoutValues,
@@ -93,7 +102,17 @@ function problems(layout: BuildingLayout, shape: string): string[] {
       continue;
     }
     const area2 = (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
-    if (a.kind === ROOF && !(area2 < 0)) out.add("roof triangle faces down");
+    // The layout skips slivers that flip in float32 in the footprint's own
+    // frame, so every copy keeps the same triangles; at the tile position
+    // one thinner than float32's rounding may still flip.
+    const longest = Math.max(
+      Math.hypot(b.x - a.x, b.y - a.y),
+      Math.hypot(c.x - b.x, c.y - b.y),
+      Math.hypot(a.x - c.x, a.y - c.y),
+    );
+    const sliver = Math.abs(area2) <= 2 ** -9 * longest;
+    if (a.kind === ROOF && !(area2 < 0) && !sliver)
+      out.add("roof triangle faces down");
     if (!SMOOTH.has(shape)) {
       for (const v of [b, c]) {
         const predicted = a.n + a.gx * (v.x - a.x) + a.gy * (v.y - a.y);
@@ -109,9 +128,7 @@ function problems(layout: BuildingLayout, shape: string): string[] {
   for (const [edge, count] of edges) {
     if (count === 0) continue;
     const [a, b] = ends.get(edge)!;
-    const onCut =
-      (a.x === b.x && (a.x < 0 || a.x > EXTENT)) ||
-      (a.y === b.y && (a.y < 0 || a.y > EXTENT));
+    const onCut = isClipEdge(a, b, layout.extent, layout.bounds);
     if ((!onCut || isWall(a)) && Math.hypot(a.x - b.x, a.y - b.y) > CRACK)
       out.add(`open edge (${a.x}, ${a.y}) → (${b.x}, ${b.y})`);
   }
@@ -257,7 +274,64 @@ function simple(ring: P[]): boolean {
 
 const toPoints = (ring: P[]): Point[] => ring.map(([x, y]) => ({ x, y }));
 
-function fuzzLayouts(r: () => number, iterations: number): string[] {
+/** Differences between a layout and a copy laid out `d` tile units away. */
+function copyProblems(
+  base: BuildingLayout,
+  copy: BuildingLayout,
+  [dx, dy]: P,
+): string[] {
+  if (
+    copy.vertexCount !== base.vertexCount ||
+    copy.indexCount !== base.indexCount
+  )
+    return ["copy has other vertices"];
+  const a = base.indices();
+  const b = copy.indices();
+  for (let i = 0; i < a.length; i++)
+    if (a[i] !== b[i]) return ["copy has other triangles"];
+  for (let i = 0; i < base.vertexCount; i++) {
+    const p = base.exactVertex(i);
+    const q = copy.exactVertex(i);
+    if (Math.abs(q.x - dx - p.x) > 1e-9 || Math.abs(q.y - dy - p.y) > 1e-9)
+      return ["copy moved differently"];
+    if (
+      q.run !== p.run ||
+      q.n !== p.n ||
+      q.kind !== p.kind ||
+      q.gx !== p.gx ||
+      q.gy !== p.gy
+    )
+      return ["copy has another roof"];
+  }
+  return [];
+}
+
+/**
+ * The ring cut to x >= c, as a source clips it (crossings rounded to the
+ * tile's integer grid, the ring closed), then moved so the cut lies at
+ * x = -256: a buffer edge.
+ */
+function cutRing(ring: P[], c: number): P[] {
+  const out: P[] = [];
+  for (let i = 0; i < ring.length; i++) {
+    const p = ring[i]!;
+    const q = ring[(i + 1) % ring.length]!;
+    if (p[0] >= c) out.push(p);
+    if (p[0] >= c !== q[0] >= c) {
+      const t = (c - p[0]) / (q[0] - p[0]);
+      out.push([c, Math.round(p[1] + t * (q[1] - p[1]))]);
+    }
+  }
+  if (out.length > 0) out.push(out[0]!);
+  return out.map(([x, y]) => [x - c - 256, y]);
+}
+
+/** `rc` places copies and cuts, so a seed's footprints do not depend on them. */
+function fuzzLayouts(
+  r: () => number,
+  rc: () => number,
+  iterations: number,
+): string[] {
   const failures: string[] = [];
   for (let iteration = 0; iteration < iterations; iteration++) {
     let ring = r() < 0.5 ? star(r) : orthogonal(r);
@@ -291,6 +365,38 @@ function fuzzLayouts(r: () => number, iterations: number): string[] {
           try {
             layout.addFeature([toPoints(ring)], 0, values);
             found = problems(layout, shape);
+            // A whole copy in a neighboring tile's buffer.
+            const d: P = [
+              EXTENT * (Math.floor(rc() * 3) - 1),
+              EXTENT * (Math.floor(rc() * 3) - 1),
+            ];
+            const copy = new BuildingLayout(EXTENT);
+            copy.addFeature(
+              [toPoints(ring.map(([x, y]) => [x + d[0], y + d[1]]))],
+              0,
+              values,
+            );
+            found.push(...copyProblems(layout, copy, d));
+            // A copy the source cut, alone in its tile.
+            const xs = ring.map((p) => p[0]);
+            const lo = Math.min(...xs);
+            const hi = Math.max(...xs);
+            const c = Math.round(lo + (0.2 + 0.6 * rc()) * (hi - lo));
+            // A line through the westmost point only touches the footprint:
+            // the source keeps it whole.
+            if (c > lo) {
+              const cut = cutRing(ring, c);
+              const rings = [toPoints(cut)];
+              const piece = new BuildingLayout(EXTENT, tileBounds([rings]));
+              piece.addFeature(rings, 0, values);
+              found.push(...problems(piece, shape).map((m) => `cut: ${m}`));
+              if (shape !== "flat" && shape !== "many")
+                for (let i = 0; i < piece.vertexCount; i++)
+                  if (piece.vertex(i).n !== 0) {
+                    found.push(`cut: not roofless ${JSON.stringify([cut])}`);
+                    break;
+                  }
+            }
           } catch (error) {
             found = [`threw ${String(error)}`];
           }
@@ -392,7 +498,7 @@ function fuzzTouchingCourtyards(r: () => number, iterations: number): string[] {
 const seed = Number(process.argv[2] ?? 1);
 const iterations = Number(process.argv[3] ?? 300);
 const r = random(seed);
-const layouts = fuzzLayouts(r, iterations);
+const layouts = fuzzLayouts(r, random(seed ^ 0x9e3779b9), iterations);
 const courtyards = fuzzTouchingCourtyards(r, 10 * iterations);
 for (const failure of [...layouts, ...courtyards].slice(0, 20))
   console.log(failure);

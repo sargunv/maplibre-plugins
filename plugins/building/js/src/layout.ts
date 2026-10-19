@@ -29,13 +29,22 @@
 // facet (crisp ridges and hips); curved roofs share them within a smooth
 // group with interpolated gradients. Each wall edge is one planar strip,
 // split where the roof's break lines cross it.
+//
+// Tile copies: every tile draws every footprint it has, buffer copies
+// included, as core fill-extrusion does. A copy the source did not cut is
+// the same footprint in every tile up to a translation, so it is built in
+// a frame anchored on the footprint itself (its floored minimum corner):
+// every copy computes the same roof, bit for bit for integer coordinates.
+// A cut copy cannot know its roof, and draws roofless (see addPolygon).
 
 import {
   classifyRings,
   isClipEdge,
   minimumAreaRectangle,
+  NO_CUTS,
   type Point,
   type Polygon,
+  type TileBounds,
 } from "./footprint.ts";
 import {
   directionVector,
@@ -55,7 +64,8 @@ import {
 } from "./spec.ts";
 import { triangulate } from "./triangulate.ts";
 
-export type { Point } from "./footprint.ts";
+export type { Point, TileBounds } from "./footprint.ts";
+export { tileBounds } from "./footprint.ts";
 
 /** Floats per vertex: a_pos (x, y, run), a_roof (n, kind, gx, gy). */
 export const FLOATS_PER_VERTEX = 7;
@@ -168,9 +178,18 @@ export class BuildingLayout {
   readonly segments: Segment[] = [];
   readonly ranges: Range[] = [];
   readonly extent: number;
+  /** The bounds of every feature of the tile, which locate its cut lines. */
+  readonly bounds: TileBounds;
+  /** Where the polygon being built has its frame, in tile units. */
+  private origin: Point = { x: 0, y: 0 };
 
-  constructor(extent: number) {
+  /**
+   * `bounds` covers every point of every feature the tile lays out
+   * (`tileBounds`); without it nothing counts as cut.
+   */
+  constructor(extent: number, bounds: TileBounds = NO_CUTS) {
     this.extent = extent;
+    this.bounds = bounds;
   }
 
   get vertexCount(): number {
@@ -192,8 +211,12 @@ export class BuildingLayout {
   }
 
   vertex(i: number): Vertex {
+    return this.exactVertex(i, Math.fround);
+  }
+
+  /** A vertex before it is narrowed to float32, for tests. */
+  exactVertex(i: number, f: (x: number) => number = (x) => x): Vertex {
     const o = i * FLOATS_PER_VERTEX;
-    const f = Math.fround;
     const d = this.vertexData;
     return {
       x: f(d[o]!),
@@ -228,52 +251,78 @@ export class BuildingLayout {
       ? (values.orientation as RoofOrientation)
       : "along";
     const direction = directionVector(values.direction ?? -1);
-    for (const polygon of classifyRings(rings, this.extent))
+    for (const polygon of classifyRings(rings, this.extent, this.bounds))
       this.addPolygon(polygon, shape, orientation, direction);
     const vertexCount = this.vertexCount - firstVertex;
     if (vertexCount > 0)
       this.ranges.push({ featureIndex, firstVertex, vertexCount });
   }
 
+  /**
+   * Builds one polygon in its own frame. Every copy is drawn, in every tile
+   * that has it. An uncut copy gets its whole roof. A cut copy is roofless:
+   * walls up to the eaves and a lid there, which the real roof of an uncut
+   * copy in another tile covers wherever both are drawn (it is never below
+   * the eaves). Flat shapes and courtyards stay flat, as their whole
+   * footprint is. Walls on cut edges are skipped, as maplibre-gl-js's
+   * fill-extrusion does.
+   */
   private addPolygon(
     polygon: Polygon,
     shape: RoofShape,
     orientation: RoofOrientation,
     direction: Point | null,
   ): void {
-    // A neighboring tile owns a footprint that is only in this tile's buffer.
-    if (polygon.placement === "outside") return;
-    const model = this.modelFor(polygon, shape, orientation, direction);
-    if (model.type === "radial" && !radialFits(polygon.outer, model.center))
-      return this.build(polygon, { type: "flat" });
-    this.build(polygon, model);
+    const rings = [polygon.outer, ...polygon.holes];
+    const walls = rings.map((ring) =>
+      ring.map(
+        (a, i) =>
+          !isClipEdge(
+            a,
+            ring[(i + 1) % ring.length]!,
+            this.extent,
+            this.bounds,
+          ),
+      ),
+    );
+    let minX = Infinity;
+    let minY = Infinity;
+    for (const p of polygon.outer) {
+      minX = Math.min(minX, p.x);
+      minY = Math.min(minY, p.y);
+    }
+    const origin = { x: Math.floor(minX), y: Math.floor(minY) };
+    const local = (ring: Point[]): Point[] =>
+      ring.map((p) => ({ x: p.x - origin.x, y: p.y - origin.y }));
+    const footprint: Polygon = {
+      outer: local(polygon.outer),
+      holes: polygon.holes.map(local),
+      cut: polygon.cut,
+    };
+    this.origin = origin;
+    const model = footprint.cut
+      ? cutModel(footprint, shape, orientation, direction)
+      : modelFor(footprint, shape, orientation, direction);
+    if (model.type === "radial" && !radialFits(footprint.outer, model.center))
+      return this.build(footprint, { type: "flat" }, walls);
+    this.build(footprint, model, walls);
   }
 
-  /** The roof model, or flat for every footprint a shape cannot take. */
-  private modelFor(
+  /** `walls[r][i]`: whether edge i of ring r (outer, then holes) gets a wall. */
+  private build(
     polygon: Polygon,
-    shape: RoofShape,
-    orientation: RoofOrientation,
-    direction: Point | null,
-  ): RoofModel {
-    if (shape === "flat" || shape === "many") return { type: "flat" };
-    // Courtyards have no ridge to follow, and a footprint crossing the
-    // tile's edge may be cut differently in the neighboring tile's buffer.
-    if (polygon.holes.length > 0 || polygon.placement !== "inside")
-      return { type: "flat" };
-    const rect = minimumAreaRectangle(polygon.outer);
-    if (!rect || rect.halfShort < MIN_HALF_WIDTH) return { type: "flat" };
-    const frame = frameFor(rect, orientation, direction);
-    return roofModel(shape, rect, frame, polygon.outer, direction);
-  }
-
-  private build(polygon: Polygon, model: RoofModel): void {
+    model: RoofModel,
+    walls: readonly (readonly boolean[])[],
+  ): void {
     const run = model.type === "flat" ? 0 : model.run;
-    for (const ring of [polygon.outer, ...polygon.holes])
-      this.addWalls(ring, model, run);
+    [polygon.outer, ...polygon.holes].forEach((ring, r) =>
+      this.addWalls(ring, walls[r]!, model, run),
+    );
     switch (model.type) {
       case "flat":
-        return this.addFlatRoof(polygon);
+        return this.addFlatRoof(polygon, 1, 0);
+      case "roofless":
+        return this.addFlatRoof(polygon, 0, run);
       case "planes":
         return this.addPlaneRoof(polygon.outer, model);
       case "radial":
@@ -285,13 +334,14 @@ export class BuildingLayout {
 
   private addWalls(
     ring: readonly Point[],
+    walls: readonly boolean[],
     model: RoofModel,
     run: number,
   ): void {
     for (let i = 0; i < ring.length; i++) {
+      if (!walls[i]) continue;
       const a = ring[i]!;
       const b = ring[(i + 1) % ring.length]!;
-      if (isClipEdge(a, b, this.extent)) continue;
       const dx = b.x - a.x;
       const dy = b.y - a.y;
       const length = Math.sqrt(dx * dx + dy * dy);
@@ -364,7 +414,8 @@ export class BuildingLayout {
 
   // ---- Roofs ---------------------------------------------------------------
 
-  private addFlatRoof(polygon: Polygon): void {
+  /** A triangulation at one n: 1 for flat roofs, 0 for roofless lids. */
+  private addFlatRoof(polygon: Polygon, n: number, run: number): void {
     const { points, triangles } = triangulate(polygon.outer, polygon.holes);
     const mesh = new Mesh();
     for (let t = 0; t < triangles.length; t += 3) {
@@ -374,8 +425,8 @@ export class BuildingLayout {
           return mesh.shared(`${p.x},${p.y}`, () => ({
             x: p.x,
             y: p.y,
-            run: 0,
-            n: 1,
+            run,
+            n,
             kind: ROOF,
             gx: 0,
             gy: 0,
@@ -446,7 +497,11 @@ export class BuildingLayout {
             }),
           );
           for (let i = 1; i + 1 < piece.length; i++) {
-            // Skip slivers that would vanish or flip in float32.
+            // Skip slivers that would vanish or flip in float32, judged in
+            // the footprint's frame so that every copy keeps the same
+            // triangles. (At its tile position, a sliver thinner than
+            // float32's rounding there may still flip: it is culled, a
+            // crack under a thousandth of a tile unit.)
             if (
               triangleArea2(
                 f32(piece[0]!),
@@ -655,7 +710,12 @@ export class BuildingLayout {
         if (map[v]! < 0) {
           map[v] = segment.vertexLength++;
           const o = v * FLOATS_PER_VERTEX;
-          for (let f = 0; f < FLOATS_PER_VERTEX; f++)
+          // From the footprint's frame back to tile units.
+          this.vertexData.push(
+            mesh.data[o]! + this.origin.x,
+            mesh.data[o + 1]! + this.origin.y,
+          );
+          for (let f = 2; f < FLOATS_PER_VERTEX; f++)
             this.vertexData.push(mesh.data[o + f]!);
         }
       }
@@ -665,6 +725,47 @@ export class BuildingLayout {
       segment.indexLength += 3;
     }
   }
+}
+
+/** The roof model of an uncut footprint, or flat for one a shape cannot take. */
+function modelFor(
+  polygon: Polygon,
+  shape: RoofShape,
+  orientation: RoofOrientation,
+  direction: Point | null,
+): RoofModel {
+  if (shape === "flat" || shape === "many") return { type: "flat" };
+  // Courtyards have no ridge to follow.
+  if (polygon.holes.length > 0) return { type: "flat" };
+  const rect = minimumAreaRectangle(polygon.outer);
+  if (!rect || rect.halfShort < MIN_HALF_WIDTH) return { type: "flat" };
+  const frame = frameFor(rect, orientation, direction);
+  return roofModel(shape, rect, frame, polygon.outer, direction);
+}
+
+/**
+ * The model of a cut copy: flat where the whole footprint is flat too (a
+ * flat shape, or courtyards, which the whole footprint has as well), else
+ * roofless, with the run the piece would have if it were whole. Its eaves
+ * sit exactly at the real roof's with building-roof-height; with
+ * building-roof-angle the run is an estimate.
+ */
+function cutModel(
+  polygon: Polygon,
+  shape: RoofShape,
+  orientation: RoofOrientation,
+  direction: Point | null,
+): RoofModel {
+  if (shape === "flat" || shape === "many" || polygon.holes.length > 0)
+    return { type: "flat" };
+  const rect = minimumAreaRectangle(polygon.outer);
+  if (!rect) return { type: "roofless", run: 0 };
+  const frame = frameFor(rect, orientation, direction);
+  const model = roofModel(shape, rect, frame, polygon.outer, direction);
+  return {
+    type: "roofless",
+    run: model.type === "flat" ? rect.halfShort : model.run,
+  };
 }
 
 /** Whether every edge of a positive-area ring is visible from the center. */

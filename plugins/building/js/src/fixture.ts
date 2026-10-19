@@ -1,10 +1,11 @@
 // The layout fixture format (../../fixtures/layout/*.json), shared by the
 // fixture generator, layout.test.ts and the Zig twin's tests.
 //
-// Each fixture lays out its features in order into one BuildingLayout and
-// records the output. Every feature always gets a summary; small fixtures
-// also record every vertex and index. A summary is computed from the
-// float32 vertices and the segment-relative indices alone:
+// Each fixture lays out its features in order into one BuildingLayout, as
+// one tile whose bounds cover every feature, and records the output. Every
+// feature always gets a summary; small fixtures also record every vertex
+// and index. A summary is computed from the float32 vertices and the
+// segment-relative indices alone:
 //
 //   vertices   the feature's vertex count (its range)
 //   triangles  triangles whose first vertex is in the range
@@ -20,7 +21,7 @@
 // last-bit differences between the twins' math and tight enough to catch
 // any change of logic.
 
-import { BuildingLayout, FLOATS_PER_VERTEX } from "./layout.ts";
+import { BuildingLayout, FLOATS_PER_VERTEX, tileBounds } from "./layout.ts";
 
 export interface FixtureFeature {
   index: number;
@@ -65,13 +66,17 @@ export interface Fixture {
   expected: Expected;
 }
 
+/** Lays out a fixture's features as one tile, whose bounds cover them all. */
 export function layOut(
   extent: number,
   features: readonly FixtureFeature[],
 ): BuildingLayout {
-  const layout = new BuildingLayout(extent);
-  for (const feature of features) {
-    const rings = feature.rings.map((ring) => ring.map(([x, y]) => ({ x, y })));
+  const all = features.map((feature) =>
+    feature.rings.map((ring) => ring.map(([x, y]) => ({ x, y }))),
+  );
+  const layout = new BuildingLayout(extent, tileBounds(all));
+  features.forEach((feature, f) => {
+    const rings = all[f]!;
     for (let k = 0; k < (feature.repeat ?? 1); k++) {
       layout.addFeature(rings, feature.index + k, {
         shape: feature.shape,
@@ -79,7 +84,7 @@ export function layOut(
         direction: feature.direction ?? -1,
       });
     }
-  }
+  });
   return layout;
 }
 

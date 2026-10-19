@@ -9,10 +9,11 @@ by its own tags, and is drawn like core fill-extrusion: lit by the style's light
 other 3D layers, and 3D hit tests on the projected building.
 
 The layer is tile-driven: point it at a polygon layer of a vector or GeoJSON
-source. The native plugin renders on Metal, checked pixel by pixel against core
-fill-extrusion; its OpenGL and Vulkan shaders are compile-checked only. The JS
-layer renders on WebGL 2 under the mercator projection, and on the globe without
-terrain. Insert it below the style's labels.
+source. The native plugin renders on Metal, Vulkan and OpenGL ES, checked pixel
+by pixel against core fill-extrusion on each (on macOS: Vulkan through MoltenVK,
+OpenGL ES through ANGLE). The JS layer renders on WebGL 2 under the mercator
+projection, and on the globe without terrain. Insert it below the style's
+labels.
 
 ```json
 {
@@ -76,15 +77,17 @@ draw passes give opaque or translucent buildings (see [Rendering](#rendering)).
 ### Geometry
 
 1. Rings are classified as core's `classifyRings` does: the first ring's winding
-   marks exteriors. Each exterior with its holes is one building. Footprints
-   only in the tile's buffer are skipped (see
-   [Tile ownership](#tile-ownership)).
+   marks exteriors. Each exterior with its holes is one building. Every tile
+   draws every footprint it has, buffer copies included, and a copy the source
+   cut draws roofless (see [Tile copies](#tile-copies)).
 2. Each ring is cleaned up. Repeated, closing and collinear points are dropped,
    and so are spikes and jitter within 0.5 tile units. Rings with fewer than 3
    points or an area under 1 unit² are dropped.
-3. The roof frame comes from the exterior's minimum-area bounding rectangle,
-   found with rotating calipers. `u` runs along the ridge, `v` across it with
-   half-width `b`, and `a` is the half-length.
+3. The footprint is moved into a frame anchored on its own floored minimum
+   corner, so every tile's copy computes the same roof. The roof frame comes
+   from the exterior's minimum-area bounding rectangle, found with rotating
+   calipers. `u` runs along the ridge, `v` across it with half-width `b`, and
+   `a` is the half-length.
    - `along` puts `u` on the long side and `across` on the short side.
    - A set direction instead turns `+v`, the front, toward the rectangle axis
      closest to the direction. On a tie, it uses the short side's axis.
@@ -99,7 +102,8 @@ draw passes give opaque or translucent buildings (see [Rendering](#rendering)).
      corner.
    - **Radial shapes** are copies of the footprint shrunk toward the frame
      center, following a profile of (height, scale) steps.
-   - **Flat roofs** are a triangulation at `n = 1`.
+   - **Flat roofs** are a triangulation at `n = 1`, and **roofless** cut copies
+     one at `n = 0`.
 
 ### Roof shapes
 
@@ -134,37 +138,62 @@ Streets GL and the wiki's `Tag:roof:shape=round_gabled` page.
 (`0.3b`), `1.4b` for saltbox, the slope extent for skillion, and half the
 bounding rectangle's short side for radial shapes.
 
-### Tile ownership
+### Tile copies
 
-The host hands a plugin each feature clipped to one tile plus its buffer, so a
-building that crosses a tile edge arrives as different pieces in different
-tiles, and roof frames computed from those pieces would not agree. Each tile
-therefore owns the half-open square `[0, extent)²`:
+The host hands a plugin each feature clipped to one tile plus its buffer, and
+every tile that has a footprint draws it, buffer copies included, as core
+fill-extrusion does. Where copies overlap, they are the same building: depth
+(`LEQUAL`) keeps one, and the translucent passes' stencil blends each pixel once
+across the layer's tiles. So a building appears as soon as any tile that has it
+is drawn, also while its neighbors load.
 
-- A footprint inside it is drawn with its roof.
-- A footprint partly in it gets a flat roof in every tile that has it, so the
-  copies drawn in neighboring tiles' buffers agree: one copy may be cut at the
-  buffer's edge while the other is whole, and their roof frames would differ.
-- A footprint only in the buffer is skipped, because the tile that owns it draws
-  it.
-- A ring edge on an axis-aligned line strictly outside `[0, extent]` is a tile
-  cut, as in core fill-extrusion, and gets no wall. An edge exactly on the tile
-  border is not a cut.
+- A copy the source did not cut is the whole footprint, the same in every tile
+  up to a translation. It gets its full roof, whether it lies inside the tile,
+  across its edge or only in its buffer. The layout builds it in a frame
+  anchored on the footprint's own floored minimum corner, so every copy computes
+  the same roof: bit for bit for integer tile coordinates (both twins' tests
+  move footprints by ±extent and compare).
+- A copy the source cut cannot know its roof: its frame needs the whole
+  footprint. It draws roofless: walls up to the eaves and a flat lid at `n = 0`
+  there, in the roof color. The real roof is never below the eaves, so wherever
+  a whole copy is drawn it covers the cut one. Flat shapes and footprints with
+  courtyards draw their flat roof, as their whole footprint does. The lid
+  carries the run the piece would have if it were whole, which only
+  `building-roof-angle` reads: with `building-roof-height` the eaves are exact,
+  with an angle they are an estimate.
+- A cut is a ring edge on an axis-aligned line outside the tile square `[0,
+  extent]` that is also the outermost coordinate of all the features the tile
+  lays out on that side: a source clips everything along the same lines, so
+  nothing reaches beyond them. A point repeated there is a cut that collapsed
+  (both crossings of a tip narrower than the grid rounded to it). An
+  axis-aligned wall elsewhere in the buffer, and an edge exactly on the tile
+  border, is not a cut. Cut edges get no wall, as maplibre-gl-js's
+  fill-extrusion skips its `isBoundaryEdge`s (MapLibre Native draws every edge).
+  An axis-aligned wall that happens to be a tile's outermost coordinate, with no
+  cut on that side, counts as a cut there and that copy draws roofless: harmless
+  where another tile draws the building whole, but a lone axis-aligned building
+  across a tile edge, with nothing farther out in either tile, draws roofless in
+  both.
 
-A large buffer keeps footprints whole. The examples load their GeoJSON with
+A copy is whole when the building reaches no further than the buffer beyond the
+tile's square, so a building smaller than the buffer is whole in every tile
+whose square it reaches. Only a building larger than the buffer can be cut in
+all of them and draw roofless everywhere. The examples load their GeoJSON with
 `maxzoom` 15, `buffer` 256 and `tolerance` 0 (the OSM example's
-[Source options](examples/osm/README.md#source-options)). Even so, 32 of the
-Prague example's 739 non-flat roofs cross a zoom-15 tile edge and draw flat. The
-shapes example is laid out so that no tile edge up to zoom 18 crosses a
-building.
+[Source options](examples/osm/README.md#source-options)): half a tile, 390 m at
+zoom 15 in Prague. Tiled as maplibre-gl-js does, each of the Prague example's
+738 sloped roofs is whole in every tile whose square it reaches, the 32 that
+cross a zoom-15 tile edge included; the 108 cut copies lie in farther tiles'
+buffers. With `buffer` 64 none draws roofless either. The shapes example is laid
+out so that no tile edge up to zoom 18 crosses a building.
 
 ### Fallbacks
 
-These cases get a flat roof, and their walls are still drawn:
+These cases get a flat roof, and their walls are still drawn (copies the source
+cut draw roofless instead, see [Tile copies](#tile-copies)):
 
 - `flat`, `many`, and unknown shape values. Unknown orientations mean `along`.
 - Footprints with holes. Courtyard walls face into the courtyard.
-- Footprints crossing the tile's edge (see [Tile ownership](#tile-ownership)).
 - Footprints whose bounding rectangle is thinner than 2 tile units, or a
   skillion whose extent along its direction is less than 2 tile units.
 - Radial shapes whose center is not at least 0.5 tile units inside every edge
@@ -177,10 +206,14 @@ The layout writes 7 float32 per vertex, and the shaders rely on this layout:
 - `a_pos = (x, y, run)`: `x` and `y` in tile units. `run` is the feature's
   horizontal eave-to-ridge distance in tile units. `building-roof-angle` turns
   it into a roof height (`tan(angle) × run`), and it is 0 for flat roofs.
+  Roofless copies carry the run the piece would have if it were whole.
 - `a_roof = (n, kind, gx, gy)`:
   - `n` in [0, 1] is the relative roof elevation: `z = wallTop + n ×
     roofHeight`, with `roofHeight = min(roof height, height - base)` and
-    `wallTop = height - roofHeight`. Flat roofs use `n = 1`.
+    `wallTop = height - roofHeight`. Flat roofs use `n = 1`, so they sit at
+    `height` whatever the roof height. Roofless copies use `n = 0` on their wall
+    tops and lid (kind 2, gradient 0), so they stop at `wallTop`, the eaves of
+    the real roof. The shaders need nothing else to tell them apart.
   - `kind`: 0 is a wall bottom (`z = base`). 1 is a wall top (`n` follows the
     roof along the wall, so gable ends rise). 2 is the roof. 3 is a roof
     underside: an overhang (the onion's bulge), whose normal points down.
@@ -341,8 +374,9 @@ fragment stage only interpolates it, as core does.
   `building-roof-height`, clamped to `[0, max(height − base, 0)]`. `wallTop =
   max(base, height − roofHeight)`. `z = base` at wall bottoms (kind 0), else
   `wallTop + n × roofHeight`. Flat roofs have `n = 1`, so they sit at `height`
-  whatever the roof height, and a flat building is a fill-extrusion. With `base
-  ≥ height` the building collapses to a roof at `base`.
+  whatever the roof height, and a flat building is a fill-extrusion. Roofless
+  copies have `n = 0` and stop at `wallTop`. With `base ≥ height` the building
+  collapses to a roof at `base`.
 - Normals in tile coordinates: walls (kinds 0 and 1) use `(gx, gy, 0)`. Roofs
   use `normalize(−rise·gx, −rise·gy, 1)` with `rise = roofHeight /
   meters_per_tile_unit`, negated for undersides (kind 3).
@@ -390,11 +424,13 @@ must always declare passes. The carried host gives an `is_3d` layer without them
 `evaluate_layer` returns `enabled_passes` 0 when `building-opacity ≤ 0`, `0b001`
 (the single opaque pass) when it is 1, and `0b110` otherwise. The otherwise case
 writes every building into depth first, then draws only the nearest surface,
-once per pixel (one stencil reference across the layer, so buildings drawn by
-two tiles' buffers do not blend twice). It also returns `building-translate` and
-whether the anchor is `viewport`. The host folds that translation into
-`tile_matrix`, as core fill-extrusion does. Every drawable culls back faces with
-counterclockwise front faces, which the layout's winding provides.
+once per pixel (one stencil reference across the layer, so a building that
+several tiles draw, each its own copy, does not blend twice; the render test
+checks it on a building drawn by four tiles). It also returns
+`building-translate` and whether the anchor is `viewport`. The host folds that
+translation into `tile_matrix`, as core fill-extrusion does. Every drawable
+culls back faces with counterclockwise front faces, which the layout's winding
+provides.
 
 Each bucket has one drawable, key 1, with shader `building`. It uses the
 layout's segments, and its feature vertex ranges name that key. `should_animate`
@@ -451,9 +487,35 @@ courtyards, raised bases, clamped heights, map and viewport translations, and a
 close, tall, translated building where moving the query instead of the prism
 gives different answers.
 
-The web twin's `queryFeatures(point)` works in clip space and sorts hits nearest
-first by maplibre-gl-js's `getIntersectionDistance`. The prism does not include
-an onion bulge beyond the footprint.
+The prism does not include an onion bulge beyond the footprint, and it counts
+the sky above a sloped roof, up to the ridge's height, as a hit.
+
+Which buildings get tested, and in what order, follows each platform's core
+layer:
+
+- **Native** tests only the candidates its host finds, as for core
+  fill-extrusion. The host unprojects the query to the ground and searches the
+  tile's grid around that ground point, padded by `get_query_radius` (pixels,
+  times `maxPitchScaleFactor`, times tile units per pixel at the camera zoom),
+  and queries only the tiles that padded box reaches. The plugin returns
+  `|building-translate|`, as core does, so a building is a candidate only when
+  its footprint's bounding box holds the ground point; a tall building whose
+  walls or roof cover the point from elsewhere is not (see
+  [Plugin API gaps](#plugin-api-gaps)). Core then tests the 2D footprint; this
+  layer tests the projected prism, as gl-js does, so it also hits walls and
+  roofs drawn away from the footprint, and (unlike core) not the ground under a
+  raised `building-base`. Hits come in the host's order: by source order within
+  a tile, last feature first, as core orders every non-symbol layer, not by
+  depth (`query_feature` returns a boolean). With no padding only the tile that
+  holds the ground point is queried, so each building comes back once.
+- **Web** tests every building of every tile drawn in the last frame, so it
+  finds every building whose prism covers the point, and sorts the hits nearest
+  first by maplibre-gl-js's `getIntersectionDistance`, as gl-js orders
+  fill-extrusion hits. It keeps one hit per feature id (the nearest copy).
+
+Both run the same prism test, pinned by the same fixture, so where Native finds
+a building the web twin does too; the web twin's extra hits are the buildings
+Native's broad phase never offered.
 
 ## Layout and paint properties
 
@@ -505,9 +567,10 @@ up:
   drop outlines that have parts (the layer cannot), leave out underground
   buildings, and turn units, compass points and colour names into numbers and
   `#rrggbb` (style expressions cannot parse them). Load it with the options of
-  [`examples/osm/source.json`](examples/osm/source.json); without them,
-  buildings near tile edges lose their roofs, and Native simplifies small and
-  round footprints.
+  [`examples/osm/source.json`](examples/osm/source.json); with a buffer smaller
+  than the buildings, those across tile edges are cut in every tile and draw
+  roofless, and without `tolerance` 0 Native simplifies small and round
+  footprints.
 - **Style.** Keep the rules in the layer's expressions.
   [`examples/osm/layer.json`](examples/osm/layer.json) has 3 m per level,
   `roof:levels`, `min_height`, `building:min_level`, default roof heights per
@@ -552,7 +615,7 @@ up:
 mise run //plugins/building/native:build          # zig-out/lib/libmaplibre-building.*
 mise run //plugins/building/native:test
 mise run //plugins/building/native:shader-check   # every shader variant through glslang and Metal
-mise run //plugins/building/native:render-test    # offscreen Metal renders and checks (macOS)
+mise run //plugins/building/native:render-test    # offscreen renders and checks (macOS; Metal, or MLN_NATIVE_PRESET's backend)
 ```
 
 Load the library with the FFI's plugin loader (`mln_plugin_load_library` or a
@@ -589,7 +652,7 @@ header's full sizes, so it needs a host with the whole stack, `0001` to `0006`.
 The layer must always declare its draw passes: the carried host gives an `is_3d`
 layer without them 2D depth, unlike #4685. For OpenGL, the FFI's attribute-name
 matching (`0035`) binds the attributes when uniform and data-driven properties
-mix; OpenGL is compile-checked only.
+mix.
 
 ## Web
 
@@ -611,8 +674,11 @@ while a built-in layer uses it, so the layer adds a hidden fill layer,
 literals, CSS color strings or expressions, the same inputs a style gives the
 native plugin; feature-state works with GeoJSON ids or `promoteId`.
 `queryFeatures` returns GeoJSON features with their source and their evaluated
-roof layout values. After a WebGL context loss maplibre-gl drops custom layers:
-add the same layer again, as the gallery does.
+roof layout values, one per feature id. Every tile draws its own copy of a
+building, so one without an id comes back once per tile that has it under the
+point, as core `queryRenderedFeatures` may return a feature once per tile. After
+a WebGL context loss maplibre-gl drops custom layers: add the same layer again,
+as the gallery does.
 
 `mise run web` shows two gallery pages: "Buildings" (the shapes grid, with the
 spec-driven controls, the style light, and a core fill-extrusion layer to
@@ -636,16 +702,21 @@ would close them. The ones that limit this layer are under
    rectangular bulb, and on footprints whose center is outside their kernel (an
    L) radial shapes fall back to flat. Fix: blend the profile toward a circle
    inscribed in the footprint.
-3. **Flat roofs at tile edges.** Footprints that cross a tile edge draw flat
-   ([Tile ownership](#tile-ownership)); in the Prague example 32 of 739 non-flat
-   roofs do, St. Nicholas' nave (`way/421068711`) among them. The web twin's
-   `queryFeatures` still reports the tagged shape for them. Fix: unclipped
-   feature geometry, or a stable id with the full bounds, from the host.
-4. **Buffer-only buildings wait for their tile.** A footprint only in a tile's
-   buffer is skipped, so a building is missing while the tile that owns it
-   loads, and a tall building owned by a tile outside the covered tiles is not
-   drawn even when it would project into view. Core fill-extrusion draws buffer
-   copies.
+3. **Buildings larger than the buffer draw roofless.** A copy the source cut at
+   its buffer cannot know its roof and draws roofless, walls to the eaves and a
+   lid ([Tile copies](#tile-copies)); a building is cut in every tile only when
+   it is larger than the buffer. No building of the Prague example is, with its
+   buffer of 256 (or even 64), but vector tiles often have small buffers. The
+   web twin's `queryFeatures` still reports the tagged shape for them. Fix:
+   unclipped feature bounds from the host (see the gap below).
+4. **Cut copies guess some things.** A roofless lid sits exactly at the eaves
+   with `building-roof-height`; with `building-roof-angle` its run, and so its
+   eaves, come from the piece, and can stand above the real roof's eaves where a
+   whole copy is drawn too (3 of the Prague example's buildings have
+   `roof:angle`). An axis-aligned wall that is a tile's outermost coordinate is
+   taken for a cut there, so in a sparse tile a lone axis-aligned building
+   across its edge draws roofless. A cut whose crossings a vector tile encoder
+   merged into one point is taken for a whole footprint.
 5. **Holes flatten roofs.** Footprints with courtyards get flat roofs.
 6. **Building parts are the source's job.** The layer draws every polygon it is
    given. Simple 3D Buildings' rules for `building:part` (drop the outline that
@@ -664,12 +735,16 @@ would close them. The ones that limit this layer are under
    leave gaps. Where several break lines meet on very thin footprints (a few
    tile units across), facets can compute their meeting point up to about 0.01
    tile units apart, leaving a crack far below a pixel.
-8. **Hit tests.** Natively, tall buildings in pitched views are hard to hit, and
-   hits are not ordered (see below). In both twins the prism does not include an
-   onion bulge beyond the footprint.
-9. **Backends.** Native rendering was checked on Metal only; OpenGL and Vulkan
-   are compile-checked (`shader-check`). The web layer was checked in Chromium
-   on ANGLE's Metal backend.
+8. **Hit tests.** Natively, tall buildings in pitched views are hard to hit:
+   queries miss about half of the drawn points in pitched views of the shapes
+   grid and a fifth to a quarter in Prague. Native orders hits by source order,
+   not depth (see below, and [Hit testing](#hit-testing)). In both twins the
+   prism does not include an onion bulge beyond the footprint and counts the sky
+   above a sloped roof, up to the ridge.
+9. **Backends.** The render test passes on Metal, Vulkan (MoltenVK) and OpenGL
+   ES (ANGLE), all on Apple GPUs; Vulkan and OpenGL drivers elsewhere (Linux,
+   Windows, Android) were not run, and `shader-check` compiles their shaders
+   offline. The web layer was checked in Chromium on ANGLE's Metal backend.
 10. **Globe and terrain.** On the globe (web only, checked visually) the
     lighting stays mercator's and hit tests use the mercator matrix, so queries
     are approximate while the globe transition is above 0. Terrain is not
@@ -689,31 +764,51 @@ would close them. The ones that limit this layer are under
 The full ledger is [docs/plugin-api-gaps.md](../../docs/plugin-api-gaps.md). For
 this layer:
 
+- Features arrive clipped to the tile and its buffer, with nothing about the
+  rest of the footprint, so a copy the source cut draws roofless, and only a
+  building smaller than the buffer is sure of a whole copy
+  ([Tile copies](#tile-copies)). The cut lines themselves are inferred from the
+  tile's bounds, as the layout context has no buffer. A host fix: each feature's
+  unclipped bounds (or its whole outline) in the layout callbacks, or a stable
+  feature id to stitch the pieces across tiles as Mapbox's fill-extrusion does
+  for its edge features, or a polygon analogue of GeoJSON's `lineMetrics`, which
+  already carries the clipped range of a line.
 - `query_feature` returns only a boolean, so Native cannot order 3D hits by
-  depth. Native's broad phase searches around the query's ground point, so a
-  tall building whose walls cover the point but whose footprint is far from the
-  ground point is never a candidate. maplibre-gl-js queries 3D layers with a
-  camera query geometry instead.
+  depth; they come in the host's source order. A host fix: return an
+  intersection distance, as gl-js's `getIntersectionDistance` gives, and sort 3D
+  layers' hits by it.
 - The uniform context has no tile extent and no meters-to-pixels scale, so
   `meters_per_tile_unit` comes from the tile id. The ABI's only cull modes are
   none and `BACK_CCW`, so the layout uses core's winding.
 - Camera-only paint properties reach a shader only through a binding, which
   needs vertex attributes (ids 10 and 11 here are never bound) and an
   interpolation slot in a drawable-scope block.
-- `get_query_radius` gets neither the zoom nor the latitude, so it cannot pad
-  the broad phase by a building's projected height (`building-height` × pixels
-  per meter × the tangent of the pitch). It returns `|building-translate|`, as
-  #4685's does. Native's grid finds a building only when the query's ground
-  point is in its footprint's bounding box; there the projected prism decides.
-  So the roof of a turned rectangle that covers ground in a corner of its box is
-  hit, though its 2D footprint is not, but a query high up St. Vitus' 9 m wide,
-  99 m spire in a pitched view at zoom 16.5 misses it. Measured at pitch 60,
-  Native's queries miss 48% of the pixels the buildings cover in the shapes
-  example at zoom 17.3, and 23% in the Prague demo at zoom 16.5; the web twin
-  misses none. Where the twins disagree, Native finds a subset of the web twin's
-  hits, and the extra ones are buildings whose footprint's bounding box does not
-  hold the point's ground position. A host fix: give the broad phase the zoom
-  and the tile's latitude, or a camera query geometry as maplibre-gl-js uses.
+- Native's broad phase searches around the query's ground point, padded by
+  `get_query_radius` in pixels at the camera zoom, and that callback gets
+  neither the zoom nor the latitude. A prism `H` meters tall can cover a pixel
+  up to `H × ppm × F` pixels from its footprint, with `ppm = 512 × 2^zoom / (2π
+  × 6378137 × cos latitude)` and `F = hypot(aspect × t, t × cos pitch + sin
+  pitch) / cos pitch`, `t = tan(fov / 2) = 1/3` (the host's
+  `maxPitchScaleFactor` is already folded in), so without the zoom the plugin
+  cannot pad by height. It returns `|building-translate|`, as core and #4685's
+  plugin do, and the grid finds a building only when the query's ground point is
+  in its footprint's bounding box; there the projected prism decides. So the
+  roof of a turned rectangle that covers ground in a corner of its box is hit,
+  though its 2D footprint is not, but a query high up St. Vitus' 9 m wide, 99 m
+  spire in a pitched view at zoom 16.5 misses it. The render test's query grids
+  (every 20th pixel's center, 1200 × 800) measure it: Native misses 51% of the
+  drawn points in the shapes example at zoom 17.3 and pitch 60, 50% at 17.6 and
+  55, 13% top down, and 22%, 25% and 4% in Prague (pitch 60 at 16.5, 58 at 17.6,
+  top down). The web twin tests every building and misses none. Padding by the
+  formula above, with the zoom handed in by a test build, brings every grid to
+  0.3% or less, but costs: one 99 m spire pads the Prague search past a whole
+  tile, so a query there takes about 6 ms instead of 0.02 (a full scan takes 8),
+  and the sky above sloped roofs starts to hit (95 of the shapes grid's 1545
+  undrawn points). A host fix: search 3D layers along a camera query geometry,
+  as maplibre-gl-js does (no height or zoom needed, and only buildings between
+  the ground point and the camera are offered), or pass the zoom and tile
+  latitude to `get_query_radius`
+  ([the ledger](../../docs/plugin-api-gaps.md#queries)).
 - Draw passes are per layer and all-or-nothing, and the carried host gives an
   `is_3d` layer without passes 2D depth, so the layer always declares its three
   passes.
@@ -734,7 +829,7 @@ node plugins/building/js/scripts/fuzz.ts 1 300       # random footprints against
 node scripts/sync-shaders.mjs                        # mirror shaders/*.glsl into js/src/generated/
 node plugins/building/examples/shapes/generate.mjs   # rewrite and check the shapes example
 mise run //plugins/building/native:shader-check      # every native shader variant through glslang and Metal
-mise run //plugins/building/native:render-test       # offscreen Metal renders and checks (macOS)
+mise run //plugins/building/native:render-test       # offscreen renders and checks (macOS; Metal, or MLN_NATIVE_PRESET's backend)
 mise run //apps/native-viewer:run building           # the shapes grid in the native viewer
 mise run //apps/native-viewer:building-osm           # the Prague OSM demo in the native viewer
 ```
@@ -742,10 +837,33 @@ mise run //apps/native-viewer:building-osm           # the Prague OSM demo in th
 The render test (`native/render/render.py`, after `mise run ffi:build`) draws
 the shapes grid and the Prague demo at pitched, rotated, top-down, translucent,
 translated and map-anchored-light cameras, and a scene beside core
-fill-extrusion, to `/tmp/building-native/*.png`. It checks that a flat building
-shades exactly like a core fill-extrusion of the same color and height (roof,
-south wall and, lit from the west-northwest, west wall), and that queries hit
-footprints and prisms and miss open ground. Look at the images too.
+fill-extrusion, to `/tmp/building-native/*.png`, and both on a zoom-15 tile
+corner, where every tile draws its copy of the buildings across it. It checks
+that a flat building shades exactly like a core fill-extrusion of the same color
+and height (roof, south wall and, lit from the west-northwest, west wall), that
+a translucent building drawn by four tiles blends once, and that queries hit
+footprints and prisms and miss open ground. Six cameras also query a grid of
+pixels and report how many drawn points no query hits (the broad-phase gap under
+[Plugin API gaps](#plugin-api-gaps)); each fails above a ceiling just over
+today's share, so a narrow phase that stops hitting shows up. Look at the images
+too.
+
+It renders on the install's backend. For Vulkan (MoltenVK and the Vulkan loader
+from Homebrew, `brew install molten-vk vulkan-loader`) or OpenGL ES (the ANGLE
+build that the preset downloads), build that preset once and run the test with
+the same `MLN_NATIVE_PRESET`; the PNGs go to `/tmp/building-native-vulkan` or
+`/tmp/building-native-opengl`:
+
+```bash
+MLN_NATIVE_PRESET=macos-arm64-vulkan mise run ffi:build
+MLN_NATIVE_PRESET=macos-arm64-vulkan mise run //plugins/building/native:render-test
+MLN_NATIVE_PRESET=macos-arm64-egl mise run ffi:build
+MLN_NATIVE_PRESET=macos-arm64-egl mise run //plugins/building/native:render-test
+```
+
+The three backends pass the same checks with the same sampled colors. Their
+frames differ only where coplanar OSM surfaces z-fight (under 0.1% of the pixels
+in the castle views) and in single edge pixels.
 
 The fixtures in `fixtures/layout/` are written by the TypeScript layout, and the
 Zig twin must reproduce them. Their format and summary formula are documented in

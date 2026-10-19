@@ -1,22 +1,35 @@
 #!/usr/bin/env python3
-"""Render the building examples offscreen on Metal and check them.
+"""Render the building examples offscreen and check them.
 
 Run after `mise run ffi:build` and `zig build` in plugins/building/native:
   python3 plugins/building/native/render/render.py [<FFI install>] [--out DIR]
 
+The install's render backend (its share/maplibre-native-c/artifact.json) picks
+the session: Metal, Vulkan (the macos-arm64-vulkan preset, through Homebrew's
+MoltenVK and vulkan-loader) or OpenGL ES (macos-arm64-egl, through the ANGLE
+that the preset installs).
+
 Renders the shapes grid and the Prague OSM demo at several cameras (pitched,
 rotated, top-down, translucent, translated) and a lighting and depth scene
-beside core fill-extrusion, to PNGs in --out (default /tmp/building-native).
+beside core fill-extrusion, to PNGs in --out (default /tmp/building-native,
+or /tmp/building-native-<backend> for Vulkan and OpenGL).
 It then checks pixels and rendered-feature queries:
 
 - a flat building and a core fill-extrusion of the same color, height and
   light shade their roofs and walls alike;
+- buildings across a zoom-15 tile corner, which every tile there draws (its
+  copy in each tile's buffer), blend once when translucent: a roof over the
+  background is the opaque color mixed with the background by the opacity,
+  in each tile's quarter;
 - a translucent layer shows no internal faces: a building's color over the
   background is the same where a hidden wall lies behind its front face;
 - core fill-extrusion and the building layer share depth: whichever is
   nearer is drawn;
 - queries hit buildings at their footprints, on the walls of tall buildings
-  in pitched views, and miss empty ground.
+  in pitched views, and miss empty ground;
+- query grids (the center of every 20th pixel) report the share of drawn
+  points that no query hits, which Native's broad phase leaves (README,
+  "Plugin API gaps"), and fail above a ceiling per camera.
 
 macOS only, like location-indicator's render test. Look at the images too:
 the checks only sample a few pixels.
@@ -35,7 +48,7 @@ repo = plugin_dir.parent.parent
 
 parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
 parser.add_argument("install", nargs="?", type=Path, help="maplibre-native-c install (default $MLN_NATIVE_INSTALL_DIR)")
-parser.add_argument("--out", type=Path, default=Path("/tmp/building-native"))
+parser.add_argument("--out", type=Path, help="output directory (default /tmp/building-native, or /tmp/building-native-<backend> off Metal)")
 args = parser.parse_args()
 install = (args.install or Path(os.environ.get("MLN_NATIVE_INSTALL_DIR", ""))).resolve()
 if not (install / "include/maplibre_native_c.h").exists():
@@ -43,14 +56,22 @@ if not (install / "include/maplibre_native_c.h").exists():
 library = plugin_dir / "native/zig-out/lib/libmaplibre-building.dylib"
 if not library.exists():
     sys.exit(f"{library} is missing; run `zig build` in plugins/building/native")
-out = args.out
+artifact = install / "share/maplibre-native-c/artifact.json"
+backend = json.loads(artifact.read_text())["renderBackend"] if artifact.exists() else "metal"
+out = args.out or Path("/tmp/building-native" if backend == "metal" else f"/tmp/building-native-{backend}")
 out.mkdir(parents=True, exist_ok=True)
+backend_name = {"metal": "Metal", "vulkan": "Vulkan", "opengl": "OpenGL"}[backend]
+# MoltenVK's ICD, as the FFI's mise.macos.toml sets it.
+vulkan_loader = Path(os.environ.get("MLN_FFI_VULKAN_LOADER_DIR", "/opt/homebrew/opt/vulkan-loader/lib"))
+moltenvk_icd = "/opt/homebrew/opt/molten-vk/etc/vulkan/icd.d/MoltenVK_icd.json"
+if backend == "vulkan" and "VK_DRIVER_FILES" not in os.environ and Path(moltenvk_icd).exists():
+    os.environ["VK_DRIVER_FILES"] = moltenvk_icd
 
 # ---------------------------------------------------------------------------
 # The renderer binary, rebuilt when render.cpp changes.
 # ---------------------------------------------------------------------------
 
-binary = out / "render-bin"
+binary = out / f"render-bin-{backend}"
 source = here / "render.cpp"
 if not binary.exists() or binary.stat().st_mtime < source.stat().st_mtime:
     # The SDK the FFI was built with: the newest one on the host can be ahead
@@ -65,6 +86,12 @@ if not binary.exists() or binary.stat().st_mtime < source.stat().st_mtime:
                str(install / "lib/libmaplibre-native-c.dylib"), "-Wl,-rpath," + str(install / "lib")]
     for framework in ("Foundation", "Metal", "QuartzCore", "CoreGraphics", "ImageIO", "CoreFoundation"):
         command += ["-framework", framework]
+    if backend == "vulkan":
+        ffi = Path(os.environ.get("MLN_FFI_DIR", install.parents[2]))
+        command += ["-DRENDER_VULKAN", "-I", str(ffi / "third_party/maplibre-native/vendor/Vulkan-Headers/include"),
+                    "-L", str(vulkan_loader), "-lvulkan", "-Wl,-rpath," + str(vulkan_loader)]
+    elif backend == "opengl":
+        command += ["-DRENDER_OPENGL", str(install / "lib/libEGL.dylib")]
     subprocess.run(command + ["-o", str(binary)], check=True)
 
 # ---------------------------------------------------------------------------
@@ -83,6 +110,7 @@ source_options = load(examples / "shapes/source.json")
 assert source_options == load(examples / "osm/source.json")
 
 background = {"id": "background", "type": "background", "paint": {"background-color": "#d9d5cc"}}
+background_rgb = [0xd9, 0xd5, 0xcc]
 default_light = {"anchor": "viewport", "color": "white", "intensity": 0.5, "position": [1.15, 210, 30]}
 
 
@@ -172,12 +200,27 @@ def case(name, style_path, camera, queries=(), samples=(), size=(1200, 800)):
                   "samples": list(samples), "size": size})
 
 
+def grid(ceiling):
+    """Query the center of every 20th pixel and compare with the frame: at
+    most `ceiling` of the drawn points may go unhit. Native's broad phase
+    only asks the plugin about buildings whose footprint's bounding box holds
+    the query's ground point (README, "Plugin API gaps"), so tall buildings
+    in pitched views miss; the ceilings sit just above the measured shares
+    and catch a narrow phase that stops hitting."""
+    return ("grid", 20, ceiling)
+
+
+# (translucent case, opaque case, sample key, opacity): the translucent
+# sample must be the opaque one mixed with the background by the opacity.
+blends = []
+
+
 shapes_style = style("shapes", shapes_sources, [shapes_layer], default_light)
 gabled = shape_by_id[2]
 onion_rect = shape_by_id[15]
 case("shapes-pitched", shapes_style, (*shapes_center, 17.3, 0, 60),
-     queries=[("at", *centroid(gabled), 0, {2}), ("at", 50.0951, 14.4152, 0, set())])
-case("shapes-rotated", shapes_style, (*shapes_center, 17.6, 135, 55))
+     queries=[("at", *centroid(gabled), 0, {2}), ("at", 50.0951, 14.4152, 0, set()), grid(0.55)])
+case("shapes-rotated", shapes_style, (*shapes_center, 17.6, 135, 55), queries=[grid(0.53)])
 
 
 def corner_gap(feature):
@@ -201,7 +244,8 @@ case("shapes-prism-top-down", shapes_style, (*centroid(turned), 18.5, 0, 0),
 case("shapes-top-down", shapes_style, (*shapes_center, 17.4, 0, 0),
      queries=[("at", *centroid(shape_by_id[41]), 0, {41}), ("at", *centroid(shape_by_id[126]), 0, {126}),
               # Between rows 3 and 4 of column 7: open ground.
-              ("at", (centroid(shape_by_id[41])[0] + centroid(shape_by_id[58])[0]) / 2, centroid(shape_by_id[41])[1], 0, set())])
+              ("at", (centroid(shape_by_id[41])[0] + centroid(shape_by_id[58])[0]) / 2, centroid(shape_by_id[41])[1], 0, set()),
+              grid(0.16)])
 case("shapes-close-radial", shapes_style, (*centroid(shape_by_id[12]), 19.6, 20, 50))
 case("shapes-close-frame", shapes_style, (*centroid(shape_by_id[7]), 19.3, -30, 55))
 case("shapes-close-rotated", shapes_style, (*centroid(shape_by_id[60]), 19.0, 160, 50))
@@ -244,6 +288,65 @@ case("scene-reversed", style("scene-reversed", scene_sources, [scene_layer, core
 case("scene-rotated", style("scene-rotated", scene_sources, [core_layer, with_paint(scene_layer, building_opacity=0.6)], default_light),
      (scene_center[0] - 0.0001, scene_center[1], 18.6, 210, 55))
 
+# Buildings across the corner of four zoom-15 tiles. The source's buffer (half
+# a tile) holds each of them whole in every tile that has it, so each tile
+# draws its own copy: a flat box on the corner, drawn by four tiles, and a
+# gabled one across the tile edge north of it. A 1 km hall south of it
+# reaches past the buffer on both sides of the edge, so every copy is cut and
+# it draws roofless (README, "Tile copies").
+def tile_corner(lat, lon, z):
+    n = 2 ** z
+    x = round((lon + 180) / 360 * n)
+    y = round((1 - math.log(math.tan(math.radians(lat)) + 1 / math.cos(math.radians(lat))) / math.pi) / 2 * n)
+    return (math.degrees(math.atan(math.sinh(math.pi * (1 - 2 * y / n)))), x / n * 360 - 180)
+
+
+seam_corner = tile_corner(*scene_center, 15)
+seam_m_lon = 111_320.0 * math.cos(math.radians(seam_corner[0]))
+
+
+def seam_box(id, east, north, width, depth, **properties):
+    lat0, lon0 = seam_corner
+    x0, x1 = (east - width / 2) / seam_m_lon, (east + width / 2) / seam_m_lon
+    y0, y1 = (north - depth / 2) / meters_lat, (north + depth / 2) / meters_lat
+    ring = [[lon0 + x0, lat0 + y0], [lon0 + x1, lat0 + y0], [lon0 + x1, lat0 + y1], [lon0 + x0, lat0 + y1], [lon0 + x0, lat0 + y0]]
+    return {"type": "Feature", "id": id, "geometry": {"type": "Polygon", "coordinates": [ring]}, "properties": properties}
+
+
+seam_buildings = {"type": "FeatureCollection", "features": [
+    seam_box(1, 0, 0, 40, 40, height=20),
+    seam_box(2, 0, 60, 24, 60, height=14, **{"roof:shape": "gabled", "roof:height": 6}),
+    seam_box(3, 0, -70, 1000, 20, height=12, **{"roof:shape": "gabled", "roof:height": 5}),
+    # Whole in the eastern tiles, cut at the western tiles' buffer line, 392 m
+    # east of the edge, and drawn by both. With building-roof-height the
+    # whole copy's roof covers the roofless one. With building-roof-angle the
+    # piece's run (46 m, against the whole's 60 m) puts its lid above the
+    # real eaves, and it shows through the hip (README, limit 4).
+    seam_box(4, 235, 150, 530, 24, height=16, **{"roof:shape": "gabled", "roof:height": 6}),
+    seam_box(5, 500, 260, 400, 120, height=40, **{"roof:shape": "hipped", "roof:angle": 30}),
+]}
+seam_layer = {**scene_layer, "id": "seam-buildings", "source": "seam-buildings",
+              "paint": {**scene_layer["paint"], "building-roof-color": "#b35a3c",
+                        "building-roof-angle": ["coalesce", ["get", "roof:angle"], 0]}}
+seam_sources = {"seam-buildings": geojson_source(seam_buildings)}
+
+
+def seam_at(east, north):
+    return (seam_corner[0] + north / meters_lat, seam_corner[1] + east / seam_m_lon)
+
+
+# The flat box's roof in each tile's quarter, straight down.
+quarters = [("at", *seam_at(dx, dy), 0, f"quarter {dx:+d} {dy:+d}") for dx in (-8, 8) for dy in (-8, 8)]
+seam_camera = (*seam_corner, 18.2, 0, 0)
+case("seam-opaque", style("seam", seam_sources, [seam_layer], default_light), seam_camera, samples=quarters,
+     queries=[("at", *seam_at(0, 0), 0, {1}), ("at", *seam_at(0, 50), 0, {2}), ("at", *seam_at(-100, -70), 0, {3})])
+case("seam-translucent", style("seam-translucent", seam_sources, [with_paint(seam_layer, building_opacity=0.5)], default_light),
+     seam_camera, samples=quarters)
+blends += [("seam-translucent", "seam-opaque", q[-1], 0.5) for q in quarters]
+case("seam-pitched", style("seam-pitched", seam_sources, [with_paint(seam_layer, building_opacity=0.6)], default_light),
+     (*seam_at(0, -40), 17.2, 20, 55))
+case("seam-overlap", style("seam", seam_sources, [seam_layer], default_light), (*seam_at(360, 175), 17.6, 330, 65))
+
 osm_style = style("osm", osm_sources, [osm_layer], default_light)
 spire = osm_by_id[cathedral_spire]
 case("osm-pitched", osm_style, (*osm_center, 16.5, 0, 60),
@@ -255,12 +358,24 @@ case("osm-pitched", osm_style, (*osm_center, 16.5, 0, 60),
               # here), so Native's broad phase never asks the plugin.
               # Reported, not checked.
               ("at", *centroid(spire), -50, {cathedral_spire}, "gap"),
-              ("at", *centroid(spire), -120, {cathedral_spire}, "gap")])
-case("osm-castle", osm_style, (50.0905, 14.4010, 17.6, 300, 58))
+              ("at", *centroid(spire), -120, {cathedral_spire}, "gap"),
+              grid(0.25)])
+case("osm-castle", osm_style, (50.0905, 14.4010, 17.6, 300, 58), queries=[grid(0.28)])
 case("osm-mala-strana", osm_style, (50.0878, 14.4045, 18.0, 30, 55))
-case("osm-top-down", osm_style, (*osm_center, 16.6, 0, 0))
+case("osm-top-down", osm_style, (*osm_center, 16.6, 0, 0), queries=[grid(0.06)])
 case("osm-opacity", style("osm-opacity", osm_sources, [with_paint(osm_layer, building_opacity=0.7)], default_light),
      (50.0905, 14.4010, 17.4, 300, 58))
+# On the zoom-15 tile corner nearest the demo's center, where buildings cross
+# tile edges: every copy draws its roof, and a translucent layer blends each
+# building once. St. Nicholas' nave (way/421068711) crosses the edge here.
+osm_corner = tile_corner(*osm_center, 15)
+nave = osm_by_id[421068711]
+case("osm-seam-opaque", osm_style, (*osm_corner, 17.5, 0, 50))
+case("osm-seam-translucent", style("osm-seam-translucent", osm_sources, [with_paint(osm_layer, building_opacity=0.6)], default_light),
+     (*osm_corner, 17.5, 0, 50))
+case("osm-seam-top-down", style("osm-seam-top-down", osm_sources, [with_paint(osm_layer, building_opacity=0.6)], default_light),
+     (*osm_corner, 17.5, 0, 0))
+case("osm-st-nicholas", osm_style, (*centroid(nave), 18.6, 300, 55), queries=[("at", *centroid(nave), 0, {421068711})])
 
 # ---------------------------------------------------------------------------
 # Run.
@@ -275,11 +390,14 @@ for c in cases:
     for q in c["queries"]:
         if q[0] == "at":
             job.append(f"query-at {q[1]} {q[2]} {q[3]}")
+        elif q[0] == "grid":
+            job.append(f"query-grid {q[1]} {' '.join(map(str, background_rgb))}")
         else:
             job.append(f"query {q[1]} {q[2]}")
     for s in c["samples"]:
         job.append(f"sample-at {s[1]} {s[2]} {s[3]}")
-        job.append(f"sample-at {s[4]} {s[5]} {s[6]}")
+        if s[0] == "pair":
+            job.append(f"sample-at {s[4]} {s[5]} {s[6]}")
     job.append("render")
 (out / "job.txt").write_text("\n".join(job) + "\n")
 
@@ -291,12 +409,24 @@ if result.returncode != 0:
 
 lines = iter(result.stdout.splitlines())
 failures = []
+sampled = {}
 for c in cases:
     image = next(lines)
     assert image.startswith("image "), image
     print(image)
     for q in c["queries"]:
         words = next(lines).split()
+        if q[0] == "grid":
+            assert words[0] == "grid", words
+            points, drawn, missed, extra = map(int, words[1:5])
+            share = missed / max(drawn, 1)
+            ok = drawn > 0 and share <= q[2]
+            print(f"  query grid, every {q[1]} px: {drawn} of {points} points drawn, {missed} of them missed "
+                  f"({100 * share:.1f}%, the broad-phase gap; at most {100 * q[2]:.0f}%), {extra} hit off the drawn pixels "
+                  f"{'ok' if ok else 'FAILED'}")
+            if not ok:
+                failures.append(f"{c['name']}: query grid missed {100 * share:.1f}% of the drawn points")
+            continue
         assert words[0] == "query", words
         hits = {int(w) for w in words[4:] if w.lstrip("-").isdigit()}
         known_gap = q[-1] == "gap"
@@ -308,12 +438,25 @@ for c in cases:
             failures.append(f"{c['name']}: query {q}")
     for s in c["samples"]:
         a = [int(w) for w in next(lines).split()[3:]]
+        if s[0] == "at":
+            sampled[(c["name"], s[-1])] = a
+            continue
         b = [int(w) for w in next(lines).split()[3:]]
         difference = max(abs(x - y) for x, y in zip(a, b))
         ok = difference <= 3
         print(f"  {s[-1]}: building {a} core {b} {'ok' if ok else 'FAILED'}")
         if not ok:
             failures.append(f"{c['name']}: {s[-1]} differs from core by {difference}")
+for translucent, opaque, key, alpha in blends:
+    t = sampled[(translucent, key)]
+    o = sampled[(opaque, key)]
+    expected = [round(bg + (x - bg) * alpha) for bg, x in zip(background_rgb, o)]
+    difference = max(abs(x - y) for x, y in zip(t, expected))
+    # Blending twice would give bg + (x - bg) * (1 - (1 - alpha)^2).
+    ok = difference <= 3 and o[:3] != background_rgb
+    print(f"  {translucent} {key}: {t[:3]}, opaque {o[:3]} mixed {expected} {'ok' if ok else 'FAILED'}")
+    if not ok:
+        failures.append(f"{translucent}: {key} blends to {t[:3]}, not {expected}")
 if failures:
     sys.exit("\n".join(["FAILED:"] + failures))
-print(f"{len(cases)} Metal frames rendered to {out}: pixel and query checks passed")
+print(f"{len(cases)} {backend_name} frames rendered to {out}: pixel and query checks passed")

@@ -123,17 +123,34 @@ describe("layoutTile", () => {
     expect(tile.vertices.length).toBe(tile.layout.vertexCount * 7);
   });
 
-  it("filters features and skips footprints only in the buffer", () => {
-    const layout = new LayoutEvaluator();
+  it("filters features and draws buffer copies, cut at the tile's bounds", () => {
+    const layout = new LayoutEvaluator({ "building-roof-shape": "gabled" });
     const tile = layoutTile(
       layerOf([
         { rings: square(1000, 1000), properties: { keep: true } },
         { rings: square(1500, 1000), properties: { keep: false } },
+        // Only in the buffer, whole.
         { rings: square(-600, 100, 200), properties: { keep: true } },
+        // Reaching the westmost point of the drawn features: cut there.
+        { rings: square(-700, 900, 200), properties: { keep: true } },
+        // Filtered out, so its points do not move the tile's bounds.
+        { rings: square(-800, 1500, 200), properties: { keep: false } },
       ]),
       options(layout, compileFilter(["get", "keep"])),
     );
-    expect(tile.features.map((f) => f.index)).toEqual([0]);
+    expect(tile.features.map((f) => f.index)).toEqual([0, 2, 3]);
+    expect(tile.layout.bounds.minX).toBe(-1400);
+    const roofN = (feature: number): number[] => {
+      const range = tile.layout.ranges[feature]!;
+      const ns: number[] = [];
+      for (let i = 0; i < range.vertexCount; i++) {
+        const v = tile.layout.vertex(range.firstVertex + i);
+        if (v.kind >= 2) ns.push(v.n);
+      }
+      return ns;
+    };
+    expect(Math.max(...roofN(1))).toBe(1);
+    expect(Math.max(...roofN(2))).toBe(0);
   });
 
   it("decodes a GeoJSON source's encoded properties", () => {

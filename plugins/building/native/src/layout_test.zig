@@ -9,6 +9,7 @@ const Allocator = std.mem.Allocator;
 
 const build_options = @import("build_options");
 const fixture = @import("fixture.zig");
+const isClipEdge = @import("footprint.zig").isClipEdge;
 const layout = @import("layout.zig");
 const BuildingLayout = layout.BuildingLayout;
 const LayoutValues = layout.LayoutValues;
@@ -16,6 +17,8 @@ const max_segment_vertices = layout.max_segment_vertices;
 const Point = layout.Point;
 const roof_kind = layout.roof_kind;
 const roof_underside = layout.roof_underside;
+const RoofShape = @import("spec.zig").RoofShape;
+const TileBounds = layout.TileBounds;
 const Vertex = layout.Vertex;
 const wall_bottom = layout.wall_bottom;
 const wall_top = layout.wall_top;
@@ -44,9 +47,18 @@ fn expectCloseTo(actual: f64, expected: f64, digits: comptime_int) !void {
     }
 }
 
+/// Lays out one feature as a tile of its own.
 fn lay(allocator: Allocator, rings: []const []const Point, values: LayoutValues) !BuildingLayout {
+    var bounds: TileBounds = .no_cuts;
+    for (rings) |ring| for (ring) |p| bounds.add(p);
+    return layIn(allocator, rings, values, bounds);
+}
+
+/// Lays out one feature in a tile with the given bounds.
+fn layIn(allocator: Allocator, rings: []const []const Point, values: LayoutValues, bounds: TileBounds) !BuildingLayout {
     var result: BuildingLayout = .init(allocator, 8192);
     errdefer result.deinit();
+    result.bounds = bounds;
     try result.addFeature(rings, 0, values);
     return result;
 }
@@ -111,7 +123,7 @@ const Edges = struct {
 };
 
 /// Checks that hold for every layout, whatever its input.
-fn checkInvariants(allocator: Allocator, result: *const BuildingLayout, extent: f64, shape_of: ShapeOf) !void {
+fn checkInvariants(allocator: Allocator, result: *const BuildingLayout, shape_of: ShapeOf) !void {
     const vertices = result.vertices.items;
     const indices = result.indices.items;
 
@@ -214,8 +226,7 @@ fn checkInvariants(allocator: Allocator, result: *const BuildingLayout, extent: 
         const ends = edges.ends.get(entry.key_ptr.*).?;
         const a = ends[0];
         const b = ends[1];
-        const on_cut = (a.x == b.x and (a.x < 0 or a.x > extent)) or
-            (a.y == b.y and (a.y < 0 or a.y > extent));
+        const on_cut = isClipEdge(.{ .x = a.x, .y = a.y }, .{ .x = b.x, .y = b.y }, result.extent, result.bounds);
         if (!on_cut or isWall(a)) {
             std.debug.print("open edge ({d}, {d}, n {d}, kind {d}) → ({d}, {d}, n {d})\n", .{ a.x, a.y, a.n, a.kind, b.x, b.y, b.n });
             return error.TestOpenEdge;
@@ -290,7 +301,7 @@ fn expectFixtureInvariants(text: []const u8) !void {
     for (case.features) |f| {
         for (0..f.repeat) |k| try shapes.put(allocator, f.index + k, f.shape);
     }
-    try checkInvariants(allocator, &result, @floatFromInt(case.extent), .{ .map = &shapes });
+    try checkInvariants(allocator, &result, .{ .map = &shapes });
 }
 
 // Each fixture is checked even when an earlier one fails, so one run names
@@ -410,7 +421,7 @@ test "slopes a skillion exactly down its direction" {
         min_n = @min(min_n, v.n);
         max_n = @max(max_n, v.n);
     }
-    try testing.expectEqual(0, min_n);
+    try expectCloseTo(min_n, 0, 12);
     try testing.expectEqual(1, max_n);
     // Without a direction it falls toward +v, south for this ridge.
     for (try roofOf(allocator, &.{&rectangle}, .{ .shape = "skillion" })) |v| try testing.expect(v.gy < 0);
@@ -424,7 +435,7 @@ test "turns a saltbox's long face toward its direction" {
     const saltbox = try roofOf(arena.allocator(), &.{&rectangle}, .{ .shape = "saltbox", .direction = 0 });
     for (saltbox) |v| {
         if (v.n == 1) try expectCloseTo(v.y, 1112, 3);
-        if (v.y == 1000) try testing.expectEqual(0, v.n);
+        if (v.y == 1000) try expectCloseTo(v.n, 0, 12);
         if (v.y == 1160) try expectCloseTo(v.n, 4.0 / 7.0, 6);
     }
     try expectCloseTo(saltbox[0].run, 112, 4);
@@ -607,10 +618,11 @@ test "faces courtyard walls into the courtyard" {
     try testing.expectEqual(16, inner);
 }
 
-test "skips walls on tile cuts and flattens the roof" {
+test "draws a cut copy roofless, without walls on its cuts" {
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();
     const allocator = arena.allocator();
+    // A tile whose features reach x = -128, where the source cut this one.
     const cut = [_]Point{
         .{ .x = -128, .y = 2000 },
         .{ .x = 200, .y = 2000 },
@@ -621,27 +633,100 @@ test "skips walls on tile cuts and flattens the roof" {
     const walls = try filter(allocator, &result, isWall);
     for (walls) |v| try testing.expect(!(v.x == -128 and v.gx == -1));
     try testing.expectEqual(12, walls.len);
-    for (try filter(allocator, &result, isRoof)) |v| try testing.expectEqual(1, v.n);
+    // Walls to the eaves and a lid there, with the piece's own run (half
+    // its 200 short side) for building-roof-angle.
+    for (walls) |v| try testing.expectEqual(0, v.n);
+    const lid = try filter(allocator, &result, isRoof);
+    try testing.expect(lid.len > 0);
+    for (lid) |v| try testing.expectEqual([5]f32{ 0, roof_kind, 0, 0, 100 }, [5]f32{ v.n, v.kind, v.gx, v.gy, v.run });
+    // Flat shapes and courtyards stay flat, as their whole footprints are.
+    const hole = [_]Point{ .{ .x = 0, .y = 2050 }, .{ .x = 0, .y = 2150 }, .{ .x = 100, .y = 2150 }, .{ .x = 100, .y = 2050 } };
+    const flat = try lay(allocator, &.{&cut}, .{ .shape = "flat" });
+    const holed = try lay(allocator, &.{ &cut, &hole }, .{ .shape = "gabled" });
+    for ([_]*const BuildingLayout{ &flat, &holed }) |r| {
+        for (r.vertices.items) |v| {
+            if (v.kind == wall_bottom) continue;
+            try testing.expectEqual([2]f32{ 1, 0 }, [2]f32{ v.n, v.run });
+        }
+    }
 }
 
-test "draws a footprint in the one tile that owns it" {
+test "gives buffer and crossing copies their whole roof" {
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();
     const allocator = arena.allocator();
-    // The same building seen from the tile west of the edge and the tile
-    // east of it: crossing the edge, it is flat in both.
-    const west = [_]Point{ .{ .x = 8100, .y = 3000 }, .{ .x = 8300, .y = 3000 }, .{ .x = 8300, .y = 3160 }, .{ .x = 8100, .y = 3160 } };
-    const east = [_]Point{ .{ .x = -92, .y = 3000 }, .{ .x = 108, .y = 3000 }, .{ .x = 108, .y = 3160 }, .{ .x = -92, .y = 3160 } };
-    for ([_][]const Point{ &west, &east }) |ring| {
-        const roof = try roofOf(allocator, &.{ring}, .{ .shape = "gabled" });
-        try testing.expect(roof.len > 0);
-        for (roof) |v| try testing.expectEqual(1, v.n);
+    // The tile's features reach x = 8320, beyond these footprints' walls.
+    const bounds: TileBounds = .{ .min_x = 0, .min_y = 0, .max_x = 8320, .max_y = 8192 };
+    for ([_]f64{ 8100, 8200 }) |x| {
+        const ring = [_]Point{ .{ .x = x, .y = 3000 }, .{ .x = x + 200, .y = 3000 }, .{ .x = x + 200, .y = 3160 }, .{ .x = x, .y = 3160 } };
+        const result = try layIn(allocator, &.{&ring}, .{ .shape = "gabled" }, bounds);
+        var max_n: f32 = 0;
+        for (try filter(allocator, &result, isRoof)) |v| {
+            max_n = @max(max_n, v.n);
+            try testing.expectEqual(80, v.run);
+        }
+        try testing.expectEqual(1, max_n);
+        // The east gable wall rises to the ridge.
+        var ridge = false;
+        for (try filter(allocator, &result, isWallTop)) |v| ridge = ridge or (v.gx == 1 and v.n == 1);
+        try testing.expect(ridge);
     }
-    // Only in the buffer: the tile east of the edge owns it.
-    const buffer = [_]Point{ .{ .x = 8200, .y = 3000 }, .{ .x = 8300, .y = 3000 }, .{ .x = 8300, .y = 3160 }, .{ .x = 8200, .y = 3160 } };
-    const skipped = try lay(allocator, &.{&buffer}, .{ .shape = "gabled" });
-    try testing.expectEqual(0, skipped.vertexCount());
-    try testing.expectEqual(0, skipped.ranges.items.len);
+    // An axis-aligned wall on the tile's own bounds, outside it, is taken
+    // for a cut: alone in its tile, this copy draws roofless.
+    const alone = [_]Point{ .{ .x = 8200, .y = 3000 }, .{ .x = 8300, .y = 3000 }, .{ .x = 8300, .y = 3160 }, .{ .x = 8200, .y = 3160 } };
+    for (try roofOf(allocator, &.{&alone}, .{ .shape = "gabled" })) |v| try testing.expectEqual(0, v.n);
+}
+
+fn moved(allocator: Allocator, ring: []const Point, dx: f64, dy: f64) ![]const Point {
+    const result = try allocator.alloc(Point, ring.len);
+    for (result, ring) |*q, p| q.* = .{ .x = p.x + dx, .y = p.y + dy };
+    return result;
+}
+
+test "builds the same roof for every copy of a footprint" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+    // Copies of one footprint in the neighboring tiles' buffers: moved by
+    // ±extent, each must build the same geometry, moved. Positions are
+    // compared after float32 rounding (at most one ulp at 16384 apart; the
+    // TypeScript twin compares them in f64), everything else bit for bit.
+    const turned = [_]Point{ .{ .x = 3000, .y = 3000 }, .{ .x = 3260, .y = 3150 }, .{ .x = 3180, .y = 3289 }, .{ .x = 2920, .y = 3139 } };
+    const l_shape = [_]Point{
+        .{ .x = 5000, .y = 1000 }, .{ .x = 5160, .y = 1000 }, .{ .x = 5160, .y = 1140 },
+        .{ .x = 5360, .y = 1140 }, .{ .x = 5360, .y = 1300 }, .{ .x = 5000, .y = 1300 },
+    };
+    const circle = regularPolygon(16, 6000, 150);
+    var values: std.ArrayList(LayoutValues) = .empty;
+    for (std.enums.values(RoofShape)) |shape| try values.append(allocator, .{ .shape = @tagName(shape) });
+    for (std.enums.values(RoofShape)) |shape| try values.append(allocator, .{ .shape = @tagName(shape), .orientation = "across" });
+    try values.appendSlice(allocator, &.{
+        .{ .shape = "skillion", .direction = 200 },
+        .{ .shape = "saltbox", .direction = 135 },
+        .{ .shape = "gabled", .direction = 30 },
+    });
+    const offsets = [_][2]f64{ .{ 8192, 0 }, .{ -8192, 0 }, .{ 0, 8192 }, .{ 0, -8192 }, .{ 8192, -8192 }, .{ -8192, 8192 } };
+    // Whole copies: the tile's other features reach its buffer's edges.
+    const none: TileBounds = .no_cuts;
+    var compared: usize = 0;
+    for ([_][]const Point{ &rectangle, &turned, &l_shape, &circle }) |ring| {
+        for (values.items) |v| {
+            const base = try layIn(allocator, &.{ring}, v, none);
+            for (offsets) |d| {
+                const copy = try layIn(allocator, &.{try moved(allocator, ring, d[0], d[1])}, v, none);
+                try testing.expectEqual(base.vertexCount(), copy.vertexCount());
+                try testing.expectEqualSlices(layout.Segment, base.segments.items, copy.segments.items);
+                try testing.expectEqualSlices(u16, base.indices.items, copy.indices.items);
+                for (base.vertices.items, copy.vertices.items) |a, b| {
+                    try testing.expect(@abs(@as(f64, b.x) - d[0] - a.x) <= 0x1p-10);
+                    try testing.expect(@abs(@as(f64, b.y) - d[1] - a.y) <= 0x1p-10);
+                    try testing.expectEqual([5]f32{ a.run, a.n, a.kind, a.gx, a.gy }, [5]f32{ b.run, b.n, b.kind, b.gx, b.gy });
+                    compared += 1;
+                }
+            }
+        }
+    }
+    try testing.expect(compared > 10000);
 }
 
 test "starts a new segment before 65536 vertices" {
@@ -651,5 +736,5 @@ test "starts a new segment before 65536 vertices" {
     for (0..200) |i| try result.addFeature(&.{&circle}, i, .{ .shape = "round" });
     try testing.expect(result.vertexCount() > max_segment_vertices);
     try testing.expect(result.segments.items.len > 1);
-    try checkInvariants(testing.allocator, &result, 8192, .{ .fallback = "round" });
+    try checkInvariants(testing.allocator, &result, .{ .fallback = "round" });
 }

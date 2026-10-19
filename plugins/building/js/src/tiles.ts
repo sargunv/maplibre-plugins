@@ -16,7 +16,7 @@ import {
 
 import type { Point } from "./footprint.ts";
 import type { VectorFeatureLike, VectorLayerLike } from "./gljs.ts";
-import { BuildingLayout, type LayoutValues } from "./layout.ts";
+import { BuildingLayout, type LayoutValues, tileBounds } from "./layout.ts";
 import type { LayoutEvaluator } from "./paint.ts";
 import { EXTENT } from "./spec.ts";
 
@@ -151,15 +151,22 @@ export interface TileLayout {
 
 /**
  * Lays out the polygon features of one source layer of a decoded tile, in
- * source order. A missing layer lays out nothing.
+ * source order. A missing layer lays out nothing. The features are read
+ * first, so the layout knows the bounds of all of them, which locate the
+ * source's cut lines, as the native plugin lays out its tile in
+ * finish_layout.
  */
 export function layoutTile(
   layer: VectorLayerLike | undefined,
   options: ReadOptions,
 ): TileLayout {
   const { geojson, filter, zoom, canonical, layout: values } = options;
-  const layout = new BuildingLayout(EXTENT);
-  const features: PolygonFeature[] = [];
+  const read: {
+    index: number;
+    id: number | string | undefined;
+    rings: Point[][];
+    evaluation: EvaluationFeature;
+  }[] = [];
   const tileID = new FilterTileID(canonical.z, canonical.x, canonical.y);
   for (let i = 0; layer && i < layer.length; i++) {
     const feature = layer.feature(i);
@@ -184,15 +191,23 @@ export function layoutTile(
         : evaluation;
       if (!filter.filter({ zoom }, filtered as never, tileID)) continue;
     }
+    // The id now: a layer may reuse its feature object between reads.
+    const id = presentId(options.stateId(feature));
+    read.push({ index: i, id, rings, evaluation });
+  }
+  const layout = new BuildingLayout(
+    EXTENT,
+    tileBounds(read.map((r) => r.rings)),
+  );
+  const features: PolygonFeature[] = [];
+  for (const { index, id, rings, evaluation } of read) {
     const featureLayout = values.evaluate(zoom, evaluation);
     const before = layout.ranges.length;
     layout.addFeature(rings, features.length, featureLayout);
-    // A footprint only in the tile's buffer draws nothing here, and the
-    // tile that owns it answers queries for it.
+    // A degenerate footprint draws nothing.
     if (layout.ranges.length === before) continue;
-    const id = presentId(options.stateId(feature));
     features.push({
-      index: i,
+      index,
       rings,
       evaluation,
       layout: featureLayout,

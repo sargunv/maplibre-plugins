@@ -17,6 +17,7 @@ import {
   layOut,
   triangles,
 } from "./fixture.ts";
+import { isClipEdge } from "./footprint.ts";
 import {
   BuildingLayout,
   type LayoutValues,
@@ -24,10 +25,13 @@ import {
   type Point,
   ROOF,
   ROOF_UNDERSIDE,
+  type TileBounds,
+  tileBounds,
   type Vertex,
   WALL_BOTTOM,
   WALL_TOP,
 } from "./layout.ts";
+import { ROOF_SHAPES } from "./spec.ts";
 
 const fixturesDir = join(
   dirname(fileURLToPath(import.meta.url)),
@@ -55,17 +59,17 @@ function expectClose(actual: number, expected: number, what: string): void {
     expect.fail(`${what}: ${actual} is not close to ${expected}`);
 }
 
+const toRings = (points: [number, number][][]): Point[][] =>
+  points.map((ring) => ring.map(([x, y]) => ({ x, y })));
+
+/** Lays out one feature as a tile of its own, unless bounds are given. */
 function lay(
   points: [number, number][][],
   values: LayoutValues,
-  extent = 8192,
+  bounds: TileBounds = tileBounds([toRings(points)]),
 ): BuildingLayout {
-  const layout = new BuildingLayout(extent);
-  layout.addFeature(
-    points.map((ring) => ring.map(([x, y]) => ({ x, y }))),
-    0,
-    values,
-  );
+  const layout = new BuildingLayout(8192, bounds);
+  layout.addFeature(toRings(points), 0, values);
   return layout;
 }
 
@@ -79,7 +83,6 @@ const isWall = (v: Vertex): boolean =>
 /** Checks that hold for every layout, whatever its input. */
 function checkInvariants(
   layout: BuildingLayout,
-  extent: number,
   shapeOf: (featureIndex: number) => string,
 ): void {
   const vertices = allVertices(layout);
@@ -196,9 +199,7 @@ function checkInvariants(
   for (const [edge, count] of edges) {
     if (count === 0) continue;
     const [a, b] = edgeEnds.get(edge)!;
-    const onCut =
-      (a.x === b.x && (a.x < 0 || a.x > extent)) ||
-      (a.y === b.y && (a.y < 0 || a.y > extent));
+    const onCut = isClipEdge(a, b, layout.extent, layout.bounds);
     if (!onCut || isWall(a))
       expect.fail(
         `open edge (${a.x}, ${a.y}, n ${a.n}, kind ${a.kind}) → (${b.x}, ${b.y}, n ${b.n})`,
@@ -259,7 +260,7 @@ describe("layout fixtures", () => {
       for (const f of fixture.features as FixtureFeature[])
         for (let k = 0; k < (f.repeat ?? 1); k++)
           shapes.set(f.index + k, f.shape);
-      checkInvariants(layout, fixture.extent, (i) => shapes.get(i) ?? "flat");
+      checkInvariants(layout, (i) => shapes.get(i) ?? "flat");
     });
   }
 });
@@ -329,7 +330,7 @@ describe("roof shapes", () => {
       expect(-v.gy / length).toBeCloseTo(d.y, 6);
     }
     const ns = roof.map((v) => v.n);
-    expect(Math.min(...ns)).toBe(0);
+    expect(Math.min(...ns)).toBeCloseTo(0, 12);
     expect(Math.max(...ns)).toBe(1);
     // Without a direction it falls toward +v, south for this ridge.
     for (const v of roofOf(lay([rectangle], { shape: "skillion" })))
@@ -343,7 +344,8 @@ describe("roof shapes", () => {
     const roof = roofOf(layout);
     for (const v of roof.filter((v) => v.n === 1))
       expect(v.y).toBeCloseTo(1112, 3);
-    for (const v of roof.filter((v) => v.y === 1000)) expect(v.n).toBe(0);
+    for (const v of roof.filter((v) => v.y === 1000))
+      expect(v.n).toBeCloseTo(0, 12);
     for (const v of roof.filter((v) => v.y === 1160))
       expect(v.n).toBeCloseTo(4 / 7, 6);
     expect(roof[0]!.run).toBeCloseTo(112, 4);
@@ -505,46 +507,72 @@ describe("roof shapes", () => {
     }
   });
 
-  it("skips walls on tile cuts and flattens the roof", () => {
-    const layout = lay(
-      [
-        [
-          [-128, 2000],
-          [200, 2000],
-          [200, 2200],
-          [-128, 2200],
-        ],
-      ],
-      { shape: "gabled" },
-    );
+  it("draws a cut copy roofless, without walls on its cuts", () => {
+    // A tile whose features reach x = -128, where the source cut this one.
+    const cut: [number, number][] = [
+      [-128, 2000],
+      [200, 2000],
+      [200, 2200],
+      [-128, 2200],
+    ];
+    const layout = lay([cut], { shape: "gabled" });
     const walls = allVertices(layout).filter(isWall);
     expect(walls.some((v) => v.x === -128 && v.gx === -1)).toBe(false);
     expect(walls).toHaveLength(12);
-    for (const v of roofOf(layout)) expect(v.n).toBe(1);
+    // Walls to the eaves and a lid there, with the piece's own run (half
+    // its 200 short side) for building-roof-angle.
+    for (const v of walls) expect(v.n).toBe(0);
+    const lid = roofOf(layout);
+    expect(lid.length).toBeGreaterThan(0);
+    for (const v of lid)
+      expect([v.n, v.kind, v.gx, v.gy, v.run]).toEqual([0, ROOF, 0, 0, 100]);
+    // Flat shapes and courtyards stay flat, as their whole footprints are.
+    for (const rings of [
+      [cut],
+      [
+        cut,
+        [
+          [0, 2050],
+          [0, 2150],
+          [100, 2150],
+          [100, 2050],
+        ],
+      ] as [number, number][][],
+    ]) {
+      const shape = rings.length === 1 ? "flat" : "gabled";
+      for (const v of allVertices(lay(rings, { shape })).filter(
+        (v) => v.kind !== WALL_BOTTOM,
+      ))
+        expect([v.n, v.run]).toEqual([1, 0]);
+    }
   });
 
-  it("draws a footprint in the one tile that owns it", () => {
-    // The same building seen from the tile west of the edge and the tile
-    // east of it: crossing the edge, it is flat in both.
-    for (const x of [8100, -92]) {
-      const roof = roofOf(
-        lay(
+  it("gives buffer and crossing copies their whole roof", () => {
+    // The tile's features reach x = 8320, beyond these footprints' walls.
+    const bounds = { minX: 0, minY: 0, maxX: 8320, maxY: 8192 };
+    for (const x of [8100, 8200]) {
+      const layout = lay(
+        [
           [
-            [
-              [x, 3000],
-              [x + 200, 3000],
-              [x + 200, 3160],
-              [x, 3160],
-            ],
+            [x, 3000],
+            [x + 200, 3000],
+            [x + 200, 3160],
+            [x, 3160],
           ],
-          { shape: "gabled" },
-        ),
+        ],
+        { shape: "gabled" },
+        bounds,
       );
-      expect(roof.length).toBeGreaterThan(0);
-      for (const v of roof) expect(v.n).toBe(1);
+      const roof = roofOf(layout);
+      expect(Math.max(...roof.map((v) => v.n))).toBe(1);
+      for (const v of roof) expect(v.run).toBe(80);
+      // The east gable wall rises to the ridge.
+      const east = wallTopsOf(layout).filter((v) => v.gx === 1);
+      expect(east.map((v) => v.n)).toContain(1);
     }
-    // Only in the buffer: the tile east of the edge owns it.
-    const skipped = lay(
+    // An axis-aligned wall on the tile's own bounds, outside it, is taken
+    // for a cut: alone in its tile, this copy draws roofless.
+    const alone = lay(
       [
         [
           [8200, 3000],
@@ -555,8 +583,80 @@ describe("roof shapes", () => {
       ],
       { shape: "gabled" },
     );
-    expect(skipped.vertexCount).toBe(0);
-    expect(skipped.ranges).toHaveLength(0);
+    for (const v of roofOf(alone)) expect(v.n).toBe(0);
+  });
+
+  it("builds the same roof for every copy of a footprint", () => {
+    // Copies of one footprint in the neighboring tiles' buffers: moved by
+    // ±extent, each must build the same geometry, moved.
+    const turned = [
+      [3000, 3000],
+      [3260, 3150],
+      [3180, 3289],
+      [2920, 3139],
+    ] as [number, number][];
+    const lShape = [
+      [5000, 1000],
+      [5160, 1000],
+      [5160, 1140],
+      [5360, 1140],
+      [5360, 1300],
+      [5000, 1300],
+    ] as [number, number][];
+    const circle = Array.from({ length: 16 }, (_, i) => [
+      Math.round(6000 + 150 * Math.cos((2 * Math.PI * i) / 16)),
+      Math.round(6000 + 150 * Math.sin((2 * Math.PI * i) / 16)),
+    ]) as [number, number][];
+    const values: LayoutValues[] = [
+      ...ROOF_SHAPES.map((shape) => ({ shape })),
+      ...ROOF_SHAPES.map((shape) => ({ shape, orientation: "across" })),
+      { shape: "skillion", direction: 200 },
+      { shape: "saltbox", direction: 135 },
+      { shape: "gabled", direction: 30 },
+    ];
+    const offsets = [
+      [8192, 0],
+      [-8192, 0],
+      [0, 8192],
+      [0, -8192],
+      [8192, -8192],
+      [-8192, 8192],
+    ];
+    // Whole copies: the tile's other features reach its buffer's edges.
+    const none = tileBounds([]);
+    let compared = 0;
+    for (const ring of [rectangle, turned, lShape, circle]) {
+      for (const v of values) {
+        const base = lay([ring], v, none);
+        for (const [dx, dy] of offsets) {
+          const moved = lay(
+            [ring.map(([x, y]) => [x + dx!, y + dy!] as [number, number])],
+            v,
+            none,
+          );
+          expect(moved.vertexCount).toBe(base.vertexCount);
+          expect(moved.segments).toEqual(base.segments);
+          expect(Array.from(moved.indices())).toEqual(
+            Array.from(base.indices()),
+          );
+          for (let i = 0; i < base.vertexCount; i++) {
+            const a = base.exactVertex(i);
+            const b = moved.exactVertex(i);
+            expect(Math.abs(b.x - dx! - a.x)).toBeLessThanOrEqual(1e-9);
+            expect(Math.abs(b.y - dy! - a.y)).toBeLessThanOrEqual(1e-9);
+            expect([b.run, b.n, b.kind, b.gx, b.gy]).toEqual([
+              a.run,
+              a.n,
+              a.kind,
+              a.gx,
+              a.gy,
+            ]);
+            compared++;
+          }
+        }
+      }
+    }
+    expect(compared).toBeGreaterThan(10000);
   });
 
   it("starts a new segment before 65536 vertices", () => {
@@ -569,6 +669,6 @@ describe("roof shapes", () => {
       layout.addFeature([circle], i, { shape: "round" });
     expect(layout.vertexCount).toBeGreaterThan(MAX_SEGMENT_VERTICES);
     expect(layout.segments.length).toBeGreaterThan(1);
-    checkInvariants(layout, 8192, () => "round");
+    checkInvariants(layout, () => "round");
   });
 });

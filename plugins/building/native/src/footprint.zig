@@ -44,12 +44,63 @@ fn same(a: Point, b: Point) bool {
     return a.x == b.x and a.y == b.y;
 }
 
+/// The bounding box of every point of the features one tile lays out. A
+/// source clips its features to the tile plus a buffer along axis-aligned
+/// lines, and nothing reaches beyond them, so the box's sides outside the
+/// tile square are the only places a cut can lie.
+pub const TileBounds = struct {
+    min_x: f64 = std.math.inf(f64),
+    min_y: f64 = std.math.inf(f64),
+    max_x: f64 = -std.math.inf(f64),
+    max_y: f64 = -std.math.inf(f64),
+
+    /// Bounds with no cut lines: no edge lies on an infinite line.
+    pub const no_cuts: TileBounds = .{};
+
+    /// Grows the bounds to hold a point.
+    pub fn add(self: *TileBounds, p: Point) void {
+        self.min_x = @min(self.min_x, p.x);
+        self.min_y = @min(self.min_y, p.y);
+        self.max_x = @max(self.max_x, p.x);
+        self.max_y = @max(self.max_y, p.y);
+    }
+};
+
 /// Whether the ring edge a→b is an artificial cut of a tile-clipped
-/// polygon: axis-aligned and outside the tile square, as core
-/// fill-extrusion's boundary-edge test.
-pub fn isClipEdge(a: Point, b: Point, extent: f64) bool {
-    return (a.x == b.x and (a.x < 0 or a.x > extent)) or
-        (a.y == b.y and (a.y < 0 or a.y > extent));
+/// polygon: axis-aligned, outside the tile square (core fill-extrusion's
+/// boundary-edge test) and on the side of the tile's bounds that faces away
+/// from the tile, where the source's clip line lies. That last condition
+/// keeps axis-aligned walls in the buffer from counting as cuts, unless one
+/// happens to be the outermost point of the whole tile.
+pub fn isClipEdge(a: Point, b: Point, extent: f64, bounds: TileBounds) bool {
+    return (a.x == b.x and ((a.x < 0 and a.x == bounds.min_x) or (a.x > extent and a.x == bounds.max_x))) or
+        (a.y == b.y and ((a.y < 0 and a.y == bounds.min_y) or (a.y > extent and a.y == bounds.max_y)));
+}
+
+/// Whether any edge of a ring is a cut.
+pub fn hasClipEdge(ring: []const Point, extent: f64, bounds: TileBounds) bool {
+    for (ring, 0..) |a, i| {
+        if (isClipEdge(a, ring[(i + 1) % ring.len], extent, bounds)) return true;
+    }
+    return false;
+}
+
+fn onCutLine(p: Point, extent: f64, bounds: TileBounds) bool {
+    return (p.x < 0 and p.x == bounds.min_x) or (p.x > extent and p.x == bounds.max_x) or
+        (p.y < 0 and p.y == bounds.min_y) or (p.y > extent and p.y == bounds.max_y);
+}
+
+/// Whether a ring as the source gave it repeats a point on a cut line:
+/// where the source clipped away a tip narrower than its grid, both
+/// crossings round to that point and the cut edge has no length. One
+/// closing point is not a repeat.
+pub fn hasCollapsedCut(ring: []const Point, extent: f64, bounds: TileBounds) bool {
+    var n = ring.len;
+    if (n > 1 and same(ring[0], ring[n - 1])) n -= 1;
+    for (ring[0..n], 0..) |p, i| {
+        if (same(p, ring[(i + 1) % n]) and onCutLine(p, extent, bounds)) return true;
+    }
+    return false;
 }
 
 /// Drops repeated points, the closing point, collinear points and spikes,
@@ -57,7 +108,7 @@ pub fn isClipEdge(a: Point, b: Point, extent: f64) bool {
 /// neighbors. The endpoints of clip edges are kept unless both of their
 /// edges are clip edges, so cuts never merge into real walls. Returns an
 /// empty ring when fewer than three points remain.
-pub fn simplifyRing(allocator: Allocator, input: []const Point, extent: f64) Allocator.Error![]Point {
+pub fn simplifyRing(allocator: Allocator, input: []const Point, extent: f64, bounds: TileBounds) Allocator.Error![]Point {
     var ring: std.ArrayList(Point) = .empty;
     errdefer ring.deinit(allocator);
     for (input) |p| {
@@ -74,7 +125,7 @@ pub fn simplifyRing(allocator: Allocator, input: []const Point, extent: f64) All
             const a = ring.items[(i + n - 1) % n];
             const b = ring.items[i];
             const c = ring.items[(i + 1) % n];
-            if (removable(a, b, c, extent)) {
+            if (removable(a, b, c, extent, bounds)) {
                 _ = ring.orderedRemove(i);
                 changed = true;
             } else i += 1;
@@ -84,12 +135,12 @@ pub fn simplifyRing(allocator: Allocator, input: []const Point, extent: f64) All
     return ring.toOwnedSlice(allocator);
 }
 
-fn removable(a: Point, b: Point, c: Point, extent: f64) bool {
+fn removable(a: Point, b: Point, c: Point, extent: f64, bounds: TileBounds) bool {
     if (same(a, b) or same(b, c)) return true;
-    const clip_before = isClipEdge(a, b, extent);
-    const clip_after = isClipEdge(b, c, extent);
+    const clip_before = isClipEdge(a, b, extent, bounds);
+    const clip_after = isClipEdge(b, c, extent, bounds);
     if (clip_before != clip_after) return false;
-    if (clip_before) return isClipEdge(a, c, extent) and cross(a, b, c) == 0;
+    if (clip_before) return isClipEdge(a, c, extent, bounds) and cross(a, b, c) == 0;
     const dx = c.x - a.x;
     const dy = c.y - a.y;
     const length = @sqrt(dx * dx + dy * dy);
@@ -98,43 +149,17 @@ fn removable(a: Point, b: Point, c: Point, extent: f64) bool {
     return @abs(cross(a, c, b)) <= simplify_tolerance * length;
 }
 
-/// Where a footprint lies relative to the tile's own square, [0, extent)²
-/// (half-open, so the squares of neighboring tiles do not overlap):
-///
-/// - inside: entirely in the square. Only this tile draws it with its roof.
-/// - crossing: partly in the square. Every tile that has it draws it with a
-///   flat roof, so the copies in neighboring tiles' buffers agree; a roof
-///   frame would differ wherever one copy is cut and the other is not.
-/// - outside: only in the buffer, so a neighboring tile owns it and this
-///   tile skips it.
-pub const Placement = enum { inside, crossing, outside };
-
-pub fn placement(outer: []const Point, extent: f64) Placement {
-    var min_x = std.math.inf(f64);
-    var min_y = std.math.inf(f64);
-    var max_x = -std.math.inf(f64);
-    var max_y = -std.math.inf(f64);
-    for (outer) |p| {
-        min_x = @min(min_x, p.x);
-        min_y = @min(min_y, p.y);
-        max_x = @max(max_x, p.x);
-        max_y = @max(max_y, p.y);
-    }
-    if (max_x < 0 or max_y < 0 or min_x >= extent or min_y >= extent)
-        return .outside;
-    if (min_x >= 0 and min_y >= 0 and max_x < extent and max_y < extent)
-        return .inside;
-    return .crossing;
-}
-
 /// One polygon of a feature: an exterior ring and its holes.
 pub const Polygon = struct {
     /// Positive area (MVT exterior winding).
     outer: []Point,
     /// Negative area each.
     holes: std.ArrayList([]Point) = .empty,
-    /// Where the exterior lies relative to the tile.
-    placement: Placement,
+    /// Whether the source cut this copy of the footprint at a clip line:
+    /// some ring has a clip edge, or repeats a point on a cut line. An uncut
+    /// copy is the whole footprint, the same in every tile up to a
+    /// translation.
+    cut: bool,
 };
 
 /// Groups a feature's rings into polygons as core's classifyRings does: the
@@ -142,24 +167,26 @@ pub const Polygon = struct {
 /// winding is a hole of the exterior before it. Rings are simplified first
 /// and dropped when they degenerate. Exteriors come out with positive area
 /// and holes with negative area, whatever the input winding.
-pub fn classifyRings(allocator: Allocator, rings: []const []const Point, extent: f64) Allocator.Error![]Polygon {
+pub fn classifyRings(allocator: Allocator, rings: []const []const Point, extent: f64, bounds: TileBounds) Allocator.Error![]Polygon {
     var polygons: std.ArrayList(Polygon) = .empty;
     var exterior_sign: f64 = 0;
     for (rings) |input| {
-        const ring = try simplifyRing(allocator, input, extent);
+        const ring = try simplifyRing(allocator, input, extent, bounds);
         if (ring.len < 3) continue;
         const area2 = signedArea2(ring);
         if (@abs(area2) < 2 * min_ring_area) continue;
         const sign: f64 = if (area2 > 0) 1 else -1;
         if (exterior_sign == 0) exterior_sign = sign;
+        const cut = hasClipEdge(ring, extent, bounds) or hasCollapsedCut(input, extent, bounds);
         if (sign == exterior_sign) {
             if (sign < 0) std.mem.reverse(Point, ring);
-            try polygons.append(allocator, .{ .outer = ring, .placement = placement(ring, extent) });
+            try polygons.append(allocator, .{ .outer = ring, .cut = cut });
         } else {
             if (polygons.items.len == 0) continue;
             const polygon = &polygons.items[polygons.items.len - 1];
             if (sign > 0) std.mem.reverse(Point, ring);
             try polygon.holes.append(allocator, ring);
+            polygon.cut = polygon.cut or cut;
         }
     }
     return polygons.toOwnedSlice(allocator);

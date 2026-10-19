@@ -10,7 +10,7 @@ description = "Run the plugin's Zig unit tests (no native library needed)."
 run = "zig build test"
 
 [tasks.render-test]
-description = "Render the shapes, Prague and lighting scenes offscreen on Metal to /tmp/building-native and check pixels and rendered queries (macOS, needs ffi:build)."
+description = "Render the shapes, Prague and lighting scenes offscreen to /tmp/building-native and check pixels and rendered queries (macOS, needs ffi:build). Runs on the install's backend: MLN_NATIVE_PRESET=macos-arm64-vulkan or macos-arm64-egl for Vulkan or OpenGL ES."
 depends = ["build"]
 run = 'python3 render/render.py "$MLN_NATIVE_INSTALL_DIR"'
 

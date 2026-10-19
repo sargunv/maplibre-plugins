@@ -44,15 +44,107 @@ function same(a: Point, b: Point): boolean {
 }
 
 /**
- * Whether the ring edge a→b is an artificial cut of a tile-clipped
- * polygon: axis-aligned and outside the tile square, as core
- * fill-extrusion's boundary-edge test.
+ * The bounding box of every point of the features one tile lays out. A
+ * source clips its features to the tile plus a buffer along axis-aligned
+ * lines, and nothing reaches beyond them, so the box's sides outside the
+ * tile square are the only places a cut can lie.
  */
-export function isClipEdge(a: Point, b: Point, extent: number): boolean {
+export interface TileBounds {
+  readonly minX: number;
+  readonly minY: number;
+  readonly maxX: number;
+  readonly maxY: number;
+}
+
+/** The bounds of a tile's features, each a list of rings. */
+export function tileBounds(
+  features: Iterable<readonly (readonly Point[])[]>,
+): TileBounds {
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const rings of features) {
+    for (const ring of rings) {
+      for (const p of ring) {
+        minX = Math.min(minX, p.x);
+        minY = Math.min(minY, p.y);
+        maxX = Math.max(maxX, p.x);
+        maxY = Math.max(maxY, p.y);
+      }
+    }
+  }
+  return { minX, minY, maxX, maxY };
+}
+
+/** Bounds with no cut lines: no edge lies on an infinite line. */
+export const NO_CUTS: TileBounds = tileBounds([]);
+
+/**
+ * Whether the ring edge a→b is an artificial cut of a tile-clipped
+ * polygon: axis-aligned, outside the tile square (core fill-extrusion's
+ * boundary-edge test) and on the side of the tile's bounds that faces away
+ * from the tile, where the source's clip line lies. That last condition
+ * keeps axis-aligned walls in the buffer from counting as cuts, unless one
+ * happens to be the outermost point of the whole tile.
+ */
+export function isClipEdge(
+  a: Point,
+  b: Point,
+  extent: number,
+  bounds: TileBounds,
+): boolean {
   return (
-    (a.x === b.x && (a.x < 0 || a.x > extent)) ||
-    (a.y === b.y && (a.y < 0 || a.y > extent))
+    (a.x === b.x &&
+      ((a.x < 0 && a.x === bounds.minX) ||
+        (a.x > extent && a.x === bounds.maxX))) ||
+    (a.y === b.y &&
+      ((a.y < 0 && a.y === bounds.minY) ||
+        (a.y > extent && a.y === bounds.maxY)))
   );
+}
+
+/** Whether any edge of a ring is a cut. */
+export function hasClipEdge(
+  ring: readonly Point[],
+  extent: number,
+  bounds: TileBounds,
+): boolean {
+  for (let i = 0; i < ring.length; i++) {
+    if (isClipEdge(ring[i]!, ring[(i + 1) % ring.length]!, extent, bounds))
+      return true;
+  }
+  return false;
+}
+
+function onCutLine(p: Point, extent: number, bounds: TileBounds): boolean {
+  return (
+    (p.x < 0 && p.x === bounds.minX) ||
+    (p.x > extent && p.x === bounds.maxX) ||
+    (p.y < 0 && p.y === bounds.minY) ||
+    (p.y > extent && p.y === bounds.maxY)
+  );
+}
+
+/**
+ * Whether a ring as the source gave it repeats a point on a cut line: where
+ * the source clipped away a tip narrower than its grid, both crossings
+ * round to that point and the cut edge has no length. One closing point is
+ * not a repeat.
+ */
+export function hasCollapsedCut(
+  ring: readonly Point[],
+  extent: number,
+  bounds: TileBounds,
+): boolean {
+  let n = ring.length;
+  if (n > 1 && same(ring[0]!, ring[n - 1]!)) n--;
+  for (let i = 0; i < n; i++) {
+    const p = ring[i]!;
+    if (same(p, ring[(i + 1) % n]!) && onCutLine(p, extent, bounds))
+      return true;
+  }
+  return false;
 }
 
 /**
@@ -62,7 +154,11 @@ export function isClipEdge(a: Point, b: Point, extent: number): boolean {
  * edges are clip edges, so cuts never merge into real walls. Returns an
  * empty ring when fewer than three points remain.
  */
-export function simplifyRing(input: readonly Point[], extent: number): Point[] {
+export function simplifyRing(
+  input: readonly Point[],
+  extent: number,
+  bounds: TileBounds = NO_CUTS,
+): Point[] {
   const ring: Point[] = [];
   for (const p of input) {
     const last = ring[ring.length - 1];
@@ -79,7 +175,7 @@ export function simplifyRing(input: readonly Point[], extent: number): Point[] {
       const a = ring[(i + n - 1) % n]!;
       const b = ring[i]!;
       const c = ring[(i + 1) % n]!;
-      if (removable(a, b, c, extent)) {
+      if (removable(a, b, c, extent, bounds)) {
         ring.splice(i, 1);
         changed = true;
       } else i++;
@@ -88,12 +184,19 @@ export function simplifyRing(input: readonly Point[], extent: number): Point[] {
   return ring.length >= 3 ? ring : [];
 }
 
-function removable(a: Point, b: Point, c: Point, extent: number): boolean {
+function removable(
+  a: Point,
+  b: Point,
+  c: Point,
+  extent: number,
+  bounds: TileBounds,
+): boolean {
   if (same(a, b) || same(b, c)) return true;
-  const clipBefore = isClipEdge(a, b, extent);
-  const clipAfter = isClipEdge(b, c, extent);
+  const clipBefore = isClipEdge(a, b, extent, bounds);
+  const clipAfter = isClipEdge(b, c, extent, bounds);
   if (clipBefore !== clipAfter) return false;
-  if (clipBefore) return isClipEdge(a, c, extent) && cross(a, b, c) === 0;
+  if (clipBefore)
+    return isClipEdge(a, c, extent, bounds) && cross(a, b, c) === 0;
   const dx = c.x - a.x;
   const dy = c.y - a.y;
   const length = Math.sqrt(dx * dx + dy * dy);
@@ -102,44 +205,18 @@ function removable(a: Point, b: Point, c: Point, extent: number): boolean {
   return Math.abs(cross(a, c, b)) <= SIMPLIFY_TOLERANCE * length;
 }
 
-/**
- * Where a footprint lies relative to the tile's own square, [0, extent)²
- * (half-open, so the squares of neighboring tiles do not overlap):
- *
- * - inside: entirely in the square. Only this tile draws it with its roof.
- * - crossing: partly in the square. Every tile that has it draws it with a
- *   flat roof, so the copies in neighboring tiles' buffers agree; a roof
- *   frame would differ wherever one copy is cut and the other is not.
- * - outside: only in the buffer, so a neighboring tile owns it and this
- *   tile skips it.
- */
-export type Placement = "inside" | "crossing" | "outside";
-
-export function placement(outer: readonly Point[], extent: number): Placement {
-  let minX = Infinity;
-  let minY = Infinity;
-  let maxX = -Infinity;
-  let maxY = -Infinity;
-  for (const p of outer) {
-    minX = Math.min(minX, p.x);
-    minY = Math.min(minY, p.y);
-    maxX = Math.max(maxX, p.x);
-    maxY = Math.max(maxY, p.y);
-  }
-  if (maxX < 0 || maxY < 0 || minX >= extent || minY >= extent)
-    return "outside";
-  if (minX >= 0 && minY >= 0 && maxX < extent && maxY < extent) return "inside";
-  return "crossing";
-}
-
 /** One polygon of a feature: an exterior ring and its holes. */
 export interface Polygon {
   /** Positive area (MVT exterior winding). */
   outer: Point[];
   /** Negative area each. */
   holes: Point[][];
-  /** Where the exterior lies relative to the tile. */
-  placement: Placement;
+  /**
+   * Whether the source cut this copy of the footprint at a clip line: some
+   * ring has a clip edge, or repeats a point on a cut line. An uncut copy
+   * is the whole footprint, the same in every tile up to a translation.
+   */
+  cut: boolean;
 }
 
 /**
@@ -152,28 +229,29 @@ export interface Polygon {
 export function classifyRings(
   rings: readonly (readonly Point[])[],
   extent: number,
+  bounds: TileBounds = NO_CUTS,
 ): Polygon[] {
   const polygons: Polygon[] = [];
   let exteriorSign = 0;
   for (const input of rings) {
-    const ring = simplifyRing(input, extent);
+    const ring = simplifyRing(input, extent, bounds);
     if (ring.length < 3) continue;
     const area2 = signedArea2(ring);
     if (Math.abs(area2) < 2 * MIN_RING_AREA) continue;
     const sign = area2 > 0 ? 1 : -1;
     if (exteriorSign === 0) exteriorSign = sign;
+    const cut =
+      hasClipEdge(ring, extent, bounds) ||
+      hasCollapsedCut(input, extent, bounds);
     if (sign === exteriorSign) {
       if (sign < 0) ring.reverse();
-      polygons.push({
-        outer: ring,
-        holes: [],
-        placement: placement(ring, extent),
-      });
+      polygons.push({ outer: ring, holes: [], cut });
     } else {
       const polygon = polygons[polygons.length - 1];
       if (!polygon) continue;
       if (sign > 0) ring.reverse();
       polygon.holes.push(ring);
+      polygon.cut ||= cut;
     }
   }
   return polygons;

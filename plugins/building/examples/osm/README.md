@@ -167,7 +167,10 @@ so its base is its height and it draws nothing.
   sq_tolerance`), so with the default 0.375 Native draws a round footprint as an
   octagon and drops small parts, in core layers as in this one.
 - `buffer` 256: half a tile, 390 m at zoom 15 and 50° N, more than the largest
-  footprint (250 m). Every building is then whole in every tile it touches. The
-  building layer draws footprints cut by a tile's buffer with flat roofs and no
-  walls along the cut, so a smaller buffer would flatten the roofs of buildings
-  near tile edges.
+  footprint (250 m). Every building is then whole in every tile whose square it
+  reaches. The building layer draws every tile's copy, as core fill-extrusion
+  does, and a copy cut at a tile's buffer roofless, walls to the eaves and no
+  wall along the cut ([Tile copies](../../README.md#tile-copies)); a whole copy
+  covers it. Only a building larger than the buffer is cut in every tile and
+  draws roofless everywhere. Here even `buffer` 64 leaves every sloped roof
+  whole.

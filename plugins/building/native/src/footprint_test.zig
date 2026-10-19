@@ -45,7 +45,7 @@ test "simplifyRing drops repeated, closing, collinear and spike points" {
     const simplified = try simplifyRing(arena.allocator(), ring(&.{
         .{ 0, 0 },    .{ 0, 0 },     .{ 50, 0 },   .{ 100, 0 }, .{ 100, 50 }, .{ 180, 50 },
         .{ 100, 50 }, .{ 100, 100 }, .{ 50, 100 }, .{ 0, 100 }, .{ 0, 0 },
-    }), 8192);
+    }), 8192, .no_cuts);
     try testing.expectEqualSlices(Point, square, simplified);
 }
 
@@ -53,33 +53,75 @@ test "simplifyRing drops jitter within half a unit and keeps larger kinks" {
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();
     const allocator = arena.allocator();
-    try testing.expectEqual(3, (try simplifyRing(allocator, ring(&.{ .{ 0, 0 }, .{ 1000, 0 }, .{ 2000, 1 }, .{ 2000, 1000 } }), 8192)).len);
-    try testing.expectEqual(4, (try simplifyRing(allocator, ring(&.{ .{ 0, 0 }, .{ 1000, 1 }, .{ 2000, 0 }, .{ 2000, 1000 } }), 8192)).len);
+    try testing.expectEqual(3, (try simplifyRing(allocator, ring(&.{ .{ 0, 0 }, .{ 1000, 0 }, .{ 2000, 1 }, .{ 2000, 1000 } }), 8192, .no_cuts)).len);
+    try testing.expectEqual(4, (try simplifyRing(allocator, ring(&.{ .{ 0, 0 }, .{ 1000, 1 }, .{ 2000, 0 }, .{ 2000, 1000 } }), 8192, .no_cuts)).len);
 }
 
 test "simplifyRing never merges a tile cut into a real wall" {
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();
     // (-128, 500) is nearly collinear with its neighbors but ends a cut.
-    const simplified = try simplifyRing(arena.allocator(), ring(&.{
+    const input = ring(&.{
         .{ -128, 100 }, .{ 100, 100 }, .{ 100, 2000 }, .{ -127, 2000 }, .{ -128, 500 },
-    }), 8192);
-    var found = false;
-    for (simplified) |p| found = found or (p.x == -128 and p.y == 500);
-    try testing.expect(found);
+    });
+    var bounds: footprint.TileBounds = .no_cuts;
+    for (input) |p| bounds.add(p);
+    const contains = struct {
+        fn f(points: []const Point) bool {
+            for (points) |p| if (p.x == -128 and p.y == 500) return true;
+            return false;
+        }
+    }.f;
+    try testing.expect(contains(try simplifyRing(arena.allocator(), input, 8192, bounds)));
+    // Without a cut line there, it is jitter on a wall.
+    try testing.expect(!contains(try simplifyRing(arena.allocator(), input, 8192, .no_cuts)));
 }
 
 test "simplifyRing returns nothing for rings that collapse" {
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();
-    try testing.expectEqual(0, (try simplifyRing(arena.allocator(), ring(&.{ .{ 0, 0 }, .{ 10, 0 }, .{ 20, 0 } }), 8192)).len);
+    try testing.expectEqual(0, (try simplifyRing(arena.allocator(), ring(&.{ .{ 0, 0 }, .{ 10, 0 }, .{ 20, 0 } }), 8192, .no_cuts)).len);
 }
 
-test "isClipEdge accepts axis-aligned edges strictly outside the tile" {
-    try testing.expect(isClipEdge(.{ .x = -1, .y = 0 }, .{ .x = -1, .y = 50 }, 8192));
-    try testing.expect(isClipEdge(.{ .x = 0, .y = 8193 }, .{ .x = 50, .y = 8193 }, 8192));
-    try testing.expect(!isClipEdge(.{ .x = 0, .y = 0 }, .{ .x = 0, .y = 50 }, 8192));
-    try testing.expect(!isClipEdge(.{ .x = -1, .y = 0 }, .{ .x = -2, .y = 50 }, 8192));
+fn edge(ax: f64, ay: f64, bx: f64, by: f64) bool {
+    // A tile whose features reach x = -128 and y = 8320.
+    const bounds: footprint.TileBounds = .{ .min_x = -128, .min_y = 100, .max_x = 8000, .max_y = 8320 };
+    return isClipEdge(.{ .x = ax, .y = ay }, .{ .x = bx, .y = by }, 8192, bounds);
+}
+
+test "isClipEdge accepts axis-aligned edges on the tile's bounds outside the tile" {
+    try testing.expect(edge(-128, 200, -128, 300));
+    try testing.expect(edge(0, 8320, 50, 8320));
+    // Inside the tile, on its border, or slanted: never a cut.
+    try testing.expect(!edge(0, 200, 0, 300));
+    try testing.expect(!edge(-128, 200, -127, 300));
+    // Outside the tile but not on its bounds: a real wall in the buffer.
+    try testing.expect(!edge(-100, 200, -100, 300));
+    try testing.expect(!edge(0, 8300, 50, 8300));
+    // On the bounds but inside the tile: the clip line is beyond it.
+    try testing.expect(!edge(8000, 200, 8000, 300));
+    try testing.expect(!edge(0, 100, 50, 100));
+    try testing.expect(!isClipEdge(.{ .x = -1, .y = 0 }, .{ .x = -1, .y = 50 }, 8192, .no_cuts));
+}
+
+test "hasCollapsedCut finds cuts that collapsed to a repeated point" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const bounds: footprint.TileBounds = .{ .min_x = -128, .min_y = 100, .max_x = 8000, .max_y = 8320 };
+    const tip = ring(&.{ .{ -128, 500 }, .{ -128, 500 }, .{ 0, 400 }, .{ 100, 600 } });
+    try testing.expect(footprint.hasCollapsedCut(tip, 8192, bounds));
+    // Closed, and repeated at the wrap.
+    try testing.expect(footprint.hasCollapsedCut(ring(&.{ .{ -128, 500 }, .{ 0, 400 }, .{ 100, 600 }, .{ -128, 500 }, .{ -128, 500 } }), 8192, bounds));
+    // A closing point, or a repeat off the cut lines, is not a cut.
+    try testing.expect(!footprint.hasCollapsedCut(ring(&.{ .{ -128, 500 }, .{ 0, 400 }, .{ 100, 600 }, .{ -128, 500 } }), 8192, bounds));
+    try testing.expect(!footprint.hasCollapsedCut(ring(&.{ .{ 10, 500 }, .{ 10, 500 }, .{ 0, 400 }, .{ 100, 600 } }), 8192, bounds));
+    try testing.expect((try classifyRings(arena.allocator(), &.{tip}, 8192, bounds))[0].cut);
+}
+
+test "TileBounds holds every point it is given" {
+    var bounds: footprint.TileBounds = .no_cuts;
+    for ([_]Point{ .{ .x = 5, .y = 6 }, .{ .x = -3, .y = 9 }, .{ .x = 2, .y = -4 } }) |p| bounds.add(p);
+    try testing.expectEqual(footprint.TileBounds{ .min_x = -3, .min_y = -4, .max_x = 5, .max_y = 9 }, bounds);
 }
 
 test "classifyRings groups holes under the exterior before them and normalizes winding" {
@@ -88,7 +130,7 @@ test "classifyRings groups holes under the exterior before them and normalizes w
     const allocator = arena.allocator();
     const hole = ring(&.{ .{ 20, 20 }, .{ 20, 80 }, .{ 80, 80 }, .{ 80, 20 } });
     const other = ring(&.{ .{ 200, 0 }, .{ 300, 0 }, .{ 300, 100 }, .{ 200, 100 } });
-    const polygons = try classifyRings(allocator, &.{ square, hole, other }, 8192);
+    const polygons = try classifyRings(allocator, &.{ square, hole, other }, 8192, .no_cuts);
     try testing.expectEqual(2, polygons.len);
     try testing.expectEqual(1, polygons[0].holes.items.len);
     try testing.expect(signedArea2(polygons[0].outer) > 0);
@@ -101,32 +143,39 @@ test "classifyRings groups holes under the exterior before them and normalizes w
         std.mem.reverse(Point, copy);
         r.* = copy;
     }
-    const again = try classifyRings(allocator, &reversed, 8192);
+    const again = try classifyRings(allocator, &reversed, 8192, .no_cuts);
     try testing.expectEqual(2, again.len);
     try testing.expectEqual(1, again[0].holes.items.len);
     try testing.expect(signedArea2(again[0].outer) > 0);
     try testing.expect(signedArea2(again[0].holes.items[0]) < 0);
 }
 
-fn placedAt(allocator: std.mem.Allocator, comptime x0: f64, comptime y0: f64, comptime x1: f64, comptime y1: f64) !footprint.Placement {
+const cut_bounds: footprint.TileBounds = .{ .min_x = -128, .min_y = -128, .max_x = 8320, .max_y = 8320 };
+
+fn cutAt(allocator: std.mem.Allocator, comptime x0: f64, comptime y0: f64, comptime x1: f64, comptime y1: f64) !bool {
     const box = ring(&.{ .{ x0, y0 }, .{ x1, y0 }, .{ x1, y1 }, .{ x0, y1 } });
-    return (try classifyRings(allocator, &.{box}, 8192))[0].placement;
+    return (try classifyRings(allocator, &.{box}, 8192, cut_bounds))[0].cut;
 }
 
-test "classifyRings places polygons in, across or outside the tile's square" {
+test "classifyRings marks polygons the source cut" {
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();
     const allocator = arena.allocator();
-    try testing.expectEqual(.crossing, try placedAt(allocator, -64, 0, 100, 100));
-    try testing.expectEqual(.inside, try placedAt(allocator, 0, 0, 100, 100));
-    // Half-open: x = extent belongs to the next tile, x = 0 to this one.
-    try testing.expectEqual(.crossing, try placedAt(allocator, 8000, 0, 8192, 100));
-    try testing.expectEqual(.crossing, try placedAt(allocator, -100, 0, 0, 100));
-    try testing.expectEqual(.outside, try placedAt(allocator, 8192, 0, 8300, 100));
-    try testing.expectEqual(.outside, try placedAt(allocator, -100, -100, -1, -1));
-    // A footprint around the whole tile is not outside it.
-    try testing.expectEqual(.crossing, try placedAt(allocator, -128, -128, 8320, 8320));
-    try testing.expectEqual(.inside, (try classifyRings(allocator, &.{square}, 8192))[0].placement);
+    // The tile's features reach x = -128 and x = 8320.
+    try testing.expect(try cutAt(allocator, -128, 0, 100, 100));
+    try testing.expect(try cutAt(allocator, 8000, 8000, 8320, 8320));
+    try testing.expect(try cutAt(allocator, -128, -128, 8320, 8320));
+    // Crossing the tile's edge or only in its buffer, but whole.
+    try testing.expect(!try cutAt(allocator, -64, 0, 100, 100));
+    try testing.expect(!try cutAt(allocator, -100, -100, -1, -1));
+    try testing.expect(!try cutAt(allocator, 8192, 0, 8300, 100));
+    try testing.expect(!try cutAt(allocator, 0, 0, 100, 100));
+    // A courtyard cannot be cut alone, but a cut exterior marks the polygon.
+    const outer = ring(&.{ .{ -128, 0 }, .{ 300, 0 }, .{ 300, 300 }, .{ -128, 300 } });
+    const hole = ring(&.{ .{ 100, 100 }, .{ 100, 200 }, .{ 200, 200 }, .{ 200, 100 } });
+    const polygon = (try classifyRings(allocator, &.{ outer, hole }, 8192, cut_bounds))[0];
+    try testing.expectEqual(1, polygon.holes.items.len);
+    try testing.expect(polygon.cut);
 }
 
 test "minimumAreaRectangle finds the sides of a rotated rectangle" {

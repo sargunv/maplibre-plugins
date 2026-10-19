@@ -6,11 +6,14 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   classifyRings,
+  hasCollapsedCut,
   isClipEdge,
   minimumAreaRectangle,
+  NO_CUTS,
   type Point,
   signedArea2,
   simplifyRing,
+  tileBounds,
 } from "./footprint.ts";
 import { triangulate } from "./triangulate.ts";
 
@@ -83,17 +86,17 @@ describe("simplifyRing", () => {
 
   it("never merges a tile cut into a real wall", () => {
     // (-128, 500) is nearly collinear with its neighbors but ends a cut.
-    const simplified = simplifyRing(
-      ring([
-        [-128, 100],
-        [100, 100],
-        [100, 2000],
-        [-127, 2000],
-        [-128, 500],
-      ]),
-      8192,
-    );
+    const input = ring([
+      [-128, 100],
+      [100, 100],
+      [100, 2000],
+      [-127, 2000],
+      [-128, 500],
+    ]);
+    const simplified = simplifyRing(input, 8192, tileBounds([[input]]));
     expect(simplified).toContainEqual({ x: -128, y: 500 });
+    // Without a cut line there, it is jitter on a wall.
+    expect(simplifyRing(input, 8192)).not.toContainEqual({ x: -128, y: 500 });
   });
 
   it("returns nothing for rings that collapse", () => {
@@ -111,11 +114,59 @@ describe("simplifyRing", () => {
 });
 
 describe("isClipEdge", () => {
-  it("accepts axis-aligned edges strictly outside the tile", () => {
-    expect(isClipEdge({ x: -1, y: 0 }, { x: -1, y: 50 }, 8192)).toBe(true);
-    expect(isClipEdge({ x: 0, y: 8193 }, { x: 50, y: 8193 }, 8192)).toBe(true);
-    expect(isClipEdge({ x: 0, y: 0 }, { x: 0, y: 50 }, 8192)).toBe(false);
-    expect(isClipEdge({ x: -1, y: 0 }, { x: -2, y: 50 }, 8192)).toBe(false);
+  // A tile whose features reach x = -128 and y = 8320.
+  const bounds = { minX: -128, minY: 100, maxX: 8000, maxY: 8320 };
+
+  it("accepts axis-aligned edges on the tile's bounds outside the tile", () => {
+    const edge = (ax: number, ay: number, bx: number, by: number): boolean =>
+      isClipEdge({ x: ax, y: ay }, { x: bx, y: by }, 8192, bounds);
+    expect(edge(-128, 200, -128, 300)).toBe(true);
+    expect(edge(0, 8320, 50, 8320)).toBe(true);
+    // Inside the tile, on its border, or slanted: never a cut.
+    expect(edge(0, 200, 0, 300)).toBe(false);
+    expect(edge(-128, 200, -127, 300)).toBe(false);
+    // Outside the tile but not on its bounds: a real wall in the buffer.
+    expect(edge(-100, 200, -100, 300)).toBe(false);
+    expect(edge(0, 8300, 50, 8300)).toBe(false);
+    // On the bounds but inside the tile: the clip line is beyond it.
+    expect(edge(8000, 200, 8000, 300)).toBe(false);
+    expect(edge(0, 100, 50, 100)).toBe(false);
+    expect(isClipEdge({ x: -1, y: 0 }, { x: -1, y: 50 }, 8192, NO_CUTS)).toBe(
+      false,
+    );
+  });
+
+  it("finds cuts that collapsed to a repeated point", () => {
+    const bounds = { minX: -128, minY: 100, maxX: 8000, maxY: 8320 };
+    const tip = ring([
+      [-128, 500],
+      [-128, 500],
+      [0, 400],
+      [100, 600],
+    ]);
+    expect(hasCollapsedCut(tip, 8192, bounds)).toBe(true);
+    // Closed, and repeated at the wrap.
+    expect(
+      hasCollapsedCut([...tip.slice(1), tip[0]!, tip[0]!], 8192, bounds),
+    ).toBe(true);
+    // A closing point, or a repeat off the cut lines, is not a cut.
+    expect(hasCollapsedCut([...tip.slice(1), tip[0]!], 8192, bounds)).toBe(
+      false,
+    );
+    const inside = ring([
+      [10, 500],
+      [10, 500],
+      [0, 400],
+      [100, 600],
+    ]);
+    expect(hasCollapsedCut(inside, 8192, bounds)).toBe(false);
+    expect(classifyRings([tip], 8192, bounds)[0]!.cut).toBe(true);
+  });
+
+  it("finds the bounds of every ring of every feature", () => {
+    expect(
+      tileBounds([[ring([[5, 6]]), ring([[-3, 9]])], [ring([[2, -4]])]]),
+    ).toEqual({ minX: -3, minY: -4, maxX: 5, maxY: 9 });
   });
 });
 
@@ -150,8 +201,10 @@ describe("classifyRings", () => {
     expect(signedArea2(reversed[0]!.holes[0]!)).toBeLessThan(0);
   });
 
-  it("places polygons in, across or outside the tile's square", () => {
-    const at = (x0: number, y0: number, x1: number, y1: number): string =>
+  it("marks polygons the source cut", () => {
+    // The tile's features reach x = -128 and x = 8320.
+    const bounds = { minX: -128, minY: -128, maxX: 8320, maxY: 8320 };
+    const cut = (x0: number, y0: number, x1: number, y1: number): boolean =>
       classifyRings(
         [
           ring([
@@ -162,17 +215,37 @@ describe("classifyRings", () => {
           ]),
         ],
         8192,
-      )[0]!.placement;
-    expect(at(-64, 0, 100, 100)).toBe("crossing");
-    expect(at(0, 0, 100, 100)).toBe("inside");
-    // Half-open: x = extent belongs to the next tile, x = 0 to this one.
-    expect(at(8000, 0, 8192, 100)).toBe("crossing");
-    expect(at(-100, 0, 0, 100)).toBe("crossing");
-    expect(at(8192, 0, 8300, 100)).toBe("outside");
-    expect(at(-100, -100, -1, -1)).toBe("outside");
-    // A footprint around the whole tile is not outside it.
-    expect(at(-128, -128, 8320, 8320)).toBe("crossing");
-    expect(classifyRings([square], 8192)[0]!.placement).toBe("inside");
+        bounds,
+      )[0]!.cut;
+    expect(cut(-128, 0, 100, 100)).toBe(true);
+    expect(cut(8000, 8000, 8320, 8320)).toBe(true);
+    expect(cut(-128, -128, 8320, 8320)).toBe(true);
+    // Crossing the tile's edge or only in its buffer, but whole.
+    expect(cut(-64, 0, 100, 100)).toBe(false);
+    expect(cut(-100, -100, -1, -1)).toBe(false);
+    expect(cut(8192, 0, 8300, 100)).toBe(false);
+    expect(cut(0, 0, 100, 100)).toBe(false);
+    // A courtyard cannot be cut alone, but a cut exterior marks the polygon.
+    const polygon = classifyRings(
+      [
+        ring([
+          [-128, 0],
+          [300, 0],
+          [300, 300],
+          [-128, 300],
+        ]),
+        ring([
+          [100, 100],
+          [100, 200],
+          [200, 200],
+          [200, 100],
+        ]),
+      ],
+      8192,
+      bounds,
+    )[0]!;
+    expect(polygon.holes).toHaveLength(1);
+    expect(polygon.cut).toBe(true);
   });
 });
 

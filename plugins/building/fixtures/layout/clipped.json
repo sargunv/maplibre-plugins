@@ -1,5 +1,5 @@
 {
-  "description": "Tile-clipped footprints: edges on axis-aligned lines outside [0, extent] get no walls, and footprints crossing the tile's edge get flat roofs. An edge exactly on x = 0 is not a cut.",
+  "description": "Tile-clipped footprints, laid out as one tile whose features reach x = -128, x = extent + 64 and y = extent + 128: the source's cut lines. A ring edge on one of them, outside the tile, is a cut (so is a point repeated there, where the cut collapsed): it gets no wall, and the copy draws roofless (walls to the eaves and a lid at n = 0, with the piece's own run), or flat when its shape is flat or it has a courtyard. Axis-aligned walls elsewhere, an edge on x = 0 and footprints crossing the tile's edge uncut get their whole roofs.",
   "extent": 8192,
   "features": [
     {
@@ -37,43 +37,100 @@
       "index": 5,
       "rings": [[[0, 3000], [300, 3000], [300, 3160], [0, 3160]]],
       "shape": "gabled"
+    },
+    {
+      "label": "skillion down 200°, cut at x = -128",
+      "index": 6,
+      "rings": [[[-128, 4000], [180, 4000], [180, 4240], [-128, 4240]]],
+      "shape": "skillion",
+      "direction": 200
+    },
+    {
+      "label": "gabled with a courtyard, cut at x = -128",
+      "index": 7,
+      "rings": [
+        [[-128, 4600], [300, 4600], [300, 4900], [-128, 4900]],
+        [[50, 4700], [50, 4800], [150, 4800], [150, 4700]]
+      ],
+      "shape": "gabled"
+    },
+    {
+      "label": "gabled in the west buffer, axis-aligned but not on a cut line",
+      "index": 8,
+      "rings": [[[-100, 2400], [-20, 2400], [-20, 2560], [-100, 2560]]],
+      "shape": "gabled"
+    },
+    {
+      "label": "hipped crossing the east edge, not cut",
+      "index": 9,
+      "rings": [[[8100, 3000], [8240, 3000], [8240, 3160], [8100, 3160]]],
+      "shape": "hipped"
+    },
+    {
+      "label": "hipped cut at x = -128 in two collinear pieces",
+      "index": 10,
+      "rings": [
+        [[-128, 5200], [160, 5200], [160, 5400], [-128, 5400], [-128, 5300]]
+      ],
+      "shape": "hipped"
+    },
+    {
+      "label": "gabled whose tip beyond x = -128 was clipped away, both crossings rounded to one repeated point",
+      "index": 11,
+      "rings": [
+        [
+          [-128, 5700],
+          [-128, 5700],
+          [-60, 5600],
+          [200, 5600],
+          [200, 5800],
+          [-60, 5800]
+        ]
+      ],
+      "shape": "gabled"
     }
   ],
   "expected": {
-    "vertex_count": 106,
-    "index_count": 168,
-    "segments": [[0, 0, 106, 168]],
+    "vertex_count": 261,
+    "index_count": 423,
+    "segments": [[0, 0, 261, 423]],
     "ranges": [
       [0, 0, 16],
       [1, 16, 16],
       [2, 32, 16],
       [3, 48, 16],
       [4, 64, 12],
-      [5, 76, 30]
+      [5, 76, 30],
+      [6, 106, 16],
+      [7, 122, 36],
+      [8, 158, 30],
+      [9, 188, 32],
+      [10, 220, 16],
+      [11, 236, 25]
     ],
     "summaries": [
       {
         "vertices": 16,
         "triangles": 8,
-        "sum_pos": [1232, 33600, 0],
-        "sum_roof": [10, 14, 4, 0],
-        "weighted": 18696.125,
+        "sum_pos": [1232, 33600, 1600],
+        "sum_roof": [0, 14, 4, 0],
+        "weighted": 19539.6875,
         "moment": 2116
       },
       {
         "vertices": 16,
         "triangles": 8,
-        "sum_pos": [1232, 33600, 0],
-        "sum_roof": [10, 14, 4, 0],
-        "weighted": 18696.125,
+        "sum_pos": [1232, 33600, 1600],
+        "sum_roof": [0, 14, 4, 0],
+        "weighted": 19539.6875,
         "moment": 2116
       },
       {
         "vertices": 16,
         "triangles": 8,
-        "sum_pos": [1232, 33600, 0],
-        "sum_roof": [10, 14, 4, 0],
-        "weighted": 18696.125,
+        "sum_pos": [1232, 33600, 1600],
+        "sum_roof": [0, 14, 4, 0],
+        "weighted": 19539.6875,
         "moment": 2116
       },
       {
@@ -87,9 +144,9 @@
       {
         "vertices": 12,
         "triangles": 6,
-        "sum_pos": [96224, 97280, 0],
-        "sum_roof": [8, 12, -4, -4],
-        "weighted": 105101.5,
+        "sum_pos": [96224, 97280, 1920],
+        "sum_roof": [0, 12, -4, -4],
+        "weighted": 106136.166667,
         "moment": 897
       },
       {
@@ -99,6 +156,54 @@
         "sum_roof": [8, 30, 0, 0],
         "weighted": 51168.8104167,
         "moment": 19844
+      },
+      {
+        "vertices": 16,
+        "triangles": 8,
+        "sum_pos": [1032, 65920, 5293.89501953],
+        "sum_roof": [0, 14, 4, 0],
+        "weighted": 38610.8192291,
+        "moment": 2116
+      },
+      {
+        "vertices": 36,
+        "triangles": 22,
+        "sum_pos": [4232, 171000, 0],
+        "sum_roof": [22, 30, 4, 0],
+        "weighted": 90031.2222222,
+        "moment": 38964
+      },
+      {
+        "vertices": 30,
+        "triangles": 18,
+        "sum_pos": [-1800, 74400, 1200],
+        "sum_roof": [8, 30, 0, 0],
+        "weighted": 38299.9125,
+        "moment": 19543
+      },
+      {
+        "vertices": 32,
+        "triangles": 16,
+        "sum_pos": [261440, 98560, 2240],
+        "sum_roof": [8, 40, 0, 0],
+        "weighted": 186848.211607,
+        "moment": 16040
+      },
+      {
+        "vertices": 16,
+        "triangles": 8,
+        "sum_pos": [832, 84800, 1600],
+        "sum_roof": [0, 14, 4, 0],
+        "weighted": 46532.1875,
+        "moment": 2116
+      },
+      {
+        "vertices": 25,
+        "triangles": 13,
+        "sum_pos": [760, 142500, 2500],
+        "sum_roof": [0, 20, -2.61541223526, 0],
+        "weighted": 76096.5410406,
+        "moment": 8867
       }
     ]
   }
