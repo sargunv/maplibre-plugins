@@ -47,6 +47,7 @@ import {
   type Polygon,
   type TileBounds,
 } from "./footprint.ts";
+import { inscribedCircle, roundFootprint } from "./radial.ts";
 import {
   directionVector,
   envelope,
@@ -267,7 +268,7 @@ export class BuildingLayout {
    * that has it. An uncut copy gets its whole roof. A cut copy is roofless:
    * walls up to the eaves and a lid there, which the real roof of an uncut
    * copy in another tile covers wherever both are drawn (it is never below
-   * the eaves). Flat shapes and courtyards stay flat, as their whole
+   * the eaves). Flat shapes and pyramidal courtyards stay flat, as their whole
    * footprint is. Walls on cut edges are skipped, as maplibre-gl-js's
    * fill-extrusion does.
    */
@@ -307,7 +308,11 @@ export class BuildingLayout {
     const model = footprint.cut
       ? cutModel(footprint, shape, orientation, direction)
       : modelFor(footprint, shape, orientation, direction);
-    if (model.type === "radial" && !radialFits(footprint.outer, model.center))
+    if (
+      model.type === "radial" &&
+      !model.base &&
+      !radialFits(footprint.outer, model.center)
+    )
       return this.build(footprint, { type: "flat" }, walls);
     this.build(footprint, model, walls);
   }
@@ -336,7 +341,16 @@ export class BuildingLayout {
       case "planes":
         return this.addPlaneRoof(polygon, model);
       case "radial":
-        return this.addRadialRoof(polygon.outer, model);
+        if (model.base)
+          this.addFlatRoof(
+            {
+              ...polygon,
+              holes: [...polygon.holes, [...model.base].reverse()],
+            },
+            0,
+            run,
+          );
+        return this.addRadialRoof(model.base ?? polygon.outer, model);
       case "skeleton":
         return this.addSkeletonRoof(model);
     }
@@ -863,9 +877,19 @@ function modelFor(
         : { type: "flat" };
     }
   }
-  if (polygon.holes.length > 0 && isRadial(shape)) return { type: "flat" };
+  if (polygon.holes.length > 0 && shape === "pyramidal")
+    return { type: "flat" };
   const frame = frameFor(rect, orientation, direction);
-  return roofModel(shape, rect, frame, polygon.outer, direction);
+  const model = roofModel(shape, rect, frame, polygon.outer, direction);
+  if (model.type !== "radial" || shape === "pyramidal") return model;
+  if (
+    !polygon.holes.length &&
+    roundFootprint(polygon.outer, model.center) &&
+    radialFits(polygon.outer, model.center)
+  )
+    return model;
+  const circle = inscribedCircle(polygon, model.center, rect.halfShort);
+  return circle ? { ...model, ...circle } : { type: "flat" };
 }
 
 /**
@@ -884,7 +908,7 @@ function cutModel(
   if (
     shape === "flat" ||
     shape === "many" ||
-    (polygon.holes.length > 0 && isRadial(shape))
+    (polygon.holes.length > 0 && shape === "pyramidal")
   )
     return { type: "flat" };
   const rect = minimumAreaRectangle(polygon.outer);
@@ -895,10 +919,6 @@ function cutModel(
     type: "roofless",
     run: model.type === "flat" ? rect.halfShort : model.run,
   };
-}
-
-function isRadial(shape: RoofShape): boolean {
-  return ["pyramidal", "cone", "dome", "onion"].includes(shape);
 }
 
 function skeletonHeight(time: number, run: number, mansard: boolean): number {

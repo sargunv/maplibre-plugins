@@ -447,6 +447,50 @@ describe("roof shapes", () => {
     expect(onion.some((v) => v.kind === ROOF_UNDERSIDE)).toBe(true);
   });
 
+  it("places circular roofs above a terrace without covering the courtyard", () => {
+    const hole: [number, number][] = [
+      [1100, 1050],
+      [1100, 1100],
+      [1200, 1100],
+      [1200, 1050],
+    ];
+    for (const shape of ["cone", "dome", "onion"]) {
+      for (const rings of [[rectangle], [rectangle, hole]]) {
+        const result = lay(rings, { shape });
+        const roof = roofOf(result);
+        expect(Math.max(...roof.map((v) => v.n))).toBe(1);
+        expect(roof[0]!.run).toBeGreaterThan(0);
+        expect(roof.some((v) => v.n === 0 && v.gx === 0 && v.gy === 0)).toBe(
+          true,
+        );
+        for (const v of wallTopsOf(result)) expect(v.n).toBe(0);
+        let area = 0;
+        for (const ids of triangles(result)) {
+          const [a, b, c] = ids.map((i) => result.vertex(i)) as [
+            Vertex,
+            Vertex,
+            Vertex,
+          ];
+          if (a.kind < ROOF) continue;
+          area -= ((b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x)) / 2;
+          for (const v of [a, b, c]) {
+            expect(
+              v.x >= 1000 && v.x <= 1300 && v.y >= 1000 && v.y <= 1160,
+            ).toBe(true);
+            if (rings.length > 1)
+              expect(v.x > 1100 && v.x < 1200 && v.y > 1050 && v.y < 1100).toBe(
+                false,
+              );
+          }
+        }
+        expect(area).toBeCloseTo(
+          300 * 160 - (rings.length > 1 ? 100 * 50 : 0),
+          1,
+        );
+      }
+    }
+  });
+
   it("falls back to flat roofs", () => {
     const lShape: [number, number][] = [
       [1000, 1000],
@@ -464,7 +508,6 @@ describe("roof shapes", () => {
       for (const v of wallTopsOf(layout)) expect(v.n).toBe(1);
     };
     flat(lay([lShape], { shape: "pyramidal" }));
-    flat(lay([lShape], { shape: "dome" }));
     flat(lay([rectangle], { shape: "many" }));
     flat(lay([rectangle], { shape: "lean_to" }));
     flat(
@@ -478,7 +521,7 @@ describe("roof shapes", () => {
             [1200, 1050],
           ],
         ],
-        { shape: "dome" },
+        { shape: "pyramidal" },
       ),
     );
   });
@@ -554,7 +597,7 @@ describe("roof shapes", () => {
     expect(lid.length).toBeGreaterThan(0);
     for (const v of lid)
       expect([v.n, v.kind, v.gx, v.gy, v.run]).toEqual([0, ROOF, 0, 0, 100]);
-    // Flat shapes and unsupported radial courtyards stay flat.
+    // Flat shapes and pyramidal courtyards stay flat.
     for (const rings of [
       [cut],
       [
@@ -567,7 +610,11 @@ describe("roof shapes", () => {
         ],
       ] as [number, number][][],
     ]) {
-      const shape = rings.length === 1 ? "flat" : "dome";
+      if (rings.length > 1) {
+        for (const v of allVertices(lay(rings, { shape: "dome" })))
+          expect(v.n).toBe(0);
+      }
+      const shape = rings.length === 1 ? "flat" : "pyramidal";
       for (const v of allVertices(lay(rings, { shape })).filter(
         (v) => v.kind !== WALL_BOTTOM,
       ))
@@ -653,12 +700,28 @@ describe("roof shapes", () => {
     // Whole copies: the tile's other features reach its buffer's edges.
     const none = tileBounds([]);
     let compared = 0;
-    for (const ring of [rectangle, turned, lShape, circle]) {
+    for (const rings of [
+      [rectangle],
+      [turned],
+      [lShape],
+      [circle],
+      [
+        rectangle,
+        [
+          [1100, 1050],
+          [1100, 1100],
+          [1200, 1100],
+          [1200, 1050],
+        ],
+      ],
+    ] as [number, number][][][]) {
       for (const v of values) {
-        const base = lay([ring], v, none);
+        const base = lay(rings, v, none);
         for (const [dx, dy] of offsets) {
           const moved = lay(
-            [ring.map(([x, y]) => [x + dx!, y + dy!] as [number, number])],
+            rings.map((ring) =>
+              ring.map(([x, y]) => [x + dx!, y + dy!] as [number, number]),
+            ),
             v,
             none,
           );

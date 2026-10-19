@@ -73,7 +73,7 @@ const RUN = {
   quadruple_saltbox: 0.3,
 };
 const ROOF_ANGLE = 35;
-const RADIAL = new Set(["pyramidal", "cone", "dome", "onion"]);
+const PYRAMIDAL = new Set(["pyramidal"]);
 
 // Footprints in meters, x east and y north, counterclockwise, centered in
 // the cell: an 18 m x 11 m rectangle (its long side east-west), the same
@@ -104,7 +104,7 @@ const ROUND = Array.from({ length: 24 }, (_, i) => {
 
 /**
  * The rows, north to south. `flat` lists the shapes the layout is expected
- * to draw flat on that footprint (README, "Fallbacks"): radial shapes whose
+ * to draw flat on that footprint (README, "Fallbacks"): pyramids whose
  * center is outside the L's kernel.
  */
 const VARIANTS = [
@@ -134,13 +134,13 @@ const VARIANTS = [
     ring: ROTATED,
     direction: 75,
   },
-  { variant: "along", footprint: "L", ring: L_SHAPE, flat: RADIAL },
+  { variant: "along", footprint: "L", ring: L_SHAPE, flat: PYRAMIDAL },
   {
     variant: "across",
     footprint: "L",
     ring: L_SHAPE,
     orientation: "across",
-    flat: RADIAL,
+    flat: PYRAMIDAL,
   },
   { variant: "along", footprint: "round", ring: ROUND },
   {
@@ -162,7 +162,7 @@ const VARIANTS = [
       [-3, 1],
       [-9, 1],
     ].reverse(),
-    flat: RADIAL,
+    flat: PYRAMIDAL,
   },
   {
     variant: "along",
@@ -177,7 +177,7 @@ const VARIANTS = [
       [-3, 7],
       [-9, 7],
     ],
-    flat: RADIAL,
+    flat: PYRAMIDAL,
   },
   {
     variant: "along",
@@ -191,7 +191,7 @@ const VARIANTS = [
         [4, -2],
       ],
     ],
-    flat: RADIAL,
+    flat: PYRAMIDAL,
   },
 ];
 
