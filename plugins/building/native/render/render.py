@@ -9,7 +9,7 @@ the session: Metal, Vulkan (the macos-arm64-vulkan preset, through Homebrew's
 MoltenVK and vulkan-loader) or OpenGL ES (macos-arm64-egl, through the ANGLE
 that the preset installs).
 
-Renders the shapes grid and the Prague OSM demo at several cameras (pitched,
+Renders the shapes grid and the Bamberg OSM demo at several cameras (pitched,
 rotated, top-down, translucent, translated) and a lighting and depth scene
 beside core fill-extrusion, to PNGs in --out (default /tmp/building-native,
 or /tmp/building-native-<backend> for Vulkan and OpenGL).
@@ -189,8 +189,8 @@ def centroid(feature):
 shape_by_id = {f["id"]: f for f in shapes["features"]}
 osm_by_id = {f["id"]: f for f in osm["features"]}
 shapes_center = (50.0971, 14.4152)
-osm_center = (50.0885, 14.4040)
-cathedral_spire = 462765681  # 99 m onion spire of St. Vitus
+osm_center = (49.8915, 10.8850)
+cathedral_tower = 124650427  # a 72 m pyramidal tower of Bamberg Cathedral
 
 cases = []
 
@@ -348,34 +348,35 @@ case("seam-pitched", style("seam-pitched", seam_sources, [with_paint(seam_layer,
 case("seam-overlap", style("seam", seam_sources, [seam_layer], default_light), (*seam_at(360, 175), 17.6, 330, 65))
 
 osm_style = style("osm", osm_sources, [osm_layer], default_light)
-spire = osm_by_id[cathedral_spire]
+tower = osm_by_id[cathedral_tower]
 case("osm-pitched", osm_style, (*osm_center, 16.5, 0, 60),
-     # The ground point of the 99 m spire of St. Vitus hits it and the parts
+     # The ground point of the cathedral's 72 m tower hits it and the parts
      # whose prisms cover it.
-     queries=[("at", *centroid(spire), 0, {cathedral_spire}),
+     queries=[("at", *centroid(tower), 0, {cathedral_tower}),
               # Known gap (README, "Plugin API gaps"): up the tower the ground
-              # under the cursor lies beyond the footprint's bounding box (9 m
+              # under the cursor lies beyond the footprint's bounding box (13 m
               # here), so Native's broad phase never asks the plugin.
               # Reported, not checked.
-              ("at", *centroid(spire), -50, {cathedral_spire}, "gap"),
-              ("at", *centroid(spire), -120, {cathedral_spire}, "gap"),
-              grid(0.25)])
-case("osm-castle", osm_style, (50.0905, 14.4010, 17.6, 300, 58), queries=[grid(0.28)])
-case("osm-mala-strana", osm_style, (50.0878, 14.4045, 18.0, 30, 55))
-case("osm-top-down", osm_style, (*osm_center, 16.6, 0, 0), queries=[grid(0.06)])
+              ("at", *centroid(tower), -40, {cathedral_tower}, "gap"),
+              ("at", *centroid(tower), -90, {cathedral_tower}, "gap"),
+              grid(0.28)])
+case("osm-domberg", osm_style, (49.8908, 10.8822, 17.6, 300, 58), queries=[grid(0.28)])
+case("osm-inselstadt", osm_style, (49.8925, 10.8880, 18.0, 30, 55))
+case("osm-top-down", osm_style, (*osm_center, 16.6, 0, 0), queries=[grid(0.05)])
 case("osm-opacity", style("osm-opacity", osm_sources, [with_paint(osm_layer, building_opacity=0.7)], default_light),
-     (50.0905, 14.4010, 17.4, 300, 58))
+     (49.8908, 10.8822, 17.4, 300, 58))
 # On the zoom-15 tile corner nearest the demo's center, where buildings cross
 # tile edges: every copy draws its roof, and a translucent layer blends each
-# building once. St. Nicholas' nave (way/421068711) crosses the edge here.
+# building once. The university's 111 m hipped U2 (way/37894022) crosses an edge
+# here.
 osm_corner = tile_corner(*osm_center, 15)
-nave = osm_by_id[421068711]
+university = osm_by_id[37894022]
 case("osm-seam-opaque", osm_style, (*osm_corner, 17.5, 0, 50))
 case("osm-seam-translucent", style("osm-seam-translucent", osm_sources, [with_paint(osm_layer, building_opacity=0.6)], default_light),
      (*osm_corner, 17.5, 0, 50))
 case("osm-seam-top-down", style("osm-seam-top-down", osm_sources, [with_paint(osm_layer, building_opacity=0.6)], default_light),
      (*osm_corner, 17.5, 0, 0))
-case("osm-st-nicholas", osm_style, (*centroid(nave), 18.6, 300, 55), queries=[("at", *centroid(nave), 0, {421068711})])
+case("osm-university", osm_style, (*centroid(university), 18.2, 300, 55), queries=[("at", *centroid(university), 0, {37894022})])
 
 # ---------------------------------------------------------------------------
 # Run.

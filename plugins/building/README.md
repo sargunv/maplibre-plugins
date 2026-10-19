@@ -181,11 +181,12 @@ whose square it reaches. Only a building larger than the buffer can be cut in
 all of them and draw roofless everywhere. The examples load their GeoJSON with
 `maxzoom` 15, `buffer` 256 and `tolerance` 0 (the OSM example's
 [Source options](examples/osm/README.md#source-options)): half a tile, 390 m at
-zoom 15 in Prague. Tiled as maplibre-gl-js does, each of the Prague example's
-738 sloped roofs is whole in every tile whose square it reaches, the 32 that
-cross a zoom-15 tile edge included; the 108 cut copies lie in farther tiles'
-buffers. With `buffer` 64 none draws roofless either. The shapes example is laid
-out so that no tile edge up to zoom 18 crosses a building.
+zoom 15 in Bamberg. Tiled as maplibre-gl-js does, each of the Bamberg example's
+1,318 sloped roofs is whole in every tile whose square it reaches, the 49 that
+cross a zoom-15 tile edge included; the 280 cut copies lie in farther tiles'
+buffers. With `buffer` 64 one of them, a 111 m hall, is cut in a tile it
+crosses, and another tile draws it whole. The shapes example is laid out so that
+no tile edge up to zoom 18 crosses a building.
 
 ### Fallbacks
 
@@ -586,7 +587,7 @@ up:
   candidate tag into that feature and call the source's `setData`. Or draw the
   selected building in a second `building` layer, filtered to its id with a
   constant `building-roof-shape`, and filter it out of the main layer. A
-  highlight is paint, so feature-state can drive it, as the gallery's Prague
+  highlight is paint, so feature-state can drive it, as the gallery's OSM roofs
   page does.
 - **Host.** The native plugin needs a host built with this repo's FFI patches
   (see [Required native patches](#required-native-patches)); a stock MapLibre
@@ -605,9 +606,9 @@ up:
   with `along`, `across`, direction and roof-angle variants. Every tile edge up
   to zoom 18 runs between the buildings, so it draws the same with any GeoJSON
   source options.
-- [`examples/osm/`](examples/osm/README.md): real OSM buildings of Malá Strana
-  and Hradčany with their roof tagging, and a layer with the Simple 3D Buildings
-  rules.
+- [`examples/osm/`](examples/osm/README.md): real OSM buildings of Bamberg's old
+  town with their roof tagging, and a layer with the Simple 3D Buildings rules
+  that colours roofs by whether `roof:shape` is tagged.
 
 ## Native
 
@@ -630,7 +631,7 @@ on the host. Preview it with:
 
 ```bash
 mise run //apps/native-viewer:run building   # the shapes grid, zoom 17, pitch 60
-mise run //apps/native-viewer:building-osm   # OSM buildings of Malá Strana and Hradčany
+mise run //apps/native-viewer:building-osm   # OSM buildings of Bamberg's old town
 ```
 
 The viewer re-applies the layer JSON whenever you save it; a change to a layout
@@ -682,7 +683,7 @@ as the gallery does.
 
 `mise run web` shows two gallery pages: "Buildings" (the shapes grid, with the
 spec-driven controls, the style light, and a core fill-extrusion layer to
-compare) and "OSM roofs (Prague)" (hover highlight and a popup with the roof
+compare) and "OSM roofs (Bamberg)" (hover highlight and a popup with the roof
 tags).
 
 ## Limits and future improvements
@@ -705,18 +706,18 @@ would close them. The ones that limit this layer are under
 3. **Buildings larger than the buffer draw roofless.** A copy the source cut at
    its buffer cannot know its roof and draws roofless, walls to the eaves and a
    lid ([Tile copies](#tile-copies)); a building is cut in every tile only when
-   it is larger than the buffer. No building of the Prague example is, with its
-   buffer of 256 (or even 64), but vector tiles often have small buffers. The
-   web twin's `queryFeatures` still reports the tagged shape for them. Fix:
-   unclipped feature bounds from the host (see the gap below).
+   it is larger than the buffer. No building of the Bamberg example is, with its
+   buffer of 256, but vector tiles often have small buffers. The web twin's
+   `queryFeatures` still reports the tagged shape for them. Fix: unclipped
+   feature bounds from the host (see the gap below).
 4. **Cut copies guess some things.** A roofless lid sits exactly at the eaves
    with `building-roof-height`; with `building-roof-angle` its run, and so its
    eaves, come from the piece, and can stand above the real roof's eaves where a
-   whole copy is drawn too (3 of the Prague example's buildings have
-   `roof:angle`). An axis-aligned wall that is a tile's outermost coordinate is
-   taken for a cut there, so in a sparse tile a lone axis-aligned building
-   across its edge draws roofless. A cut whose crossings a vector tile encoder
-   merged into one point is taken for a whole footprint.
+   whole copy is drawn too (the Bamberg example has no `roof:angle`). An
+   axis-aligned wall that is a tile's outermost coordinate is taken for a cut
+   there, so in a sparse tile a lone axis-aligned building across its edge draws
+   roofless. A cut whose crossings a vector tile encoder merged into one point
+   is taken for a whole footprint.
 5. **Holes flatten roofs.** Footprints with courtyards get flat roofs.
 6. **Building parts are the source's job.** The layer draws every polygon it is
    given. Simple 3D Buildings' rules for `building:part` (drop the outline that
@@ -737,10 +738,10 @@ would close them. The ones that limit this layer are under
    tile units apart, leaving a crack far below a pixel.
 8. **Hit tests.** Natively, tall buildings in pitched views are hard to hit:
    queries miss about half of the drawn points in pitched views of the shapes
-   grid and a fifth to a quarter in Prague. Native orders hits by source order,
-   not depth (see below, and [Hit testing](#hit-testing)). In both twins the
-   prism does not include an onion bulge beyond the footprint and counts the sky
-   above a sloped roof, up to the ridge.
+   grid and a quarter in Bamberg. Native orders hits by source order, not depth
+   (see below, and [Hit testing](#hit-testing)). In both twins the prism does
+   not include an onion bulge beyond the footprint and counts the sky above a
+   sloped roof, up to the ridge.
 9. **Backends.** The render test passes on Metal, Vulkan (MoltenVK) and OpenGL
    ES (ANGLE), all on Apple GPUs; Vulkan and OpenGL drivers elsewhere (Linux,
    Windows, Android) were not run, and `shader-check` compiles their shaders
@@ -794,20 +795,21 @@ this layer:
   plugin do, and the grid finds a building only when the query's ground point is
   in its footprint's bounding box; there the projected prism decides. So the
   roof of a turned rectangle that covers ground in a corner of its box is hit,
-  though its 2D footprint is not, but a query high up St. Vitus' 9 m wide, 99 m
-  spire in a pitched view at zoom 16.5 misses it. The render test's query grids
-  (every 20th pixel's center, 1200 × 800) measure it: Native misses 51% of the
-  drawn points in the shapes example at zoom 17.3 and pitch 60, 50% at 17.6 and
-  55, 13% top down, and 22%, 25% and 4% in Prague (pitch 60 at 16.5, 58 at 17.6,
-  top down). The web twin tests every building and misses none. Padding by the
-  formula above, with the zoom handed in by a test build, brings every grid to
-  0.3% or less, but costs: one 99 m spire pads the Prague search past a whole
-  tile, so a query there takes about 6 ms instead of 0.02 (a full scan takes 8),
-  and the sky above sloped roofs starts to hit (95 of the shapes grid's 1545
-  undrawn points). A host fix: search 3D layers along a camera query geometry,
-  as maplibre-gl-js does (no height or zoom needed, and only buildings between
-  the ground point and the camera are offered), or pass the zoom and tile
-  latitude to `get_query_radius`
+  though its 2D footprint is not, but a query high up one of Bamberg Cathedral's
+  13 m wide, 72 m towers in a pitched view at zoom 16.5 misses it. The render
+  test's query grids (every 20th pixel's center, 1200 × 800) measure it: Native
+  misses 51% of the drawn points in the shapes example at zoom 17.3 and pitch
+  60, 50% at 17.6 and 55, 13% top down, and 25%, 25% and 3% in Bamberg (pitch 60
+  at 16.5, 58 at 17.6, top down). The web twin tests every building and misses
+  none. Padding by the formula above, with the zoom handed in by a test build,
+  brought every grid (the shapes example's and those of the earlier Prague demo)
+  to 0.3% or less, but cost: one 99 m spire in Prague padded the search past a
+  whole tile, so a query there took about 6 ms instead of 0.02 (a full scan took
+  8), and the sky above sloped roofs started to hit (95 of the shapes grid's
+  1545 undrawn points). A host fix: search 3D layers along a camera query
+  geometry, as maplibre-gl-js does (no height or zoom needed, and only buildings
+  between the ground point and the camera are offered), or pass the zoom and
+  tile latitude to `get_query_radius`
   ([the ledger](../../docs/plugin-api-gaps.md#queries)).
 - Draw passes are per layer and all-or-nothing, and the carried host gives an
   `is_3d` layer without passes 2D depth, so the layer always declares its three
@@ -831,11 +833,11 @@ node plugins/building/examples/shapes/generate.mjs   # rewrite and check the sha
 mise run //plugins/building/native:shader-check      # every native shader variant through glslang and Metal
 mise run //plugins/building/native:render-test       # offscreen renders and checks (macOS; Metal, or MLN_NATIVE_PRESET's backend)
 mise run //apps/native-viewer:run building           # the shapes grid in the native viewer
-mise run //apps/native-viewer:building-osm           # the Prague OSM demo in the native viewer
+mise run //apps/native-viewer:building-osm           # the Bamberg OSM demo in the native viewer
 ```
 
 The render test (`native/render/render.py`, after `mise run ffi:build`) draws
-the shapes grid and the Prague demo at pitched, rotated, top-down, translucent,
+the shapes grid and the Bamberg demo at pitched, rotated, top-down, translucent,
 translated and map-anchored-light cameras, and a scene beside core
 fill-extrusion, to `/tmp/building-native/*.png`, and both on a zoom-15 tile
 corner, where every tile draws its copy of the buildings across it. It checks
@@ -863,7 +865,7 @@ MLN_NATIVE_PRESET=macos-arm64-egl mise run //plugins/building/native:render-test
 
 The three backends pass the same checks with the same sampled colors. Their
 frames differ only where coplanar OSM surfaces z-fight (under 0.1% of the pixels
-in the castle views) and in single edge pixels.
+in the cathedral views) and in single edge pixels.
 
 The fixtures in `fixtures/layout/` are written by the TypeScript layout, and the
 Zig twin must reproduce them. Their format and summary formula are documented in
@@ -893,7 +895,7 @@ digits the fixtures record.
 The OSM example's data is © OpenStreetMap contributors, available under the Open
 Database License; its notice is
 [`examples/osm/buildings.geojson.LICENSE.txt`](examples/osm/buildings.geojson.LICENSE.txt).
-Credit it wherever the data is shown, as the gallery's Prague page and the
+Credit it wherever the data is shown, as the gallery's OSM roofs page and the
 `building-osm` viewer task do. The shapes example is synthetic and has no OSM
 data; its coordinates were only checked against OSM for an empty spot.
 

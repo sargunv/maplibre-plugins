@@ -1,12 +1,13 @@
 # OSM buildings example
 
 Real OpenStreetMap buildings with their roof tagging, for the `building` layer:
-Prague's Malá Strana and Hradčany, a 1.4 km by 1.4 km box with the castle, St.
-Vitus Cathedral (about 130 parts, 99 m high), St. Nicholas Church and the
-palaces around them.
+Bamberg's old town, a 1.2 km by 1.2 km box with the cathedral hill (the
+cathedral's four 70 m and 72 m towers, the Old and New Residence), the old town
+hall on the river and the island town's streets of gabled, gambrel and mansard
+roofs.
 
-- `buildings.geojson`: 1,688 features, 859 buildings and 829 building parts,
-  about 0.9 MB. One feature per line, so diffs stay small; dprint does not
+- `buildings.geojson`: 3,091 features, 2,948 buildings and 143 building parts,
+  about 1.2 MB. One feature per line, so diffs stay small; dprint does not
   format `.geojson`.
 - `buildings.geojson.LICENSE.txt`: the ODbL notice. The data is © OpenStreetMap
   contributors. Credit it wherever the data is shown.
@@ -21,7 +22,7 @@ palaces around them.
   installed it also parses every expression with the MapLibre style spec and
   evaluates it on every feature.
 
-A good first view is centered on 14.4040 E, 50.0885 N at zoom 16.5, with pitch
+A good first view is centered on 10.8850 E, 49.8915 N at zoom 16.5, with pitch
 60.
 
 ## Why this area
@@ -29,42 +30,39 @@ A good first view is centered on 14.4040 E, 50.0885 N at zoom 16.5, with pitch
 Candidates were compared with one Overpass tag survey of the buildings and parts
 in 1.2 km to 1.4 km boxes: Bamberg, Český Krumlov, Gdańsk, Goslar, Kraków,
 Lublin, the Moscow Kremlin, Munich, Nördlingen, Olomouc, Prague (four boxes),
-Quedlinburg, Regensburg, Suzdal, Telč, Toruń, Vienna and Wrocław. This box had
-`roof:shape` on 53% of them, second only to the Kremlin (59%), and 16 distinct
-values, tied with Munich for the most: towers and spires, `dome` and `onion`
-church roofs, `mansard` palaces, and many `height`, `roof:height`,
-`roof:direction` and colour tags. Munich and Regensburg have more `gambrel` and
-the saltbox family but almost no `mansard` or `half-hipped`, and fewer heights;
-Bamberg has the most `gambrel` (159) and `mansard` (97) but few heights or
-colours; the Kremlin is mapped in more detail, but almost all of it as parts,
-and with fewer kinds of roof.
+Quedlinburg, Regensburg, Suzdal, Telč, Toruń, Vienna and Wrocław. Bamberg had
+`roof:shape` on 49% of them, with the most `gambrel` and `mansard` roofs of any
+box and two of the saltbox family, on ordinary town houses rather than mostly
+palaces and churches. Prague's Malá Strana (53%, 16 values, many heights and
+colours) was the first demo; the layer no longer reads colour tags, which
+Bamberg barely has, and most buildings here take their heights from
+`building:levels`, as most of OSM does.
 
 `roof:shape` in the output, after outlines with parts are dropped:
 
-| `roof:shape`      | features |
-| ----------------- | -------: |
-| (none)            |      746 |
-| `gabled`          |      227 |
-| `flat`            |      199 |
-| `skillion`        |      175 |
-| `hipped`          |      160 |
-| `pyramidal`       |      108 |
-| `dome`            |       20 |
-| `mansard`         |       17 |
-| `onion`           |       13 |
-| `round`           |        9 |
-| `many`            |        4 |
-| `side_hipped`     |        4 |
-| `half-hipped`     |        3 |
-| `cone`            |        1 |
-| `gambrel`         |        1 |
-| `triple_skillion` |        1 |
+| `roof:shape`        | features |
+| ------------------- | -------: |
+| (none)              |    1,633 |
+| `gabled`            |      797 |
+| `hipped`            |      172 |
+| `gambrel`           |      154 |
+| `flat`              |      120 |
+| `mansard`           |      100 |
+| `skillion`          |       63 |
+| `many`              |       19 |
+| `pyramidal`         |       18 |
+| `half-hipped`       |        9 |
+| `quadruple_saltbox` |        3 |
+| `round`             |        1 |
+| `saltbox`           |        1 |
+| `sawtooth`          |        1 |
 
-Other tags: `building:levels` 899, `roof:material` 597, `roof:colour` 357,
-`roof:height` 356, `height` 349, `name` 234, `building:colour` 182,
-`roof:direction` 174, `roof:levels` 120, `min_height` 112, `building:material`
-76, `roof:orientation` 43, `building:min_level` 8, `roof:angle` 3. `saltbox`,
-`double_saltbox`, `quadruple_saltbox` and `round_gabled` do not occur here.
+Other tags: `building:levels` 2,714, `roof:levels` 475, `roof:orientation` 142,
+`name` 128, `roof:material` 46, `height` 44, `roof:height` 44,
+`building:material` 16, `roof:colour` 10, `building:min_level` 5,
+`building:colour` 4, `min_height` 3, `roof:direction` 3. No feature has
+`roof:angle`. `dome`, `onion`, `cone`, `round_gabled` and `double_saltbox` do
+not occur here; the shapes grid (`../shapes/`) has every shape.
 
 ## How it is made
 
@@ -102,25 +100,22 @@ Every feature has `osm` (`way/123` or `relation/123`) and `kind` (`building` or
 `roof:direction`, `roof:orientation`, `roof:colour`, `building:colour`,
 `roof:material`, `building:material` and `name`.
 
-Style expressions cannot parse units, compass points or colour names, so the
-values of these tags are also normalized, where they parse:
+Style expressions cannot parse units or compass points, so the values of these
+tags are also normalized, where they parse:
 
-| Property             | From                 | Value                                                                   |
-| -------------------- | -------------------- | ----------------------------------------------------------------------- |
-| `height_m`           | `height`             | meters; `12`, `12.5`, `12,5`, `12 m`, `40 ft`, `40'` and `10'6"` parse  |
-| `min_height_m`       | `min_height`         | meters, as `height_m`                                                   |
-| `roof_height_m`      | `roof:height`        | meters, as `height_m`                                                   |
-| `levels`             | `building:levels`    | number                                                                  |
-| `min_level`          | `building:min_level` | number                                                                  |
-| `roof_levels`        | `roof:levels`        | number                                                                  |
-| `roof_angle_deg`     | `roof:angle`         | degrees, above 0 and below 90                                           |
-| `roof_direction_deg` | `roof:direction`     | degrees clockwise from north in [0, 360); compass points `N` to `NNW`   |
-| `roof_orientation`   | `roof:orientation`   | `along` or `across`                                                     |
-| `building_color`     | `building:colour`    | `#rrggbb`, from hex (with or without `#`), CSS names, `sand`, `copper`… |
-| `roof_color`         | `roof:colour`        | `#rrggbb`, as `building_color`                                          |
+| Property             | From                 | Value                                                                  |
+| -------------------- | -------------------- | ---------------------------------------------------------------------- |
+| `height_m`           | `height`             | meters; `12`, `12.5`, `12,5`, `12 m`, `40 ft`, `40'` and `10'6"` parse |
+| `min_height_m`       | `min_height`         | meters, as `height_m`                                                  |
+| `roof_height_m`      | `roof:height`        | meters, as `height_m`                                                  |
+| `levels`             | `building:levels`    | number                                                                 |
+| `min_level`          | `building:min_level` | number                                                                 |
+| `roof_levels`        | `roof:levels`        | number                                                                 |
+| `roof_angle_deg`     | `roof:angle`         | degrees, above 0 and below 90                                          |
+| `roof_direction_deg` | `roof:direction`     | degrees clockwise from north in [0, 360); compass points `N` to `NNW`  |
+| `roof_orientation`   | `roof:orientation`   | `along` or `across`                                                    |
 
-Of the values here, only `building:colour` and `roof:colour` needed it: `sand`
-and `copper` are not CSS colours. Multiple values (`a;b`) use the first.
+Multiple values (`a;b`) use the first.
 
 ## The layer
 
@@ -144,14 +139,10 @@ and `copper` are not CSS colours. Multiple values (`a;b`) use the first.
   and 3 m for other shapes.
 - `building-roof-angle`: `roof:angle`, unless `roof:height` is set. A total
   height from levels then still counts the default roof height above.
-- `building-color` and `building-roof-color`: `building:colour` and
-  `roof:colour`, else by `building:material` and `roof:material` (tiles, copper,
-  slate, stone, metal, glass and others), else by shape: terracotta for pitched
-  roofs, patinated copper for domes, onions and cones, grey for flat roofs, and
-  light grey for buildings without `roof:shape`, so unmapped roofs stand out.
-
-One part, `way/1046842474`, has `building:levels=3` and `building:min_level=3`,
-so its base is its height and it draws nothing.
+- `building-color` and `building-roof-color`: one neutral wall colour, as
+  buildings on maps usually are, and terracotta roofs where `roof:shape` is
+  tagged (`flat` included), grey ones where it is not, so unmapped roofs stand
+  out. The colour and material tags are kept for inspection but not drawn.
 
 ## Source options
 
@@ -167,10 +158,12 @@ so its base is its height and it draws nothing.
   sq_tolerance`), so with the default 0.375 Native draws a round footprint as an
   octagon and drops small parts, in core layers as in this one.
 - `buffer` 256: half a tile, 390 m at zoom 15 and 50° N, more than the largest
-  footprint (250 m). Every building is then whole in every tile whose square it
+  footprint (110 m). Every building is then whole in every tile whose square it
   reaches. The building layer draws every tile's copy, as core fill-extrusion
   does, and a copy cut at a tile's buffer roofless, walls to the eaves and no
   wall along the cut ([Tile copies](../../README.md#tile-copies)); a whole copy
   covers it. Only a building larger than the buffer is cut in every tile and
-  draws roofless everywhere. Here even `buffer` 64 leaves every sloped roof
-  whole.
+  draws roofless everywhere. Tiled as maplibre-gl-js does, all 1,318 sloped
+  roofs here are whole in every tile whose square they reach, the 49 that cross
+  a zoom-15 tile edge included. With `buffer` 64 (98 m) the 111 m university
+  building `way/37894022` is already cut in one of its tiles.

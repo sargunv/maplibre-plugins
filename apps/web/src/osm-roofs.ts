@@ -1,7 +1,7 @@
-// The OSM roofs page: 1,688 real OpenStreetMap buildings and building parts
-// of Prague's Malá Strana and Hradčany (plugins/building/examples/osm) drawn
-// by the building layer with the Simple 3D Buildings rules of its
-// layer.json. Hovering highlights a building through feature-state, and a
+// The OSM roofs page: 3,091 real OpenStreetMap buildings and building parts
+// of Bamberg's old town (plugins/building/examples/osm) drawn by the building
+// layer with the Simple 3D Buildings rules of its layer.json, roofs with a
+// roof:shape tag in one color and untagged ones in another. Hovering highlights a building through feature-state, and a
 // click opens its roof tagging, StreetComplete style: the roof:shape the
 // layer drew and every roof and height tag behind it.
 

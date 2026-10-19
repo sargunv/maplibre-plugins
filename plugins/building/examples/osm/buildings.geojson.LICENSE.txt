@@ -2,7 +2,7 @@ buildings.geojson
 =================
 
 Building outlines, building parts and their roof and 3D tags from
-OpenStreetMap, for Prague: Malá Strana and Hradčany (Czech Republic).
+OpenStreetMap, for Bamberg: old town (Germany).
 
 Data (c) OpenStreetMap contributors.
 https://www.openstreetmap.org/copyright
@@ -15,7 +15,7 @@ Database Contents License: https://opendatacommons.org/licenses/dbcl/1-0/
 
 Source: the OpenStreetMap database as of 2026-10-01T00:00:00Z, fetched from the
 Overpass API with [date:"2026-10-01T00:00:00Z"].
-Selection box (west, south, east, north): 14.3972, 50.08071, 14.4168, 50.09329.
+Selection box (west, south, east, north): 10.87663, 49.88611, 10.89337, 49.89689.
 
 This file is a derived database: generate.mjs selects buildings and parts,
 drops building outlines that have parts (Simple 3D Buildings), keeps a subset

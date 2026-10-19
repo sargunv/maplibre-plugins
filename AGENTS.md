@@ -19,9 +19,9 @@ maplibre-gl-js implementation, plus apps to preview them live.
     "Weather stations" page and the viewer's `weather` task. building has
     `examples/shapes/` (a generated grid of every roof shape, which
     `examples/layer.json` draws: the gallery's "Buildings" page and the viewer's
-    `run building`) and `examples/osm/` (an OSM export of Prague with its
+    `run building`) and `examples/osm/` (an OSM export of Bamberg with its
     generator, checker, Simple 3D Buildings layer, source options and ODbL
-    notice: the "OSM roofs (Prague)" page and the viewer's `building-osm`).
+    notice: the "OSM roofs (Bamberg)" page and the viewer's `building-osm`).
   - `native/` — Zig plugin built as a shared library (`zig build`), unit tests
     (`zig build test`). Builds against `third_party/mln-plugin-api` alone, so it
     needs no native library.
@@ -95,7 +95,7 @@ mise run native-info    # which maplibre-native-c install the native apps use
 mise run //apps/native-viewer:run location-indicator     # windowed live viewer
 mise run //apps/native-viewer:run water -- --before landcover-ice-shelf --zoom 15
 mise run //apps/native-viewer:weather   # animated-icon weather stations (add --layer …/play-once.layer.json to hover-play)
-mise run //apps/native-viewer:building-osm   # building layer on OSM buildings of Prague (run building: the roof shapes grid)
+mise run //apps/native-viewer:building-osm   # building layer on OSM buildings of Bamberg (run building: the roof shapes grid)
 mise run //plugins/building/native:render-test   # offscreen Metal renders to /tmp/building-native, pixel and query checks
 mise run //plugins/location-indicator/native:test
 mise tasks ls --all     # everything

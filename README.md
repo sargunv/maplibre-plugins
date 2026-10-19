@@ -58,9 +58,9 @@ icon until you hover it, which plays it once (a click replays it). The gallery's
 "Weather stations" page shows the same stations on the web.
 
 The building viewer opens on the grid of every roof shape in Prague's Letenské
-sady; `building-osm` opens the building layer on OSM buildings of Malá Strana
-and Hradčany (© OpenStreetMap contributors, ODbL). The gallery's "Buildings" and
-"OSM roofs (Prague)" pages show the same on the web.
+sady; `building-osm` opens the building layer on OSM buildings of Bamberg's old
+town (© OpenStreetMap contributors, ODbL). The gallery's "Buildings" and "OSM
+roofs (Bamberg)" pages show the same on the web.
 
 The particles viewer opens on snow at the viewer's default camera; the
 [particles presets](plugins/particles/README.md#presets) table gives the flags
@@ -78,6 +78,6 @@ BSD 2-Clause; see [LICENSE](LICENSE). Third-party animations keep their own
 licenses, listed in
 [`plugins/animated-icon/animations/LICENSES.md`](plugins/animated-icon/animations/LICENSES.md).
 The weather demo's stations come from Natural Earth, which is public domain;
-their weather is made up. The building plugin's Prague example is OpenStreetMap
+their weather is made up. The building plugin's Bamberg example is OpenStreetMap
 data, © OpenStreetMap contributors, under the Open Database License; see
 [`plugins/building/examples/osm/buildings.geojson.LICENSE.txt`](plugins/building/examples/osm/buildings.geojson.LICENSE.txt).

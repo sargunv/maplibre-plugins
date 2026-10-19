@@ -105,12 +105,12 @@ export const plugins: PluginEntry[] = [
   },
   {
     id: "osm-roofs",
-    title: "OSM roofs (Prague)",
+    title: "OSM roofs (Bamberg)",
     layerType: "building",
     description:
-      "Real OpenStreetMap buildings of Malá Strana and Hradčany with their roof tagging, drawn with the Simple 3D Buildings rules. Hover a building to highlight it and click it to inspect its roof tags.",
+      "Real OpenStreetMap buildings of Bamberg's old town with their roof tagging, drawn with the Simple 3D Buildings rules. Roofs tagged with roof:shape are terracotta, untagged ones grey. Hover a building to highlight it and click it to inspect its roof tags.",
     attribution: osmAttribution,
-    camera: { center: [50.0885, 14.404], zoom: 16.5, bearing: -30, pitch: 60 },
+    camera: { center: [49.8915, 10.885], zoom: 16.5, bearing: -30, pitch: 60 },
     mount: mountOsmRoofs,
   },
 ];

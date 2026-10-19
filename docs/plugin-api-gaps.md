@@ -94,7 +94,7 @@ and no feature id, and does not know which neighboring tiles are drawn.
     copy, as core fill-extrusion does, and whole copies compute the same roof,
     but a copy the source cut at its buffer cannot, and draws roofless (walls to
     the eaves and a lid). So a building larger than the buffer, cut in every
-    tile, draws roofless everywhere; none of the Prague example's 738 sloped
+    tile, draws roofless everywhere; none of the Bamberg example's 1,318 sloped
     roofs does with its buffer of 256
     ([Tile copies](../plugins/building/README.md#tile-copies)). The cut lines
     are inferred from the bounds of the tile's features, as the layout context
@@ -297,16 +297,17 @@ footprint, so it misses these buildings too.
   pixel's center at 1200 × 800, `mise run
   //plugins/building/native:render-test`) miss 51% and 50% of the drawn points
   in the shapes example at pitch 60 and 55 (zoom 17.3 and 17.6), 13% top down,
-  and 22%, 25% and 4% in Prague (pitch 60 at 16.5, 58 at 17.6, top down). The
+  and 25%, 25% and 3% in Bamberg (pitch 60 at 16.5, 58 at 17.6, top down). The
   web twin tests every building and misses none
   ([Plugin API gaps](../plugins/building/README.md#plugin-api-gaps)).
-- Measured with a test build that took the zoom from the environment: padding by
-  the formula with the bucket's maximum `building-height` brings every grid to
-  0.3% or less, so the formula is right, but Prague's 99 m spire pads the search
-  past a whole tile at pitch 60, and a query takes about 6 ms instead of 0.02 (a
-  radius that scans every rendered tile: 8 ms, the same misses). The prism's sky
-  above sloped roofs then starts to hit too (95 of the shapes grid's 1545
-  undrawn points against 1).
+- Measured with a test build that took the zoom from the environment, on the
+  shapes example and the earlier Prague demo: padding by the formula with the
+  bucket's maximum `building-height` brought every grid to 0.3% or less, so the
+  formula is right, but Prague's 99 m spire padded the search past a whole tile
+  at pitch 60, and a query took about 6 ms instead of 0.02 (a radius that scans
+  every rendered tile: 8 ms, the same misses). The prism's sky above sloped
+  roofs then starts to hit too (95 of the shapes grid's 1545 undrawn points
+  against 1).
 - Workaround: none that is both safe and cheap.
 - Host fix: query 3D layers (`is_3d` plugins and core fill-extrusion) along a
   camera query geometry, as gl-js does: the hull of the query's ground points

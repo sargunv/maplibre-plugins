@@ -55,8 +55,6 @@ const PROPERTIES = new Set([
   "roof_angle_deg",
   "roof_direction_deg",
   "roof_orientation",
-  "building_color",
-  "roof_color",
 ]);
 
 function ringArea(ring) {
@@ -127,8 +125,6 @@ for (const f of collection.features ?? []) {
   for (const [key, value] of Object.entries(p)) {
     if (!PROPERTIES.has(key)) fail(`${where}: unexpected property ${key}`);
     tags[key] = (tags[key] ?? 0) + 1;
-    if (key.endsWith("_color") && !/^#[0-9a-f]{6}$/.test(value))
-      fail(`${where}: ${key} ${value}`);
   }
 }
 

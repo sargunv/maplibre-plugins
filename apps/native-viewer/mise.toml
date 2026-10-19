@@ -1,7 +1,7 @@
 # Windowed viewer: loads a native plugin into maplibre-native-c and shows its
 # example layer on a live map. Edit the layer JSON while it runs to tweak
 # paint properties. `weather` opens the animated-icon weather-stations demo,
-# `building-osm` the building layer on real OSM buildings of Prague.
+# `building-osm` the building layer on real OSM buildings of Bamberg.
 # Needs `mise run ffi:build` first. The viewer follows the install's render
 # backend: with MLN_NATIVE_PRESET=macos-arm64-vulkan (or macos-arm64-egl) set
 # for `mise run ffi:build` and these tasks, it runs on Vulkan through MoltenVK
@@ -81,7 +81,7 @@ run = '''
 '''
 
 [tasks.building-osm]
-description = "Open the viewer on the building layer's Prague demo: OSM buildings of Malá Strana and Hradčany with their roof tagging (© OpenStreetMap contributors, ODbL)."
+description = "Open the viewer on the building layer's Bamberg demo: OSM buildings of the old town with their roof tagging (© OpenStreetMap contributors, ODbL)."
 usage = '''
 arg "[args]..." var=#true help="Extra viewer flags, e.g. --zoom 18 --bearing 300"
 '''
@@ -93,6 +93,6 @@ run = '''
   --geojson osm-buildings=../../plugins/building/examples/osm/buildings.geojson \
   --geojson-options osm-buildings=../../plugins/building/examples/osm/source.json \
   --style https://tiles.openfreemap.org/styles/positron --before waterway_line_label \
-  --center 50.0885,14.4040 --zoom 16.5 --bearing 0 --pitch 60 \
+  --center 49.8915,10.8850 --zoom 16.5 --bearing 0 --pitch 60 \
   $usage_args
 '''
