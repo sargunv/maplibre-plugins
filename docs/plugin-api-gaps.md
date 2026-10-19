@@ -65,7 +65,8 @@ carried no property values.
   clamp either; building's layout reads any negative direction as unset, and its
   shader clamps the data-driven roof angle); `query_feature` gets the layout
   values at the camera zoom without a tile id, so zoom-dependent or
-  `within`/`distance` layout expressions can differ from the layout's.
+  `within`/`distance` layout expressions can differ from the layout's
+  (building's hit test reads only paint values, so its hits do not change).
 - Host fix: take `0006` into #4685 or a follow-up.
 
 **Tile id and overscale in the layout context.** The layout context had only the

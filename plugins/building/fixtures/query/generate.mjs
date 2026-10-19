@@ -113,6 +113,9 @@ const round = (m) => m.map((v) => Number(v.toPrecision(12)));
 const topDown = round(camera(4100, 4100, 3000, 0, 20));
 const pitched = round(camera(4100, 4100, 2500, 60, 6));
 const pitchedNear = round(camera(4100, 4100, 1200, 55, 6));
+// Steep and close: a 20 m top shows between the walls, and 2,250 tile units
+// south of the target a 20 m top is behind the camera.
+const steepNear = round(camera(4100, 4100, 1200, 30, 6));
 
 // --- Footprints ----------------------------------------------------------------
 
@@ -276,6 +279,26 @@ const cases = [
     points: grid(3856.25, 3306.25, 4350, 4200, 12.5, 25),
     distinguishes: true,
   },
+  {
+    // A second component whose top is behind the camera must not hide the
+    // first one's top: the hits are the first square's alone (the generator
+    // checks). Some of them only the top covers.
+    name: "multipolygon, one top behind the camera",
+    matrix: steepNear,
+    rings: [
+      ...square,
+      [
+        [4000, 6350],
+        [4200, 6350],
+        [4200, 6480],
+        [4000, 6480],
+      ],
+    ],
+    base: 0,
+    height: 20,
+    points: grid(3906.25, 3806.25, 4300, 4300, 12.5, 12.5),
+    sameAs: square,
+  },
 ];
 
 const out = cases.map((c) => {
@@ -307,6 +330,16 @@ const out = cases.map((c) => {
       const moved = project(c.matrix, x - t[0], y - t[1], 0);
       if ((prismHit(rings, c.base, c.height, c.matrix, moved) !== null) !== hit)
         differs++;
+      if (c.sameAs) {
+        const alone = c.sameAs.map((ring) => ring.map(([x, y]) => ({ x, y })));
+        if (
+          (prismHit(alone, c.base, c.height, c.matrix, q, t) !== null) !==
+          hit
+        )
+          throw new Error(
+            `${c.name}: differs from its first polygon alone at ${x},${y}`,
+          );
+      }
       if (hit) hits++;
       row += hit ? "#" : ".";
     }

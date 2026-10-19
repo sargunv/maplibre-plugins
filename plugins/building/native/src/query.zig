@@ -140,20 +140,37 @@ pub fn intersects(
     const top_points = try allocator.alloc(Point, count);
     defer allocator.free(top_points);
 
-    // The top polygon, all rings, unless part of it is behind the camera.
-    var top_visible = true;
     var offset: usize = 0;
     for (rings, 0..) |ring, r| {
         for (ring, 0..) |p, i| {
             const top = project(m, p.x + shift.x, p.y + shift.y, height);
             points[2 * (offset + i)] = top;
             points[2 * (offset + i) + 1] = project(m, p.x + shift.x, p.y + shift.y, base);
-            if (top) |t| top_points[offset + i] = t else top_visible = false;
+            top_points[offset + i] = top orelse .{ .x = 0, .y = 0 };
         }
         tops[r] = top_points[offset .. offset + ring.len];
         offset += ring.len;
     }
-    if (top_visible and queryIntersects(projected_query, tops)) return true;
+
+    // Each polygon's top (an exterior and the holes after it), unless part
+    // of it is behind the camera: one hidden polygon does not hide the
+    // others.
+    var exterior_sign: f64 = 0;
+    var first: usize = 0;
+    var first_point: usize = 0;
+    offset = 0;
+    for (rings, 0..) |ring, r| {
+        defer offset += ring.len;
+        const area = signedArea2(ring);
+        if (area == 0) continue;
+        if (exterior_sign == 0) exterior_sign = std.math.sign(area);
+        if (std.math.sign(area) != exterior_sign or r == first) continue;
+        // Ring r starts the next polygon: test the one before it.
+        if (topHit(projected_query, tops[first..r], points[2 * first_point .. 2 * offset])) return true;
+        first = r;
+        first_point = offset;
+    }
+    if (topHit(projected_query, tops[first..], points[2 * first_point ..])) return true;
 
     // Every wall quad [topA, topB, baseB, baseA] in front of the camera.
     offset = 0;
@@ -172,6 +189,27 @@ pub fn intersects(
         }
     }
     return false;
+}
+
+/// Whether the query hits one polygon's top, given its projected rings and
+/// its interleaved [top, base] points; false when a top point is hidden.
+fn topHit(query: []const Point, tops: []const []const Point, points: []const ?Point) bool {
+    var i: usize = 0;
+    while (i < points.len) : (i += 2) if (points[i] == null) return false;
+    return queryIntersects(query, tops);
+}
+
+/// Twice the signed area of a ring (a repeated closing point adds nothing).
+fn signedArea2(ring: []const Point) f64 {
+    var area: f64 = 0;
+    if (ring.len < 3) return 0;
+    var j = ring.len - 1;
+    for (ring, 0..) |a, i| {
+        const b = ring[j];
+        area += (b.x - a.x) * (b.y + a.y);
+        j = i;
+    }
+    return area;
 }
 
 // ---------------------------------------------------------------------------

@@ -12,7 +12,7 @@
 // does a hit inside the box, and an onion's bulge beyond the footprint does
 // not.
 
-import type { Point } from "./footprint.ts";
+import { type Point, signedArea2 } from "./footprint.ts";
 
 /** A projected point: x and y in normalized device coordinates, z its depth. */
 export interface Projected {
@@ -45,6 +45,25 @@ function projectRings(
   return rings.map((ring) =>
     ring.map((p) => project(m, p.x + tx, p.y + ty, z)),
   );
+}
+
+/**
+ * A feature's rings grouped into polygons, as classifyRings groups them: the
+ * first ring with an area sets the exterior winding, and every exterior
+ * starts a polygon that the holes after it join. Returns ring indices.
+ */
+export function polygonRings(rings: readonly (readonly Point[])[]): number[][] {
+  const polygons: number[][] = [];
+  let exteriorSign = 0;
+  for (let i = 0; i < rings.length; i++) {
+    const area2 = signedArea2(rings[i]!);
+    if (area2 === 0) continue;
+    const sign = area2 > 0 ? 1 : -1;
+    if (exteriorSign === 0) exteriorSign = sign;
+    if (sign === exteriorSign) polygons.push([i]);
+    else polygons[polygons.length - 1]?.push(i);
+  }
+  return polygons;
 }
 
 /** Even-odd point in polygon over every ring; false when a ring has a hidden vertex. */
@@ -111,7 +130,7 @@ export function intersectionDistance(
  * at 0, the height at least the base), moved by `translate` (tile units), under `matrix` (tile units and
  * meters to clip space, untranslated). Returns the
  * depth of the nearest face it hits, or null. Like maplibre-gl-js it tests
- * the top polygon (holes included) and every wall quad
+ * each polygon's top (holes included) and every wall quad
  * [topA, topB, baseB, baseA]; a face with a vertex behind the camera is
  * never hit.
  */
@@ -130,12 +149,19 @@ export function prismHit(
   const bottom = projectRings(rings, b, matrix, translate);
   const top = projectRings(rings, h, matrix, translate);
   let closest = Infinity;
-  if (insideRings(top, q)) {
-    // Every ring of the top lies in one plane, but the first can be
-    // degenerate (the layout drops it), so take the first with a depth.
-    for (const ring of top) {
-      closest = intersectionDistance(q, ring as Projected[]);
-      if (closest !== Infinity) break;
+  // Each polygon's top on its own: one with a vertex behind the camera
+  // must not hide the others.
+  for (const polygon of polygonRings(rings)) {
+    const tops = polygon.map((i) => top[i]!);
+    if (!insideRings(tops, q)) continue;
+    // Every ring of a top lies in one plane, but one can be degenerate
+    // (the layout drops it), so take the first with a depth.
+    for (const ring of tops) {
+      const distance = intersectionDistance(q, ring as Projected[]);
+      if (distance !== Infinity) {
+        closest = Math.min(closest, distance);
+        break;
+      }
     }
   }
   for (let r = 0; r < top.length; r++) {
