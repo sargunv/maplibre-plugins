@@ -1,0 +1,24 @@
+buildings.geojson
+=================
+
+Building outlines, building parts and their roof and 3D tags from
+OpenStreetMap, for Prague: Malá Strana and Hradčany (Czech Republic).
+
+Data (c) OpenStreetMap contributors.
+https://www.openstreetmap.org/copyright
+
+The data is made available under the Open Database License (ODbL) 1.0:
+https://opendatacommons.org/licenses/odbl/1-0/
+
+Any rights in individual contents of the database are licensed under the
+Database Contents License: https://opendatacommons.org/licenses/dbcl/1-0/
+
+Source: the OpenStreetMap database as of 2026-10-01T00:00:00Z, fetched from the
+Overpass API with [date:"2026-10-01T00:00:00Z"].
+Selection box (west, south, east, north): 14.3972, 50.08071, 14.4168, 50.09329.
+
+This file is a derived database: generate.mjs selects buildings and parts,
+drops building outlines that have parts (Simple 3D Buildings), keeps a subset
+of their tags and adds normalized copies of some of them. Anything you
+publish that uses it must credit "(c) OpenStreetMap contributors" and, if you
+distribute the data itself or a derived database, do so under the ODbL.

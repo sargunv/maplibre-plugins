@@ -1,0 +1,36 @@
+{
+  "id": "building-shapes",
+  "type": "building",
+  "source": "building-shapes",
+  "layout": {
+    "building-roof-shape": ["coalesce", ["get", "roof:shape"], "flat"],
+    "building-roof-orientation": [
+      "coalesce",
+      ["get", "roof:orientation"],
+      "along"
+    ],
+    "building-roof-direction": ["coalesce", ["get", "roof:direction"], -1]
+  },
+  "paint": {
+    "building-height": ["get", "height"],
+    "building-base": ["coalesce", ["get", "min_height"], 0],
+    "building-roof-height": ["coalesce", ["get", "roof:height"], 0],
+    "building-roof-angle": ["coalesce", ["get", "roof:angle"], 0],
+    "building-color": "#e4dccf",
+    "building-roof-color": [
+      "match",
+      ["get", "roof:shape"],
+      ["flat", "many"],
+      "#8e8e8e",
+      ["dome", "onion", "cone"],
+      "#6f9e8b",
+      ["mansard", "gambrel"],
+      "#4f5661",
+      "#b35a3c"
+    ],
+    "building-opacity": 1,
+    "building-translate": [0, 0],
+    "building-translate-anchor": "map",
+    "building-vertical-gradient": true
+  }
+}

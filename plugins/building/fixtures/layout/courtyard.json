@@ -1,0 +1,355 @@
+{
+  "description": "A footprint with a courtyard: every shape falls back to a flat roof, with walls around the courtyard facing into it.",
+  "extent": 8192,
+  "features": [
+    {
+      "label": "flat",
+      "index": 0,
+      "rings": [
+        [[1000, 1000], [1400, 1000], [1400, 1300], [1000, 1300]],
+        [[1120, 1100], [1120, 1200], [1280, 1200], [1280, 1100]]
+      ],
+      "shape": "flat",
+      "orientation": "along",
+      "direction": -1
+    },
+    {
+      "label": "gabled",
+      "index": 1,
+      "rings": [
+        [[1000, 1000], [1400, 1000], [1400, 1300], [1000, 1300]],
+        [[1120, 1100], [1120, 1200], [1280, 1200], [1280, 1100]]
+      ],
+      "shape": "gabled",
+      "orientation": "along",
+      "direction": -1
+    },
+    {
+      "label": "hipped",
+      "index": 2,
+      "rings": [
+        [[1000, 1000], [1400, 1000], [1400, 1300], [1000, 1300]],
+        [[1120, 1100], [1120, 1200], [1280, 1200], [1280, 1100]]
+      ],
+      "shape": "hipped",
+      "orientation": "along",
+      "direction": -1
+    },
+    {
+      "label": "half-hipped",
+      "index": 3,
+      "rings": [
+        [[1000, 1000], [1400, 1000], [1400, 1300], [1000, 1300]],
+        [[1120, 1100], [1120, 1200], [1280, 1200], [1280, 1100]]
+      ],
+      "shape": "half-hipped",
+      "orientation": "along",
+      "direction": -1
+    },
+    {
+      "label": "pyramidal",
+      "index": 4,
+      "rings": [
+        [[1000, 1000], [1400, 1000], [1400, 1300], [1000, 1300]],
+        [[1120, 1100], [1120, 1200], [1280, 1200], [1280, 1100]]
+      ],
+      "shape": "pyramidal",
+      "orientation": "along",
+      "direction": -1
+    },
+    {
+      "label": "skillion",
+      "index": 5,
+      "rings": [
+        [[1000, 1000], [1400, 1000], [1400, 1300], [1000, 1300]],
+        [[1120, 1100], [1120, 1200], [1280, 1200], [1280, 1100]]
+      ],
+      "shape": "skillion",
+      "orientation": "along",
+      "direction": -1
+    },
+    {
+      "label": "gambrel",
+      "index": 6,
+      "rings": [
+        [[1000, 1000], [1400, 1000], [1400, 1300], [1000, 1300]],
+        [[1120, 1100], [1120, 1200], [1280, 1200], [1280, 1100]]
+      ],
+      "shape": "gambrel",
+      "orientation": "along",
+      "direction": -1
+    },
+    {
+      "label": "round",
+      "index": 7,
+      "rings": [
+        [[1000, 1000], [1400, 1000], [1400, 1300], [1000, 1300]],
+        [[1120, 1100], [1120, 1200], [1280, 1200], [1280, 1100]]
+      ],
+      "shape": "round",
+      "orientation": "along",
+      "direction": -1
+    },
+    {
+      "label": "double_saltbox",
+      "index": 8,
+      "rings": [
+        [[1000, 1000], [1400, 1000], [1400, 1300], [1000, 1300]],
+        [[1120, 1100], [1120, 1200], [1280, 1200], [1280, 1100]]
+      ],
+      "shape": "double_saltbox",
+      "orientation": "along",
+      "direction": -1
+    },
+    {
+      "label": "saltbox",
+      "index": 9,
+      "rings": [
+        [[1000, 1000], [1400, 1000], [1400, 1300], [1000, 1300]],
+        [[1120, 1100], [1120, 1200], [1280, 1200], [1280, 1100]]
+      ],
+      "shape": "saltbox",
+      "orientation": "along",
+      "direction": -1
+    },
+    {
+      "label": "mansard",
+      "index": 10,
+      "rings": [
+        [[1000, 1000], [1400, 1000], [1400, 1300], [1000, 1300]],
+        [[1120, 1100], [1120, 1200], [1280, 1200], [1280, 1100]]
+      ],
+      "shape": "mansard",
+      "orientation": "along",
+      "direction": -1
+    },
+    {
+      "label": "dome",
+      "index": 11,
+      "rings": [
+        [[1000, 1000], [1400, 1000], [1400, 1300], [1000, 1300]],
+        [[1120, 1100], [1120, 1200], [1280, 1200], [1280, 1100]]
+      ],
+      "shape": "dome",
+      "orientation": "along",
+      "direction": -1
+    },
+    {
+      "label": "quadruple_saltbox",
+      "index": 12,
+      "rings": [
+        [[1000, 1000], [1400, 1000], [1400, 1300], [1000, 1300]],
+        [[1120, 1100], [1120, 1200], [1280, 1200], [1280, 1100]]
+      ],
+      "shape": "quadruple_saltbox",
+      "orientation": "along",
+      "direction": -1
+    },
+    {
+      "label": "round_gabled",
+      "index": 13,
+      "rings": [
+        [[1000, 1000], [1400, 1000], [1400, 1300], [1000, 1300]],
+        [[1120, 1100], [1120, 1200], [1280, 1200], [1280, 1100]]
+      ],
+      "shape": "round_gabled",
+      "orientation": "along",
+      "direction": -1
+    },
+    {
+      "label": "onion",
+      "index": 14,
+      "rings": [
+        [[1000, 1000], [1400, 1000], [1400, 1300], [1000, 1300]],
+        [[1120, 1100], [1120, 1200], [1280, 1200], [1280, 1100]]
+      ],
+      "shape": "onion",
+      "orientation": "along",
+      "direction": -1
+    },
+    {
+      "label": "cone",
+      "index": 15,
+      "rings": [
+        [[1000, 1000], [1400, 1000], [1400, 1300], [1000, 1300]],
+        [[1120, 1100], [1120, 1200], [1280, 1200], [1280, 1100]]
+      ],
+      "shape": "cone",
+      "orientation": "along",
+      "direction": -1
+    },
+    {
+      "label": "many",
+      "index": 16,
+      "rings": [
+        [[1000, 1000], [1400, 1000], [1400, 1300], [1000, 1300]],
+        [[1120, 1100], [1120, 1200], [1280, 1200], [1280, 1100]]
+      ],
+      "shape": "many",
+      "orientation": "along",
+      "direction": -1
+    }
+  ],
+  "expected": {
+    "vertex_count": 680,
+    "index_count": 1224,
+    "segments": [[0, 0, 680, 1224]],
+    "ranges": [
+      [0, 0, 40],
+      [1, 40, 40],
+      [2, 80, 40],
+      [3, 120, 40],
+      [4, 160, 40],
+      [5, 200, 40],
+      [6, 240, 40],
+      [7, 280, 40],
+      [8, 320, 40],
+      [9, 360, 40],
+      [10, 400, 40],
+      [11, 440, 40],
+      [12, 480, 40],
+      [13, 520, 40],
+      [14, 560, 40],
+      [15, 600, 40],
+      [16, 640, 40]
+    ],
+    "summaries": [
+      {
+        "vertices": 40,
+        "triangles": 24,
+        "sum_pos": [48000, 46000, 0],
+        "sum_roof": [24, 32, 0, 0],
+        "weighted": 48244.9,
+        "moment": 51377
+      },
+      {
+        "vertices": 40,
+        "triangles": 24,
+        "sum_pos": [48000, 46000, 0],
+        "sum_roof": [24, 32, 0, 0],
+        "weighted": 48244.9,
+        "moment": 51377
+      },
+      {
+        "vertices": 40,
+        "triangles": 24,
+        "sum_pos": [48000, 46000, 0],
+        "sum_roof": [24, 32, 0, 0],
+        "weighted": 48244.9,
+        "moment": 51377
+      },
+      {
+        "vertices": 40,
+        "triangles": 24,
+        "sum_pos": [48000, 46000, 0],
+        "sum_roof": [24, 32, 0, 0],
+        "weighted": 48244.9,
+        "moment": 51377
+      },
+      {
+        "vertices": 40,
+        "triangles": 24,
+        "sum_pos": [48000, 46000, 0],
+        "sum_roof": [24, 32, 0, 0],
+        "weighted": 48244.9,
+        "moment": 51377
+      },
+      {
+        "vertices": 40,
+        "triangles": 24,
+        "sum_pos": [48000, 46000, 0],
+        "sum_roof": [24, 32, 0, 0],
+        "weighted": 48244.9,
+        "moment": 51377
+      },
+      {
+        "vertices": 40,
+        "triangles": 24,
+        "sum_pos": [48000, 46000, 0],
+        "sum_roof": [24, 32, 0, 0],
+        "weighted": 48244.9,
+        "moment": 51377
+      },
+      {
+        "vertices": 40,
+        "triangles": 24,
+        "sum_pos": [48000, 46000, 0],
+        "sum_roof": [24, 32, 0, 0],
+        "weighted": 48244.9,
+        "moment": 51377
+      },
+      {
+        "vertices": 40,
+        "triangles": 24,
+        "sum_pos": [48000, 46000, 0],
+        "sum_roof": [24, 32, 0, 0],
+        "weighted": 48244.9,
+        "moment": 51377
+      },
+      {
+        "vertices": 40,
+        "triangles": 24,
+        "sum_pos": [48000, 46000, 0],
+        "sum_roof": [24, 32, 0, 0],
+        "weighted": 48244.9,
+        "moment": 51377
+      },
+      {
+        "vertices": 40,
+        "triangles": 24,
+        "sum_pos": [48000, 46000, 0],
+        "sum_roof": [24, 32, 0, 0],
+        "weighted": 48244.9,
+        "moment": 51377
+      },
+      {
+        "vertices": 40,
+        "triangles": 24,
+        "sum_pos": [48000, 46000, 0],
+        "sum_roof": [24, 32, 0, 0],
+        "weighted": 48244.9,
+        "moment": 51377
+      },
+      {
+        "vertices": 40,
+        "triangles": 24,
+        "sum_pos": [48000, 46000, 0],
+        "sum_roof": [24, 32, 0, 0],
+        "weighted": 48244.9,
+        "moment": 51377
+      },
+      {
+        "vertices": 40,
+        "triangles": 24,
+        "sum_pos": [48000, 46000, 0],
+        "sum_roof": [24, 32, 0, 0],
+        "weighted": 48244.9,
+        "moment": 51377
+      },
+      {
+        "vertices": 40,
+        "triangles": 24,
+        "sum_pos": [48000, 46000, 0],
+        "sum_roof": [24, 32, 0, 0],
+        "weighted": 48244.9,
+        "moment": 51377
+      },
+      {
+        "vertices": 40,
+        "triangles": 24,
+        "sum_pos": [48000, 46000, 0],
+        "sum_roof": [24, 32, 0, 0],
+        "weighted": 48244.9,
+        "moment": 51377
+      },
+      {
+        "vertices": 40,
+        "triangles": 24,
+        "sum_pos": [48000, 46000, 0],
+        "sum_roof": [24, 32, 0, 0],
+        "weighted": 48244.9,
+        "moment": 51377
+      }
+    ]
+  }
+}

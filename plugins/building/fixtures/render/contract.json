@@ -1,0 +1,166 @@
+{
+  "$comment": "The building layer's rendering contract (../../README.md, \"Rendering\"), for the Zig and TypeScript twins to test their shader tables against: the vertex stream, the attributes (id = location), the one uniform block with its std140 member offsets, the host property bindings, and the draw passes with the pass mask evaluate_layer returns. Encodings, types, scopes and cull modes are the plugin ABI's enum names without their MLN_PLUGIN_ prefixes. Hand-written; ../../shaders/*.glsl must agree with it.",
+  "layerType": "building",
+  "shaderId": "building",
+  "is3d": true,
+  "enableNearClippedMatrix": true,
+  "vertexStream": {
+    "streamId": 0,
+    "stride": 28,
+    "attributes": [
+      { "name": "a_pos", "byteOffset": 0 },
+      { "name": "a_roof", "byteOffset": 12 }
+    ]
+  },
+  "attributes": [
+    { "id": 0, "name": "a_pos", "type": "VERTEX_FLOAT_X3" },
+    { "id": 1, "name": "a_roof", "type": "VERTEX_FLOAT_X4" },
+    { "id": 2, "name": "a_height", "type": "VERTEX_FLOAT_X2" },
+    { "id": 3, "name": "a_base", "type": "VERTEX_FLOAT_X2" },
+    { "id": 4, "name": "a_roof_height", "type": "VERTEX_FLOAT_X2" },
+    { "id": 5, "name": "a_roof_angle", "type": "VERTEX_FLOAT_X2" },
+    { "id": 6, "name": "a_color_min", "type": "VERTEX_UINT8_X4_NORMALIZED" },
+    { "id": 7, "name": "a_color_max", "type": "VERTEX_UINT8_X4_NORMALIZED" },
+    {
+      "id": 8,
+      "name": "a_roof_color_min",
+      "type": "VERTEX_UINT8_X4_NORMALIZED"
+    },
+    {
+      "id": 9,
+      "name": "a_roof_color_max",
+      "type": "VERTEX_UINT8_X4_NORMALIZED"
+    },
+    { "id": 10, "name": "a_opacity", "type": "VERTEX_FLOAT_X2" },
+    { "id": 11, "name": "a_vertical_gradient", "type": "VERTEX_FLOAT_X2" }
+  ],
+  "uniformBlock": {
+    "id": 0,
+    "name": "BuildingDrawableUBO",
+    "byteSize": 192,
+    "scope": "UNIFORM_DRAWABLE",
+    "stages": ["SHADER_STAGE_VERTEX"],
+    "members": [
+      { "name": "tile_matrix", "type": "float4x4", "offset": 0 },
+      { "name": "color", "type": "float4", "offset": 64 },
+      { "name": "roof_color", "type": "float4", "offset": 80 },
+      { "name": "light_color", "type": "float4", "offset": 96 },
+      { "name": "light_position", "type": "float4", "offset": 112 },
+      { "name": "interpolation0", "type": "float4", "offset": 128 },
+      { "name": "interpolation1", "type": "float4", "offset": 144 },
+      { "name": "height", "type": "float", "offset": 160 },
+      { "name": "base", "type": "float", "offset": 164 },
+      { "name": "roof_height", "type": "float", "offset": 168 },
+      { "name": "roof_angle", "type": "float", "offset": 172 },
+      { "name": "opacity", "type": "float", "offset": 176 },
+      { "name": "vertical_gradient", "type": "float", "offset": 180 },
+      { "name": "meters_per_tile_unit", "type": "float", "offset": 184 },
+      { "name": "pad0", "type": "float", "offset": 188 }
+    ]
+  },
+  "bindings": [
+    {
+      "property": "building-height",
+      "encoding": "PROPERTY_ENCODING_FLOAT",
+      "uniformOffset": 160,
+      "minimumAttribute": 2,
+      "maximumAttribute": 2,
+      "interpolationOffset": 128
+    },
+    {
+      "property": "building-base",
+      "encoding": "PROPERTY_ENCODING_FLOAT",
+      "uniformOffset": 164,
+      "minimumAttribute": 3,
+      "maximumAttribute": 3,
+      "interpolationOffset": 132
+    },
+    {
+      "property": "building-roof-height",
+      "encoding": "PROPERTY_ENCODING_FLOAT",
+      "uniformOffset": 168,
+      "minimumAttribute": 4,
+      "maximumAttribute": 4,
+      "interpolationOffset": 136
+    },
+    {
+      "property": "building-roof-angle",
+      "encoding": "PROPERTY_ENCODING_FLOAT",
+      "uniformOffset": 172,
+      "minimumAttribute": 5,
+      "maximumAttribute": 5,
+      "interpolationOffset": 140
+    },
+    {
+      "property": "building-color",
+      "encoding": "PROPERTY_ENCODING_COLOR_RGBA8",
+      "uniformOffset": 64,
+      "minimumAttribute": 6,
+      "maximumAttribute": 7,
+      "interpolationOffset": 144
+    },
+    {
+      "property": "building-roof-color",
+      "encoding": "PROPERTY_ENCODING_COLOR_RGBA8",
+      "uniformOffset": 80,
+      "minimumAttribute": 8,
+      "maximumAttribute": 9,
+      "interpolationOffset": 148
+    },
+    {
+      "property": "building-opacity",
+      "encoding": "PROPERTY_ENCODING_FLOAT",
+      "uniformOffset": 176,
+      "minimumAttribute": 10,
+      "maximumAttribute": 10,
+      "interpolationOffset": 152
+    },
+    {
+      "property": "building-vertical-gradient",
+      "encoding": "PROPERTY_ENCODING_BOOLEAN_FLOAT",
+      "uniformOffset": 180,
+      "minimumAttribute": 11,
+      "maximumAttribute": 11,
+      "interpolationOffset": 156
+    }
+  ],
+  "drawPasses": [
+    {
+      "name": "opaque",
+      "depthTest": true,
+      "depthWrite": true,
+      "colorWrite": true,
+      "blend": true,
+      "stencilDedup": false,
+      "cull": "CULL_BACK_CCW"
+    },
+    {
+      "name": "depth",
+      "depthTest": true,
+      "depthWrite": true,
+      "colorWrite": false,
+      "blend": false,
+      "stencilDedup": false,
+      "cull": "CULL_BACK_CCW"
+    },
+    {
+      "name": "translucent",
+      "depthTest": true,
+      "depthWrite": true,
+      "colorWrite": true,
+      "blend": true,
+      "stencilDedup": true,
+      "cull": "CULL_BACK_CCW"
+    }
+  ],
+  "enabledPasses": [
+    { "opacity": 0, "mask": 0 },
+    { "opacity": 0.5, "mask": 6 },
+    { "opacity": 0.999, "mask": 6 },
+    { "opacity": 1, "mask": 1 }
+  ],
+  "lighting": {
+    "earthRadius": { "native": 6378137, "web": 6371008.8 },
+    "tileExtent": 8192
+  }
+}

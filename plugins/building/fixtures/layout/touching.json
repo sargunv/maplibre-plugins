@@ -1,0 +1,174 @@
+{
+  "description": "Rings touching at a point: a courtyard touching the exterior's corner, two courtyards touching at a corner, and one ring pinched at a vertex. Ears never span the touching point, so courtyards stay open.",
+  "extent": 8192,
+  "features": [
+    {
+      "label": "flat: courtyard touching the exterior's corner",
+      "index": 0,
+      "rings": [
+        [[1000, 1000], [1400, 1000], [1400, 1300], [1000, 1300]],
+        [[1000, 1000], [1050, 1100], [1100, 1050]]
+      ],
+      "shape": "flat"
+    },
+    {
+      "label": "gabled: courtyard touching the exterior's corner",
+      "index": 1,
+      "rings": [
+        [[1000, 1000], [1400, 1000], [1400, 1300], [1000, 1300]],
+        [[1000, 1000], [1050, 1100], [1100, 1050]]
+      ],
+      "shape": "gabled"
+    },
+    {
+      "label": "two courtyards touching at a corner",
+      "index": 2,
+      "rings": [
+        [[2000, 1000], [2400, 1000], [2400, 1300], [2000, 1300]],
+        [[2050, 1050], [2050, 1150], [2150, 1150], [2150, 1050]],
+        [[2150, 1150], [2150, 1250], [2250, 1250], [2250, 1150]]
+      ],
+      "shape": "flat"
+    },
+    {
+      "label": "flat: two squares as one ring, pinched at a vertex",
+      "index": 3,
+      "rings": [
+        [
+          [3000, 1000],
+          [3100, 1000],
+          [3100, 1100],
+          [3200, 1100],
+          [3200, 1200],
+          [3100, 1200],
+          [3100, 1100],
+          [3000, 1100]
+        ]
+      ],
+      "shape": "flat"
+    },
+    {
+      "label": "gabled: two squares as one ring, pinched at a vertex",
+      "index": 4,
+      "rings": [
+        [
+          [3000, 1000],
+          [3100, 1000],
+          [3100, 1100],
+          [3200, 1100],
+          [3200, 1200],
+          [3100, 1200],
+          [3100, 1100],
+          [3000, 1100]
+        ]
+      ],
+      "shape": "gabled"
+    },
+    {
+      "label": "hipped: two squares as one ring, pinched at a vertex",
+      "index": 5,
+      "rings": [
+        [
+          [3000, 1000],
+          [3100, 1000],
+          [3100, 1100],
+          [3200, 1100],
+          [3200, 1200],
+          [3100, 1200],
+          [3100, 1100],
+          [3000, 1100]
+        ]
+      ],
+      "shape": "hipped"
+    },
+    {
+      "label": "pyramidal: two squares as one ring, pinched at a vertex",
+      "index": 6,
+      "rings": [
+        [
+          [3000, 1000],
+          [3100, 1000],
+          [3100, 1100],
+          [3200, 1100],
+          [3200, 1200],
+          [3100, 1200],
+          [3100, 1100],
+          [3000, 1100]
+        ]
+      ],
+      "shape": "pyramidal"
+    }
+  ],
+  "expected": {
+    "vertex_count": 291,
+    "index_count": 468,
+    "segments": [[0, 0, 291, 468]],
+    "ranges": [
+      [0, 0, 34],
+      [1, 34, 34],
+      [2, 68, 59],
+      [3, 127, 39],
+      [4, 166, 40],
+      [5, 206, 46],
+      [6, 252, 39]
+    ],
+    "summaries": [
+      {
+        "vertices": 34,
+        "triangles": 19,
+        "sum_pos": [38750, 37750, 0],
+        "sum_roof": [20, 26, -1.03957271576, -1.03957271576],
+        "weighted": 38785.4182126,
+        "moment": 26798
+      },
+      {
+        "vertices": 34,
+        "triangles": 19,
+        "sum_pos": [38750, 37750, 0],
+        "sum_roof": [20, 26, -1.03957271576, -1.03957271576],
+        "weighted": 38785.4182126,
+        "moment": 26798
+      },
+      {
+        "vertices": 59,
+        "triangles": 36,
+        "sum_pos": [127850, 67850, 0],
+        "sum_roof": [35, 46, 0, 0],
+        "weighted": 99825.5254237,
+        "moment": 171597
+      },
+      {
+        "vertices": 39,
+        "triangles": 20,
+        "sum_pos": [120900, 42900, 0],
+        "sum_roof": [23, 30, 0, 0],
+        "weighted": 84074.7692308,
+        "moment": 32314
+      },
+      {
+        "vertices": 40,
+        "triangles": 20,
+        "sum_pos": [124000, 44000, 4000],
+        "sum_roof": [12, 32, 0, 0],
+        "weighted": 88149.104,
+        "moment": 32548
+      },
+      {
+        "vertices": 46,
+        "triangles": 22,
+        "sum_pos": [142500, 50500, 4600],
+        "sum_roof": [9, 44, 0.00999999977648, 0.00999999977648],
+        "weighted": 100879.489783,
+        "moment": 44251
+      },
+      {
+        "vertices": 39,
+        "triangles": 20,
+        "sum_pos": [120900, 42900, 0],
+        "sum_roof": [23, 30, 0, 0],
+        "weighted": 84074.7692308,
+        "moment": 32314
+      }
+    ]
+  }
+}

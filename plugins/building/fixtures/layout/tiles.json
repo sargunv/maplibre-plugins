@@ -1,0 +1,96 @@
+{
+  "description": "Footprints near the tile's edge. The tile owns [0, extent)²: a footprint only in the buffer is skipped (a neighboring tile draws it), one crossing the edge gets a flat roof whether or not it is cut, and one inside, even touching x = 0, gets its roof.",
+  "extent": 8192,
+  "features": [
+    {
+      "label": "only in the buffer, east",
+      "index": 0,
+      "rings": [[[8200, 3000], [8300, 3000], [8300, 3160], [8200, 3160]]],
+      "shape": "gabled"
+    },
+    {
+      "label": "only in the buffer, north-west",
+      "index": 1,
+      "rings": [[[-120, -100], [-20, -100], [-20, -10], [-120, -10]]],
+      "shape": "gabled"
+    },
+    {
+      "label": "crossing the east edge, not cut",
+      "index": 2,
+      "rings": [[[8100, 3000], [8300, 3000], [8300, 3160], [8100, 3160]]],
+      "shape": "gabled"
+    },
+    {
+      "label": "ending on x = extent",
+      "index": 3,
+      "rings": [[[7900, 4000], [8192, 4000], [8192, 4160], [7900, 4160]]],
+      "shape": "gabled"
+    },
+    {
+      "label": "starting on x = 0",
+      "index": 4,
+      "rings": [[[0, 4000], [300, 4000], [300, 4160], [0, 4160]]],
+      "shape": "gabled"
+    },
+    {
+      "label": "starting on y = 0",
+      "index": 5,
+      "rings": [[[3000, 0], [3300, 0], [3300, 160], [3000, 160]]],
+      "shape": "gabled"
+    },
+    {
+      "label": "ending on y = extent",
+      "index": 6,
+      "rings": [[[3000, 8032], [3300, 8032], [3300, 8192], [3000, 8192]]],
+      "shape": "gabled"
+    }
+  ],
+  "expected": {
+    "vertex_count": 116,
+    "index_count": 192,
+    "segments": [[0, 0, 116, 192]],
+    "ranges": [[2, 0, 16], [3, 16, 20], [4, 36, 30], [5, 66, 30], [6, 96, 20]],
+    "summaries": [
+      {
+        "vertices": 16,
+        "triangles": 8,
+        "sum_pos": [130800, 49280, 0],
+        "sum_roof": [10, 14, -4, 0],
+        "weighted": 95727.375,
+        "moment": 2116
+      },
+      {
+        "vertices": 20,
+        "triangles": 10,
+        "sum_pos": [160920, 81600, 0],
+        "sum_roof": [12, 16, 0, 0],
+        "weighted": 127265.3,
+        "moment": 4115
+      },
+      {
+        "vertices": 30,
+        "triangles": 18,
+        "sum_pos": [4500, 122400, 2400],
+        "sum_roof": [8, 30, 0, 0],
+        "weighted": 66668.8104167,
+        "moment": 19844
+      },
+      {
+        "vertices": 30,
+        "triangles": 18,
+        "sum_pos": [94500, 2400, 2400],
+        "sum_roof": [8, 30, 0, 0],
+        "weighted": 51168.8104167,
+        "moment": 19844
+      },
+      {
+        "vertices": 20,
+        "triangles": 10,
+        "sum_pos": [63000, 162240, 0],
+        "sum_roof": [12, 16, 0, 0],
+        "weighted": 118187.7,
+        "moment": 4115
+      }
+    ]
+  }
+}

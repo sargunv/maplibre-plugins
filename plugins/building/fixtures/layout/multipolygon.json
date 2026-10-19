@@ -1,0 +1,46 @@
+{
+  "description": "Reversed winding (the first ring decides which rings are exteriors) and a feature with two buildings, one with a hole.",
+  "extent": 8192,
+  "features": [
+    {
+      "label": "rectangle, reversed winding",
+      "index": 0,
+      "rings": [[[1000, 1160], [1300, 1160], [1300, 1000], [1000, 1000]]],
+      "shape": "hipped"
+    },
+    {
+      "label": "two buildings",
+      "index": 1,
+      "rings": [
+        [[2000, 2000], [2300, 2000], [2300, 2160], [2000, 2160]],
+        [[2400, 2000], [2800, 2000], [2800, 2300], [2400, 2300]],
+        [[2500, 2100], [2500, 2200], [2700, 2200], [2700, 2100]]
+      ],
+      "shape": "gabled"
+    }
+  ],
+  "expected": {
+    "vertex_count": 102,
+    "index_count": 174,
+    "segments": [[0, 0, 102, 174]],
+    "ranges": [[0, 0, 32], [1, 32, 70]],
+    "summaries": [
+      {
+        "vertices": 32,
+        "triangles": 16,
+        "sum_pos": [36800, 34560, 2560],
+        "sum_roof": [8, 40, 0, 0],
+        "weighted": 38055.7320313,
+        "moment": 16035
+      },
+      {
+        "vertices": 70,
+        "triangles": 42,
+        "sum_pos": [168500, 148400, 2400],
+        "sum_roof": [32, 62, 0, 0],
+        "weighted": 165716.861607,
+        "moment": 260113
+      }
+    ]
+  }
+}
