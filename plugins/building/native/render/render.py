@@ -277,7 +277,7 @@ def fixture_feature(f, id):
 
 salt_steps = load(plugin_dir / "fixtures/layout/saltbox-steps.json")["features"]
 graph_steps = load(plugin_dir / "fixtures/layout/roof-lines-steps.json")["features"]
-for name, fixture in [("saltbox-t", salt_steps[0]), ("saltbox-l", salt_steps[2]), ("roof-lines", graph_steps[0])]:
+for name, fixture in [("saltbox-t", salt_steps[0]), ("saltbox-l", salt_steps[2]), ("roof-lines", graph_steps[0]), ("roof-lines-crossing", graph_steps[12])]:
     feature = fixture_feature(fixture, 1)
     layer = json.loads(json.dumps(shapes_layer))
     layer["paint"]["building-color"] = "#dfccaa"

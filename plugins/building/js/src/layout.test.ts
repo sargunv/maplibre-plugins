@@ -208,6 +208,39 @@ function checkInvariants(
     addEdge(c, a);
   }
 
+  // A crossing step splits wall edges at the intersection while each roof
+  // triangle retains its full edge. Subdivide only the remaining roof edges
+  // at unmatched wall endpoints before checking their directed cancellation.
+  const unmatched = [...edges].filter(([, count]) => count > 0);
+  const endpoints = unmatched.flatMap(([edge]) => edgeEnds.get(edge)!);
+  for (const [edge, count] of unmatched) {
+    const [a, b] = edgeEnds.get(edge)!;
+    if (a.kind !== ROOF || b.kind !== ROOF) continue;
+    const dx = b.x - a.x,
+      dy = b.y - a.y;
+    const length2 = dx * dx + dy * dy;
+    const cuts = new Map<string, [number, Vertex]>();
+    for (const p of endpoints) {
+      const t = ((p.x - a.x) * dx + (p.y - a.y) * dy) / length2;
+      if (t <= 0 || t >= 1 || p.kind !== WALL_TOP) continue;
+      if (
+        Math.hypot(p.x - a.x - t * dx, p.y - a.y - t * dy) < 0.01 &&
+        Math.abs(p.n - a.n - t * (b.n - a.n)) < 1e-4
+      )
+        cuts.set(key(p), [t, p]);
+    }
+    if (!cuts.size) continue;
+    edges.set(edge, 0);
+    const points = [
+      a,
+      ...[...cuts.values()].sort((p, q) => p[0] - q[0]).map(([, p]) => p),
+      b,
+    ];
+    for (let c = 0; c < count; c++)
+      for (let i = 1; i < points.length; i++)
+        addEdge(points[i - 1]!, points[i]!);
+  }
+
   // Closed surface: every roof edge meets another roof edge or a wall top
   // running the other way, except along tile cuts, which have no walls.
   for (const [edge, count] of edges) {
@@ -927,6 +960,55 @@ describe("explicit roof graphs", () => {
     const outline = meshes[9]!;
     expect(outline.vertex(0).run).toBeGreaterThan(0);
     expect(wallTopsOf(outline).every((v) => v.n === 0.5)).toBe(true);
+    const crossing = meshes[12]!;
+    expect(crossing.vertex(0).run).toBeGreaterThan(0);
+    const crossingSteps = triangles(crossing)
+      .map((tri) => tri.map((i) => crossing.vertex(i)))
+      .filter((tri) => tri.every((v) => v.kind === WALL_TOP));
+    expect(crossingSteps).toHaveLength(2);
+    expect(
+      crossingSteps.map((tri) => tri[0]!.gx).sort((a, b) => a - b),
+    ).toEqual([-1, 1]);
+    for (const tri of crossingSteps) {
+      const y = tri.reduce((sum, v) => sum + v.y, 0) / 3;
+      expect(tri[0]!.gx).toBe(y < 1000 + (160 * 5) / 7 ? -1 : 1);
+    }
+    // Complement the heights to exercise the other crossing direction.
+    const f = fixture.features[12]!;
+    const lines = JSON.parse(f.lines!) as {
+      vertices: [number, number, number][];
+    };
+    for (const v of lines.vertices) v[2] = 1 - v[2];
+    const reversed = new BuildingLayout(fixture.extent, NO_CUTS, f.tile);
+    reversed.addFeature(toRings(f.rings), 0, {
+      shape: f.shape,
+      lines: JSON.stringify(lines),
+    });
+    expect(reversed.vertex(0).run).toBeGreaterThan(0);
+    const reversedSteps = triangles(reversed)
+      .map((tri) => tri.map((i) => reversed.vertex(i)))
+      .filter((tri) => tri.every((v) => v.kind === WALL_TOP));
+    expect(reversedSteps).toHaveLength(2);
+    for (const tri of reversedSteps) {
+      const y = tri.reduce((sum, v) => sum + v.y, 0) / 3;
+      expect(tri[0]!.gx).toBe(y < 1000 + (160 * 5) / 7 ? 1 : -1);
+    }
+    const intersection = crossingSteps.map((tri) =>
+      tri.find((v) => v.y > 1000 && v.y < 1160)!,
+    );
+    for (const p of intersection) {
+      expect(p.x).toBe(1150);
+      expect(p.y).toBeCloseTo(1000 + (160 * 5) / 7, 3);
+      expect(p.n).toBeCloseTo(0.3, 6);
+    }
+    for (const [i, copy] of meshes.slice(13, 15).entries()) {
+      expect(copy.indices()).toEqual(crossing.indices());
+      for (let v = 0; v < crossing.vertexCount; v++)
+        expect({
+          ...copy.exactVertex(v),
+          x: copy.exactVertex(v).x - (i === 0 ? 1 : -1) * fixture.extent,
+        }).toEqual(crossing.exactVertex(v));
+    }
   });
   const fixture = fixtures.find((f) => f.name === "roof-lines.json")!.fixture;
   it("keeps gable peaks, mapped apex heights and the same graph in adjacent tiles", () => {

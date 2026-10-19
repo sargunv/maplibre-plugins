@@ -659,14 +659,16 @@ explicit shared vertex. Vertical steps use distinct vertices at the same
 position with different heights, linked by their own roof edges, as in the
 [roof-lines proposal's vertical parts](https://wiki.openstreetmap.org/wiki/ProposedRoofLines#Step_3:_add_vertical_parts).
 The edges on each side must identify its height; a duplicate pair alone cannot
-say which side is high and falls back. This extends OSM2World's `ComplexRoof`,
-which stores only one height per position. Overlapping roof surfaces and
-roof-line overhangs remain unsupported. Multipolygon features assign vertices to
-their exterior component (respecting holes), and retain edges within that
-component. An edge joining two components makes both fall back to flat; other
-components keep their roofs. Coordinates, heights and edge indices must be JSON
-numbers, not numeric strings. Vertices on a cleaned-up eave snap to it within
-2.2 tile units; points farther outside cause a flat fallback.
+say which side is high and falls back. Steps whose heights swap along a seam
+split at their crossing into two triangles, each facing its lower side. This
+extends OSM2World's `ComplexRoof`, which stores only one height per position.
+Overlapping roof surfaces and roof-line overhangs remain unsupported.
+Multipolygon features assign vertices to their exterior component (respecting
+holes), and retain edges within that component. An edge joining two components
+makes both fall back to flat; other components keep their roofs. Coordinates,
+heights and edge indices must be JSON numbers, not numeric strings. Vertices on
+a cleaned-up eave snap to it within 2.2 tile units; points farther outside cause
+a flat fallback.
 
 Paint properties follow `fill-extrusion`'s:
 
@@ -873,6 +875,8 @@ would close them. The ones that limit this layer are under
    relations must be applied when the data is written, as the OSM example does.
    The source also joins `roof:ridge`, `roof:edge` and `roof:apex` elements into
    `building-roof-lines`; the tile layout cannot look up neighboring OSM ways.
+   Vertical steps can taper to a point or swap heights along a shared seam;
+   overlapping roof surfaces and roof-line overhangs remain unsupported.
    Coplanar faces of overlapping parts z-fight.
 7. **Triangulation.** Rings that touch at a point triangulate correctly: an ear
    is never clipped across a copy of one of its corners whose boundary runs into
