@@ -601,7 +601,7 @@ test "falls back to flat roofs" {
     try expectFlat(allocator, &.{&l_shape}, .{ .shape = "dome" });
     try expectFlat(allocator, &.{&rectangle}, .{ .shape = "many" });
     try expectFlat(allocator, &.{&rectangle}, .{ .shape = "lean_to" });
-    try expectFlat(allocator, &.{ &rectangle, &courtyard }, .{ .shape = "gabled" });
+    try expectFlat(allocator, &.{ &rectangle, &courtyard }, .{ .shape = "dome" });
 }
 
 test "faces courtyard walls into the courtyard" {
@@ -616,6 +616,30 @@ test "faces courtyard walls into the courtyard" {
         try testing.expect(v.gx * (1150 - v.x) + v.gy * (1075 - v.y) > 0);
     }
     try testing.expectEqual(16, inner);
+}
+
+test "merges near-coincident wall stops on thin stationary gables" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const ring = [_]Point{ .{ .x = 1165, .y = 4413 }, .{ .x = 1239, .y = 4730 }, .{ .x = 1230, .y = 4732 }, .{ .x = 1195, .y = 4583 }, .{ .x = 962, .y = 4637 }, .{ .x = 960, .y = 4628 }, .{ .x = 1193, .y = 4574 }, .{ .x = 1156, .y = 4415 } };
+    for ([_][]const u8{ "gabled", "gambrel" }) |shape| {
+        const result = try lay(arena.allocator(), &.{&ring}, .{ .shape = shape });
+        for (result.segments.items) |segment| {
+            var t: usize = 0;
+            while (t < segment.index_length) : (t += 3) {
+                const a = result.vertices.items[segment.vertex_offset + result.indices.items[segment.index_offset + t]];
+                const b = result.vertices.items[segment.vertex_offset + result.indices.items[segment.index_offset + t + 1]];
+                const c = result.vertices.items[segment.vertex_offset + result.indices.items[segment.index_offset + t + 2]];
+                if (!isWall(a)) continue;
+                const za: f64 = if (a.kind == wall_bottom) 0 else 1 + @as(f64, a.n);
+                const zb: f64 = if (b.kind == wall_bottom) 0 else 1 + @as(f64, b.n);
+                const zc: f64 = if (c.kind == wall_bottom) 0 else 1 + @as(f64, c.n);
+                const nx = (@as(f64, b.y) - a.y) * (zc - za) - (zb - za) * (@as(f64, c.y) - a.y);
+                const ny = (zb - za) * (@as(f64, c.x) - a.x) - (@as(f64, b.x) - a.x) * (zc - za);
+                try testing.expect(nx * a.gx + ny * a.gy < 0);
+            }
+        }
+    }
 }
 
 test "draws a cut copy roofless, without walls on its cuts" {
@@ -639,10 +663,10 @@ test "draws a cut copy roofless, without walls on its cuts" {
     const lid = try filter(allocator, &result, isRoof);
     try testing.expect(lid.len > 0);
     for (lid) |v| try testing.expectEqual([5]f32{ 0, roof_kind, 0, 0, 100 }, [5]f32{ v.n, v.kind, v.gx, v.gy, v.run });
-    // Flat shapes and courtyards stay flat, as their whole footprints are.
+    // Flat shapes and unsupported radial courtyards stay flat.
     const hole = [_]Point{ .{ .x = 0, .y = 2050 }, .{ .x = 0, .y = 2150 }, .{ .x = 100, .y = 2150 }, .{ .x = 100, .y = 2050 } };
     const flat = try lay(allocator, &.{&cut}, .{ .shape = "flat" });
-    const holed = try lay(allocator, &.{ &cut, &hole }, .{ .shape = "gabled" });
+    const holed = try lay(allocator, &.{ &cut, &hole }, .{ .shape = "dome" });
     for ([_]*const BuildingLayout{ &flat, &holed }) |r| {
         for (r.vertices.items) |v| {
             if (v.kind == wall_bottom) continue;

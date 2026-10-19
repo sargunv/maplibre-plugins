@@ -20,10 +20,10 @@
     }
   ],
   "expected": {
-    "vertex_count": 102,
-    "index_count": 180,
-    "segments": [[0, 0, 102, 180]],
-    "ranges": [[0, 0, 32], [1, 32, 70]],
+    "vertex_count": 134,
+    "index_count": 252,
+    "segments": [[0, 0, 134, 252]],
+    "ranges": [[0, 0, 32], [1, 32, 102]],
     "summaries": [
       {
         "vertices": 32,
@@ -34,12 +34,12 @@
         "moment": 21381
       },
       {
-        "vertices": 70,
-        "triangles": 42,
-        "sum_pos": [168500, 148400, 2400],
-        "sum_roof": [32, 62, 0, 0],
-        "weighted": 165716.861607,
-        "moment": 260113
+        "vertices": 102,
+        "triangles": 66,
+        "sum_pos": [251700, 217200, 6000],
+        "sum_roof": [28, 126, 0, 0],
+        "weighted": 245014.610907,
+        "moment": 950940
       }
     ]
   }

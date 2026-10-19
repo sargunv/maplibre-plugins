@@ -5,6 +5,7 @@ import { describe, expect, it } from "vite-plus/test";
 import { cross, type Point, signedArea2 } from "./footprint.ts";
 import {
   MAX_SKELETON_VERTICES,
+  gableEnds,
   straightSkeleton,
   type Skeleton,
 } from "./skeleton.ts";
@@ -87,6 +88,73 @@ function checkCoverage(rings: Point[][], skeleton: Skeleton): void {
     }
 }
 describe("straight skeleton", () => {
+  for (const entry of [
+    {
+      name: "L",
+      ends: [1, 4],
+      rings: [
+        [
+          [0, 0],
+          [300, 0],
+          [300, 120],
+          [160, 120],
+          [160, 300],
+          [0, 300],
+        ],
+      ],
+    },
+    {
+      name: "T",
+      ends: [1, 4, 7],
+      rings: [
+        [
+          [0, 0],
+          [400, 0],
+          [400, 120],
+          [260, 120],
+          [260, 320],
+          [140, 320],
+          [140, 120],
+          [0, 120],
+        ],
+      ],
+    },
+    {
+      name: "U",
+      ends: [2, 6],
+      rings: [
+        [
+          [0, 0],
+          [300, 0],
+          [300, 300],
+          [200, 300],
+          [200, 100],
+          [100, 100],
+          [100, 300],
+          [0, 300],
+        ],
+      ],
+    },
+  ])
+    it(`keeps the ${entry.name}'s arm ends stationary and covers its valleys`, () => {
+      const rings = entry.rings.map((ring) =>
+        ring.map(([x, y]) => ({ x: x!, y: y! })),
+      );
+      const ends = gableEnds(rings[0]!, skeletonOf(rings));
+      expect(ends.flatMap((end, i) => (end ? [i] : []))).toEqual(entry.ends);
+      const weighted = straightSkeleton({ outer: rings[0]!, holes: [] }, ends)!;
+      expect(weighted).not.toBeNull();
+      checkCoverage(rings, weighted);
+      for (const i of entry.ends) {
+        const a = rings[0]![i]!,
+          b = rings[0]![(i + 1) % rings[0]!.length]!;
+        expect(
+          weighted.faces
+            .flatMap((f) => f.points)
+            .some((p) => p.time > 0 && Math.abs(cross(a, b, p)) < 1e-7),
+        ).toBe(true);
+      }
+    });
   for (const entry of cases)
     it(entry.name, () => {
       const rings = ringsOf(entry),

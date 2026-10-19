@@ -1,4 +1,4 @@
-// Equal-speed straight skeleton, including courtyard boundaries. The wavefront
+// Zero/one-speed straight skeleton, including courtyard boundaries. The wavefront
 // keeps the building on its left: outer rings shrink and holes expand. At an
 // event, split its boundary at all contacts and cancel opposing segments before
 // reconnecting it. This handles simultaneous collapses and hole/outer merges
@@ -23,6 +23,7 @@ export interface Skeleton {
 
 interface Edge {
   normal: Point;
+  speed: number;
   start: SkeletonPoint;
   end: SkeletonPoint;
 }
@@ -60,10 +61,15 @@ function dot(a: Point, b: Point): number {
   return a.x * b.x + a.y * b.y;
 }
 
-function velocity(a: Point, b: Point): Point | null {
+function velocity(left: Edge, right: Edge): Point | null {
+  const a = left.normal,
+    b = right.normal;
   const det = a.x * b.y - a.y * b.x;
   if (Math.abs(det) <= PARALLEL) return null;
-  return { x: (b.y - a.y) / det, y: (a.x - b.x) / det };
+  return {
+    x: (left.speed * b.y - right.speed * a.y) / det,
+    y: (right.speed * a.x - left.speed * b.x) / det,
+  };
 }
 
 function at(v: Vertex, dt: number): Point {
@@ -93,7 +99,7 @@ function nextEvent(loops: Loop[]): number {
           const a = other.vertices[j]!;
           const b = other.vertices[(j + 1) % other.edges.length]!;
           const gap = edge.normal.x * (v.x - a.x) + edge.normal.y * (v.y - a.y);
-          const speed = dot(edge.normal, v.velocity) - 1;
+          const speed = dot(edge.normal, v.velocity) - edge.speed;
           if (gap <= CONTACT || speed >= -PARALLEL) continue;
           const dt = -gap / speed;
           if (dt <= CONTACT || dt > time + CONTACT) continue;
@@ -225,7 +231,11 @@ function advance(
         const current = segments[cycle[i]!]!;
         const a = before.edge.normal;
         const b = current.edge.normal;
-        if (Math.abs(a.x * b.y - a.y * b.x) <= PARALLEL && dot(a, b) > 0) {
+        if (
+          before.edge.speed === current.edge.speed &&
+          Math.abs(a.x * b.y - a.y * b.x) <= PARALLEL &&
+          dot(a, b) > 0
+        ) {
           before.b = current.b;
           before.parent = -1;
           cycle.splice(i, 1);
@@ -241,7 +251,7 @@ function advance(
       const s = segments[cycle[i]!]!;
       const prev = segments[cycle[(i + cycle.length - 1) % cycle.length]!]!;
       const next = segments[cycle[(i + 1) % cycle.length]!]!;
-      const motion = velocity(prev.edge.normal, s.edge.normal);
+      const motion = velocity(prev.edge, s.edge);
       if (!motion) return null;
       const original = old[s.parent];
       if (
@@ -254,6 +264,7 @@ function advance(
       } else {
         edges.push({
           normal: s.edge.normal,
+          speed: s.edge.speed,
           start: { ...points[s.a]!, time },
           end: { ...points[s.b]!, time },
         });
@@ -266,7 +277,7 @@ function advance(
     if (continued.has(i)) continue;
     const { edge, a, b } = old[i]!;
     const polygon = [edge.start, edge.end, { ...b, time }, { ...a, time }];
-    if (signedArea2(polygon) > CONTACT * CONTACT)
+    if (edge.speed > 0 && signedArea2(polygon) > CONTACT * CONTACT)
       faces.push({ points: polygon, normal: edge.normal });
   }
   return result;
@@ -275,6 +286,7 @@ function advance(
 /** Returns null for degenerate topology or an unresolved numerical event. */
 export function straightSkeleton(
   polygon: Pick<Polygon, "outer" | "holes">,
+  stationary: readonly boolean[] = [],
 ): Skeleton | null {
   const all = [polygon.outer, ...polygon.holes];
   if (all.reduce((n, ring) => n + ring.length, 0) > MAX_SKELETON_VERTICES)
@@ -295,7 +307,7 @@ export function straightSkeleton(
   let loops: Loop[] = [];
   let count = 0;
   let area = 0;
-  for (const ring of all) {
+  for (const [r, ring] of all.entries()) {
     if (ring.length < 3) return null;
     const points = ring.map((p) => ({
       x: (p.x - minX) / scale,
@@ -309,6 +321,7 @@ export function straightSkeleton(
       const length = Math.sqrt(dx * dx + dy * dy);
       return {
         normal: { x: -(b.y - a.y) / length, y: (b.x - a.x) / length },
+        speed: r === 0 && stationary[i] ? 0 : 1,
         start: a,
         end: b,
       };
@@ -316,8 +329,8 @@ export function straightSkeleton(
     const vertices: Vertex[] = [];
     for (let i = 0; i < points.length; i++) {
       const motion = velocity(
-        edges[(i + edges.length - 1) % edges.length]!.normal,
-        edges[i]!.normal,
+        edges[(i + edges.length - 1) % edges.length]!,
+        edges[i]!,
       );
       if (!motion) return null;
       vertices.push({ ...points[i]!, velocity: motion });
@@ -394,4 +407,60 @@ export function straightSkeleton(
     })),
     run: time * scale,
   };
+}
+
+/** Terminal hip faces between roughly parallel sides become vertical gables. */
+export function gableEnds(
+  outer: readonly Point[],
+  skeleton: Skeleton,
+): boolean[] {
+  const tolerance = skeleton.run * 1e-7;
+  return outer.map((a, i) => {
+    const b = outer[(i + 1) % outer.length]!;
+    const prev = outer[(i + outer.length - 1) % outer.length]!;
+    const next = outer[(i + 2) % outer.length]!;
+    if (cross(prev, a, b) <= 0 || cross(a, b, next) <= 0) return false;
+    const ux = a.x - prev.x,
+      uy = a.y - prev.y;
+    const vx = next.x - b.x,
+      vy = next.y - b.y;
+    if (
+      ux * vx + uy * vy >
+      -0.8 * Math.sqrt((ux * ux + uy * uy) * (vx * vx + vy * vy))
+    )
+      return false;
+    const dx = b.x - a.x,
+      dy = b.y - a.y;
+    const length = Math.sqrt(dx * dx + dy * dy);
+    const nx = -dy / length,
+      ny = dx / length;
+    // Events on neighboring arms can divide one terminal hip into several faces.
+    const faces = skeleton.faces.filter(
+      (face) =>
+        Math.abs(face.normal.x - nx) < 1e-7 &&
+        Math.abs(face.normal.y - ny) < 1e-7 &&
+        face.points.every((p) => {
+          const along = (dx * (p.x - a.x) + dy * (p.y - a.y)) / length;
+          return (
+            along >= -tolerance &&
+            along <= length + tolerance &&
+            Math.abs(nx * (p.x - a.x) + ny * (p.y - a.y) - p.time) <= tolerance
+          );
+        }),
+    );
+    const points = faces.flatMap((face) => face.points);
+    let apex: SkeletonPoint | undefined;
+    for (const p of points) if (!apex || p.time > apex.time) apex = p;
+    if (!apex || apex.time <= tolerance) return false;
+    const tip = apex;
+    const area = faces.reduce((sum, face) => sum + signedArea2(face.points), 0);
+    return (
+      Math.abs(area - cross(a, b, tip)) <= tolerance * length &&
+      points.every(
+        (p) =>
+          cross(b, tip, p) >= -tolerance * length &&
+          cross(tip, a, p) >= -tolerance * length,
+      )
+    );
+  });
 }

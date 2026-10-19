@@ -329,12 +329,12 @@ pub const BuildingLayout = struct {
     /// wall.
     fn build(self: *BuildingLayout, scratch: Allocator, polygon: Polygon, model: RoofModel, walls: []const []const bool) Allocator.Error!void {
         const run = model.run();
-        try self.addWalls(scratch, polygon.outer, walls[0], model, run);
-        for (polygon.holes.items, walls[1..]) |hole, flags| try self.addWalls(scratch, hole, flags, model, run);
+        try self.addWalls(scratch, polygon.outer, walls[0], model, run, if (model == .skeleton) model.skeleton.stationary else &.{});
+        for (polygon.holes.items, walls[1..]) |hole, flags| try self.addWalls(scratch, hole, flags, model, run, &.{});
         switch (model) {
             .flat => try self.addFlatRoof(scratch, polygon, 1, 0),
             .roofless => try self.addFlatRoof(scratch, polygon, 0, run),
-            .planes => |planes| try self.addPlaneRoof(scratch, polygon.outer, planes),
+            .planes => |planes| try self.addPlaneRoof(scratch, polygon, planes),
             .radial => |radial| try self.addRadialRoof(scratch, polygon.outer, radial),
             .skeleton => |model_skeleton| try self.addSkeletonRoof(scratch, model_skeleton),
         }
@@ -342,7 +342,7 @@ pub const BuildingLayout = struct {
 
     // ---- Walls ---------------------------------------------------------------
 
-    fn addWalls(self: *BuildingLayout, scratch: Allocator, ring: []const Point, walls: []const bool, model: RoofModel, run: f64) Allocator.Error!void {
+    fn addWalls(self: *BuildingLayout, scratch: Allocator, ring: []const Point, walls: []const bool, model: RoofModel, run: f64, stationary: []const bool) Allocator.Error!void {
         for (ring, walls, 0..) |a, wall, i| {
             if (!wall) continue;
             const b = ring[(i + 1) % ring.len];
@@ -353,7 +353,7 @@ pub const BuildingLayout = struct {
             // into the courtyard for negative-area holes.
             const gx = dy / length;
             const gy = -dx / length;
-            const stops = try wallStops(scratch, a, b, model);
+            const stops = try wallStops(scratch, a, b, model, i < stationary.len and stationary[i]);
             var mesh: Mesh = .init(scratch);
             for (stops) |p| {
                 _ = try mesh.add(vertex(p.x, p.y, run, 0, wall_bottom, gx, gy));
@@ -428,8 +428,10 @@ pub const BuildingLayout = struct {
     /// computed from the edge's original endpoints, so the triangles on both
     /// sides of an edge, and the wall below a footprint edge, get the same
     /// points.
-    fn addPlaneRoof(self: *BuildingLayout, scratch: Allocator, outer: []const Point, model: roof.PlaneRoof) Allocator.Error!void {
-        const result = try triangulate(scratch, outer, &.{});
+    fn addPlaneRoof(self: *BuildingLayout, scratch: Allocator, polygon: Polygon, model: roof.PlaneRoof) Allocator.Error!void {
+        const holes = try scratch.alloc([]const Point, polygon.holes.items.len);
+        for (holes, polygon.holes.items) |*hole, ring| hole.* = ring;
+        const result = try triangulate(scratch, polygon.outer, holes);
         const planes = model.planes;
         const frame = model.frame;
         // Facets that share vertices: one per plane, or one per strip group.
@@ -672,7 +674,49 @@ const Radial = struct {
 
 /// Points along a wall top where its slope changes, with n: the ends and
 /// every crossing of a break line between two facets of the roof.
-fn wallStops(scratch: Allocator, a: Point, b: Point, model: RoofModel) Allocator.Error![]const Stop {
+fn wallStops(scratch: Allocator, a: Point, b: Point, model: RoofModel, stationary: bool) Allocator.Error![]const Stop {
+    if (model == .skeleton and stationary) {
+        const m = model.skeleton;
+        const run = m.geometry.run;
+        const dx = b.x - a.x;
+        const dy = b.y - a.y;
+        const length2 = dx * dx + dy * dy;
+        const TimedStop = struct {
+            x: f64,
+            y: f64,
+            time: f64,
+            t: f64,
+            fn less(_: void, p: @This(), q: @This()) bool {
+                return p.t < q.t;
+            }
+        };
+        var stops: std.ArrayList(TimedStop) = .empty;
+        try stops.appendSlice(scratch, &.{ .{ .x = a.x, .y = a.y, .time = 0, .t = 0 }, .{ .x = b.x, .y = b.y, .time = 0, .t = 1 } });
+        for (m.geometry.faces) |face| {
+            const bands: usize = if (m.mansard) 2 else 1;
+            for (0..bands) |band| {
+                const points = if (m.mansard) try clipSkeletonFace(scratch, face.points, run / 3, band == 0) else face.points;
+                for (points) |p| {
+                    const t = ((p.x - a.x) * dx + (p.y - a.y) * dy) / length2;
+                    if (t < -1e-9 or t > 1 + 1e-9 or @abs(dx * (p.y - a.y) - dy * (p.x - a.x)) > 1e-7 * length2) continue;
+                    var found = false;
+                    for (stops.items) |*s| {
+                        // Use the frame-wall merge tolerance for events that collapse in float32.
+                        if (near(.{ .x = s.x, .y = s.y }, .{ .x = p.x, .y = p.y })) {
+                            s.time = @max(s.time, p.time);
+                            found = true;
+                            break;
+                        }
+                    }
+                    if (!found) try stops.append(scratch, .{ .x = p.x, .y = p.y, .time = p.time, .t = t });
+                }
+            }
+        }
+        std.mem.sort(TimedStop, stops.items, {}, TimedStop.less);
+        const result = try scratch.alloc(Stop, stops.items.len);
+        for (result, stops.items) |*s, p| s.* = .{ .x = p.x, .y = p.y, .n = std.math.clamp(if (m.mansard) @min(2 * p.time / run, 0.5 + 0.5 * p.time / run) else p.time / run, 0, 1) };
+        return result;
+    }
     const planes = switch (model) {
         .planes => |p| p.planes,
         else => {
@@ -738,9 +782,25 @@ fn modelFor(
         if (geometry.run < min_half_width) return .flat;
         return .{ .skeleton = .{ .geometry = geometry, .mansard = shape == .mansard } };
     }
-    if (polygon.holes.items.len > 0) return .flat;
+    if ((shape == .gabled or shape == .gambrel) and
+        (polygon.holes.items.len > 0 or footprint.signedArea2(polygon.outer) < 0.98 * 8 * rect.half_long * rect.half_short))
+    {
+        const hips = (try skeleton.straightSkeleton(scratch, polygon)) orelse return .flat;
+        const ends = try skeleton.gableEnds(scratch, polygon.outer, hips);
+        const has_ends = std.mem.indexOfScalar(bool, ends, true) != null;
+        if (has_ends or polygon.holes.items.len > 0) {
+            const geometry = if (has_ends) (try skeleton.weightedSkeleton(scratch, polygon, ends)) orelse return .flat else hips;
+            if (geometry.run < min_half_width) return .flat;
+            return .{ .skeleton = .{ .geometry = geometry, .mansard = shape == .gambrel, .stationary = ends } };
+        }
+    }
+    if (polygon.holes.items.len > 0 and isRadial(shape)) return .flat;
     const frame = frameFor(rect, orientation, direction);
     return roofModel(scratch, shape, rect, frame, polygon.outer, direction);
+}
+
+fn isRadial(shape: RoofShape) bool {
+    return shape == .pyramidal or shape == .cone or shape == .dome or shape == .onion;
 }
 
 /// The model of a cut copy: flat where the whole footprint is flat too (a
@@ -755,7 +815,7 @@ fn cutModel(
     orientation: RoofOrientation,
     direction: ?Point,
 ) Allocator.Error!RoofModel {
-    if (shape == .flat or shape == .many or (polygon.holes.items.len > 0 and shape != .hipped and shape != .mansard)) return .flat;
+    if (shape == .flat or shape == .many or (polygon.holes.items.len > 0 and isRadial(shape))) return .flat;
     const rect = try minimumAreaRectangle(scratch, polygon.outer) orelse return .{ .roofless = 0 };
     const frame = frameFor(rect, orientation, direction);
     const model = try roofModel(scratch, shape, rect, frame, polygon.outer, direction);

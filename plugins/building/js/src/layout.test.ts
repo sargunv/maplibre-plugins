@@ -478,7 +478,7 @@ describe("roof shapes", () => {
             [1200, 1050],
           ],
         ],
-        { shape: "gabled" },
+        { shape: "dome" },
       ),
     );
   });
@@ -507,6 +507,34 @@ describe("roof shapes", () => {
     }
   });
 
+  it("merges near-coincident wall stops on thin stationary gables", () => {
+    const ring: [number, number][] = [
+      [1165, 4413],
+      [1239, 4730],
+      [1230, 4732],
+      [1195, 4583],
+      [962, 4637],
+      [960, 4628],
+      [1193, 4574],
+      [1156, 4415],
+    ];
+    for (const shape of ["gabled", "gambrel"]) {
+      const layout = lay([ring], { shape });
+      for (const ids of triangles(layout)) {
+        const [a, b, c] = ids.map((i) => layout.vertex(i)) as [
+          Vertex,
+          Vertex,
+          Vertex,
+        ];
+        if (!isWall(a)) continue;
+        const z = (v: Vertex): number => (v.kind === WALL_BOTTOM ? 0 : 1 + v.n);
+        const nx = (b.y - a.y) * (z(c) - z(a)) - (z(b) - z(a)) * (c.y - a.y);
+        const ny = (z(b) - z(a)) * (c.x - a.x) - (b.x - a.x) * (z(c) - z(a));
+        expect(nx * a.gx + ny * a.gy).toBeLessThan(0);
+      }
+    }
+  });
+
   it("draws a cut copy roofless, without walls on its cuts", () => {
     // A tile whose features reach x = -128, where the source cut this one.
     const cut: [number, number][] = [
@@ -526,7 +554,7 @@ describe("roof shapes", () => {
     expect(lid.length).toBeGreaterThan(0);
     for (const v of lid)
       expect([v.n, v.kind, v.gx, v.gy, v.run]).toEqual([0, ROOF, 0, 0, 100]);
-    // Flat shapes and courtyards stay flat, as their whole footprints are.
+    // Flat shapes and unsupported radial courtyards stay flat.
     for (const rings of [
       [cut],
       [
@@ -539,7 +567,7 @@ describe("roof shapes", () => {
         ],
       ] as [number, number][][],
     ]) {
-      const shape = rings.length === 1 ? "flat" : "gabled";
+      const shape = rings.length === 1 ? "flat" : "dome";
       for (const v of allVertices(lay(rings, { shape })).filter(
         (v) => v.kind !== WALL_BOTTOM,
       ))

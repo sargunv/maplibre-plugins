@@ -14,8 +14,8 @@
 //   a convex facet, and the break lines (ridges, hips and gambrel
 //   breaks) are where facets meet. Curved ones (round, round_gabled) are
 //   strips of planes with smooth gradients.
-// - Skeleton shapes (hipped, mansard) follow every eave, including courtyards.
-//   skeleton.ts / skeleton.zig compute the equal-speed wavefront; layout
+// - Skeleton shapes follow eaves and courtyards, with stationary gable ends.
+//   skeleton.ts / skeleton.zig compute the zero/one-speed wavefront; layout
 //   turns its time into roof elevation, with a slope break for mansards.
 // - Radial shapes (pyramidal, cone, dome, onion) are concentric copies of
 //   the footprint shrunk toward the frame center, following a profile of
@@ -67,7 +67,11 @@ export interface StripProfile {
 
 export type RoofModel =
   | { type: "flat" }
-  | ({ type: "skeleton"; mansard: boolean } & Skeleton)
+  | ({
+      type: "skeleton";
+      mansard: boolean;
+      stationary?: readonly boolean[];
+    } & Skeleton)
   | {
       /**
        * A cut copy of a footprint: walls to the eaves and a lid at n = 0.

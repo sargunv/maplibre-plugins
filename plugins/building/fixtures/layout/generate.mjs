@@ -102,12 +102,12 @@ function matrix(rings, options = {}) {
 const fixtures = {
   skeleton: {
     description:
-      "Straight-skeleton event regressions, including simultaneous collapses and touching courtyard boundaries; hipped and mansard twins must agree.",
+      "Straight-skeleton event regressions, including stationary gable ends, simultaneous collapses and touching courtyard boundaries.",
     features: JSON.parse(
       readFileSync(join(here, "../skeleton/cases.json"), "utf8"),
     ).flatMap((entry, i) =>
-      ["hipped", "mansard"].map((shape, j) => ({
-        index: i * 2 + j,
+      ["hipped", "mansard", "gabled", "gambrel"].map((shape, j) => ({
+        index: i * 4 + j,
         label: `${entry.name}: ${shape}`,
         rings: entry.rings.map((ring) =>
           ring.map(([x, y]) => [x + 1000, y + 1000]),
@@ -120,7 +120,7 @@ const fixtures = {
   },
   invalides: {
     description:
-      "The three Hotel des Invalides courtyard wings (OSM snapshot 2026-10-01), projected onto the zoom-15 grid. Hipped and mansard roofs must cover the wings and leave all courtyards open.",
+      "The three Hotel des Invalides courtyard wings (OSM snapshot 2026-10-01), projected onto the zoom-15 grid. Hipped, mansard, gabled and gambrel roofs must cover the wings and leave all courtyards open.",
     features: JSON.parse(
       readFileSync(join(here, "../skeleton/invalides.geojson"), "utf8"),
     ).features.flatMap((feature, i) => {
@@ -142,8 +142,8 @@ const fixtures = {
       const local = rings.map((ring) =>
         ring.map(([x, y]) => [x - minX + 1000, y - minY + 1000]),
       );
-      return ["hipped", "mansard"].map((shape, j) => ({
-        index: i * 2 + j,
+      return ["hipped", "mansard", "gabled", "gambrel"].map((shape, j) => ({
+        index: i * 4 + j,
         label: `${feature.properties.osm} ${shape}`,
         rings: local,
         shape,
@@ -180,7 +180,7 @@ const fixtures = {
   },
   "l-shape": {
     description:
-      "An L: frame shapes span its bounding rectangle; radial shapes fall back to flat (the center is outside the kernel).",
+      "An L: gabled and gambrel follow its arms; other frame shapes span the bounding rectangle. Radial shapes fall back to flat (the center is outside the kernel).",
     features: matrix([
       [
         [1000, 1000],
@@ -189,6 +189,22 @@ const fixtures = {
         [1360, 1140],
         [1360, 1300],
         [1000, 1300],
+      ],
+    ]),
+  },
+  "t-shape": {
+    description:
+      "A T with three gable ends and two valleys; skeleton arms ignore the frame orientation and direction.",
+    features: matrix([
+      [
+        [1000, 1000],
+        [1400, 1000],
+        [1400, 1120],
+        [1260, 1120],
+        [1260, 1320],
+        [1140, 1320],
+        [1140, 1120],
+        [1000, 1120],
       ],
     ]),
   },
@@ -234,7 +250,7 @@ const fixtures = {
   },
   courtyard: {
     description:
-      "A footprint with a courtyard: hipped and mansard follow the courtyard eaves; other shapes fall back to flat. Courtyard walls face into it.",
+      "A courtyard: skeleton roofs follow the eaves, frame roofs clip around the hole, radial roofs stay flat. Courtyard walls face into it and follow the roof profile.",
     features: matrix(
       [
         [
