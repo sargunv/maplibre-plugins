@@ -69,7 +69,6 @@ export type RoofModel =
   | { type: "flat" }
   | ({
       type: "skeleton";
-      mansard: boolean;
       /** Optional strips in wavefront time, with the same gradient rules as frame strips. */
       profile?: StripProfile;
       /** Capped roofs reach their top before the wavefront disappears. */

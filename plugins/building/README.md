@@ -257,6 +257,10 @@ cut draw roofless instead, see [Tile copies](#tile-copies)):
   cubic, and the web layer lays tiles out on the main thread. Gable-end
   selection can require two skeleton builds; the cap is unchanged. Sampled
   barrel profiles split the swept faces into bands after the skeleton is built.
+  Arm skeletons also check the emitted roof and wall-top edges for closure in
+  linear time, after band clipping and float32 sliver removal. If those edges do
+  not pair, the gabled, gambrel, capped or barrel roof keeps its frame model;
+  this avoids open seams from collapsed faces or merged stationary wall stops.
 - Footprints whose bounding rectangle is thinner than 2 tile units, or a
   skillion whose extent along its direction is less than 2 tile units.
 - Pyramidal roofs whose center is not at least 0.5 tile units inside every edge

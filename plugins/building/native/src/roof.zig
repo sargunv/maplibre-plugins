@@ -96,7 +96,6 @@ pub const RoofModel = union(enum) {
 
 pub const SkeletonRoof = struct {
     geometry: skeleton.Skeleton,
-    mansard: bool,
     /// Optional strips in wavefront time, with the frame-strip gradient rules.
     profile: ?StripProfile = null,
     /// Capped roofs reach their top before the wavefront disappears.

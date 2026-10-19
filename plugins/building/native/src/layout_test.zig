@@ -201,7 +201,10 @@ fn checkInvariants(allocator: Allocator, result: *const BuildingLayout, shape_of
         }
         try testing.expect(a.kind == b.kind and b.kind == c.kind);
         const area2 = (@as(f64, b.x) - a.x) * (@as(f64, c.y) - a.y) - (@as(f64, b.y) - a.y) * (@as(f64, c.x) - a.x);
-        if (a.kind == roof_kind) try testing.expect(area2 < 0) else try testing.expect(area2 > 0);
+        // As in fuzz.ts, tile-position float32 rounding can flip a sub-ulp sliver.
+        const longest = @max(std.math.hypot(@as(f64, b.x) - a.x, @as(f64, b.y) - a.y), @max(std.math.hypot(@as(f64, c.x) - b.x, @as(f64, c.y) - b.y), std.math.hypot(@as(f64, a.x) - c.x, @as(f64, a.y) - c.y)));
+        const sliver = @abs(area2) <= (1.0 / 512.0) * longest;
+        if (a.kind == roof_kind) try testing.expect(area2 < 0 or sliver) else try testing.expect(area2 > 0);
         if (!isSmooth(shape)) {
             // Planar: one gradient per triangle, and n follows it.
             try testing.expectEqual(a.gx, b.gx);
@@ -210,7 +213,8 @@ fn checkInvariants(allocator: Allocator, result: *const BuildingLayout, shape_of
             try testing.expectEqual(a.gy, c.gy);
             for ([_]Vertex{ b, c }) |v| {
                 const predicted = @as(f64, a.n) + @as(f64, a.gx) * (@as(f64, v.x) - a.x) + @as(f64, a.gy) * (@as(f64, v.y) - a.y);
-                try testing.expect(@abs(predicted - v.n) < 2e-4);
+                // Match fuzz.ts: steep faces amplify float32 tile-position rounding.
+                try testing.expect(@abs(predicted - v.n) < 2e-4 + 2e-3 * std.math.hypot(@as(f64, a.gx), @as(f64, a.gy)));
             }
         }
         try edges.add(a, b);
