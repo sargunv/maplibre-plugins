@@ -471,6 +471,52 @@ test "cuts a half-hipped roof's hips at 2/3 of the end wall" {
     try testing.expect(found);
 }
 
+test "sizes half hips from each L arm's width" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const ring = [_]Point{
+        .{ .x = 1000, .y = 1000 }, .{ .x = 1300, .y = 1000 }, .{ .x = 1300, .y = 1120 },
+        .{ .x = 1160, .y = 1120 }, .{ .x = 1160, .y = 1300 }, .{ .x = 1000, .y = 1300 },
+    };
+    const tops = try wallTopsOf(arena.allocator(), &.{&ring}, .{ .shape = "half-hipped" });
+    var east: f64 = 0;
+    var south: f64 = 0;
+    for (tops) |v| {
+        if (v.x == 1300) east = @max(east, @as(f64, v.n) * v.run);
+        if (v.y == 1300) south = @max(south, @as(f64, v.n) * v.run);
+    }
+    try expectCloseTo(east, 40, 4);
+    try expectCloseTo(south, 160.0 / 3.0, 4);
+}
+
+test "weights saltbox T arms by direction and keeps their height continuous" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const ring = [_]Point{
+        .{ .x = 1000, .y = 1000 }, .{ .x = 1400, .y = 1000 }, .{ .x = 1400, .y = 1120 }, .{ .x = 1260, .y = 1120 },
+        .{ .x = 1260, .y = 1320 }, .{ .x = 1140, .y = 1320 }, .{ .x = 1140, .y = 1120 }, .{ .x = 1000, .y = 1120 },
+    };
+    for ([_]f64{ 0, 180 }) |direction| {
+        const values: LayoutValues = .{ .shape = "saltbox", .direction = direction };
+        const tops = try wallTopsOf(arena.allocator(), &.{&ring}, values);
+        var ends: usize = 0;
+        for (tops) |v| {
+            if (v.n != 1) continue;
+            if (v.x == 1000 or v.x == 1400) {
+                try expectCloseTo(v.y, if (direction == 0) 1084 else 1036, 4);
+                ends += 1;
+            }
+            if (v.y == 1320) try expectCloseTo(v.x, 1200, 4);
+        }
+        try testing.expectEqual(@as(usize, 2), ends);
+        const vertices = try roofOf(arena.allocator(), &.{&ring}, values);
+        for (vertices) |v| {
+            const speed: f64 = if (v.gy == 0) 1 else if ((v.gy > 0) == (direction == 0)) 1.4 else 0.6;
+            try expectCloseTo(@sqrt(@as(f64, v.gx) * v.gx + @as(f64, v.gy) * v.gy) * v.run * speed, 1, 6);
+        }
+    }
+}
+
 test "breaks gambrel and mansard faces at n = 2/3, b/3 in from the eaves" {
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();

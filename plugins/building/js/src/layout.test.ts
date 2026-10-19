@@ -393,6 +393,60 @@ describe("roof shapes", () => {
     expect(east.some(([, n]) => Math.abs(n! - 2 / 3) < 1e-6)).toBe(true);
   });
 
+  it("sizes half hips from each L arm's width", () => {
+    const tops = wallTopsOf(
+      lay(
+        [
+          [
+            [1000, 1000],
+            [1300, 1000],
+            [1300, 1120],
+            [1160, 1120],
+            [1160, 1300],
+            [1000, 1300],
+          ],
+        ],
+        { shape: "half-hipped" },
+      ),
+    );
+    // Widths 120 and 160: local wall stops at 40 and 160/3, not one global time.
+    expect(
+      Math.max(...tops.filter((v) => v.x === 1300).map((v) => v.n * v.run)),
+    ).toBeCloseTo(40, 4);
+    expect(
+      Math.max(...tops.filter((v) => v.y === 1300).map((v) => v.n * v.run)),
+    ).toBeCloseTo(160 / 3, 4);
+  });
+
+  it("weights saltbox T arms by direction and keeps their height continuous", () => {
+    const rings: [number, number][][] = [
+      [
+        [1000, 1000],
+        [1400, 1000],
+        [1400, 1120],
+        [1260, 1120],
+        [1260, 1320],
+        [1140, 1320],
+        [1140, 1120],
+        [1000, 1120],
+      ],
+    ];
+    for (const direction of [0, 180]) {
+      const layout = lay(rings, { shape: "saltbox", direction });
+      const roof = roofOf(layout);
+      const tops = wallTopsOf(layout).filter((v) => v.n === 1);
+      expect(
+        tops.filter((v) => v.x === 1000 || v.x === 1400).map((v) => v.y),
+      ).toEqual([direction === 0 ? 1084 : 1036, direction === 0 ? 1084 : 1036]);
+      expect(tops.find((v) => v.y === 1320)?.x).toBe(1200);
+      for (const v of roof) {
+        const speed =
+          v.gy === 0 ? 1 : v.gy > 0 === (direction === 0) ? 1.4 : 0.6;
+        expect(Math.hypot(v.gx, v.gy) * v.run * speed).toBeCloseTo(1, 6);
+      }
+    }
+  });
+
   it("breaks gambrel and mansard faces at n = 2/3, b/3 in from the eaves", () => {
     // Gambrel's gable walls show the break; mansard's walls are all eaves.
     for (const shape of ["gambrel", "mansard"]) {

@@ -15,7 +15,7 @@
 //   breaks) are where facets meet. Curved ones (round, round_gabled) are
 //   strips of planes with smooth gradients.
 // - Skeleton shapes follow eaves and courtyards, with stationary gable ends.
-//   skeleton.ts / skeleton.zig compute the zero/one-speed wavefront; layout
+//   skeleton.ts / skeleton.zig compute the per-edge-speed wavefront; layout
 //   turns its time into roof elevation, with a slope break for mansards.
 // - Radial shapes (pyramidal, cone, dome, onion) are concentric copies of
 //   a base shrunk toward its center, following (height, scale) steps.

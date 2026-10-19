@@ -43,6 +43,8 @@ for (const name of ["examples/osm/buildings", "fixtures/skeleton/invalides"]) {
     null,
     "gabled",
     "gambrel",
+    "half-hipped",
+    "saltbox",
     "hipped",
     "mansard",
     "double_saltbox",

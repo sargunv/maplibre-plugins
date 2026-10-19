@@ -1,4 +1,4 @@
-// Zero/one-speed straight skeleton, including courtyard boundaries. The wavefront
+// Per-edge-speed straight skeleton, including courtyard boundaries. The wavefront
 // keeps the building on its left: outer rings shrink and holes expand. At an
 // event, split its boundary at all contacts and cancel opposing segments before
 // reconnecting it. This handles simultaneous collapses and hole/outer merges
@@ -12,7 +12,7 @@ export interface SkeletonPoint extends Point {
 
 export interface SkeletonFace {
   points: SkeletonPoint[];
-  /** Gradient of distance from the original eave. */
+  /** Gradient of wavefront time (inward unit normal divided by speed). */
   normal: Point;
 }
 
@@ -21,9 +21,15 @@ export interface Skeleton {
   run: number;
 }
 
-interface Edge {
-  normal: Point;
+export interface EdgeMotion {
   speed: number;
+  /** One speed change, at this wavefront time in tile units. */
+  changeTime?: number;
+  afterSpeed?: number;
+}
+
+interface Edge extends EdgeMotion {
+  normal: Point;
   start: SkeletonPoint;
   end: SkeletonPoint;
 }
@@ -144,7 +150,15 @@ function advance(
       const a = ids[i]!;
       const b = ids[(i + 1) % count]!;
       const edge = loop.edges[i]!;
-      raw.push({ a, b, edge, parent: old.length });
+      raw.push({
+        a,
+        b,
+        parent: old.length,
+        edge:
+          (edge.changeTime ?? Infinity) <= time
+            ? { ...edge, speed: edge.afterSpeed!, changeTime: undefined }
+            : edge,
+      });
       old.push({
         edge,
         a: points[a]!,
@@ -233,6 +247,8 @@ function advance(
         const b = current.edge.normal;
         if (
           before.edge.speed === current.edge.speed &&
+          before.edge.changeTime === current.edge.changeTime &&
+          before.edge.afterSpeed === current.edge.afterSpeed &&
           Math.abs(a.x * b.y - a.y * b.x) <= PARALLEL &&
           dot(a, b) > 0
         ) {
@@ -257,14 +273,16 @@ function advance(
       if (
         original &&
         prev.parent === original.prev &&
-        next.parent === original.next
+        next.parent === original.next &&
+        s.edge.speed === original.edge.speed &&
+        prev.edge.speed === old[original.prev]!.edge.speed &&
+        next.edge.speed === old[original.next]!.edge.speed
       ) {
         continued.add(s.parent);
         edges.push(s.edge);
       } else {
         edges.push({
-          normal: s.edge.normal,
-          speed: s.edge.speed,
+          ...s.edge,
           start: { ...points[s.a]!, time },
           end: { ...points[s.b]!, time },
         });
@@ -278,7 +296,13 @@ function advance(
     const { edge, a, b } = old[i]!;
     const polygon = [edge.start, edge.end, { ...b, time }, { ...a, time }];
     if (edge.speed > 0 && signedArea2(polygon) > CONTACT * CONTACT)
-      faces.push({ points: polygon, normal: edge.normal });
+      faces.push({
+        points: polygon,
+        normal: {
+          x: edge.normal.x / edge.speed,
+          y: edge.normal.y / edge.speed,
+        },
+      });
   }
   return result;
 }
@@ -287,6 +311,7 @@ function advance(
 export function straightSkeleton(
   polygon: Pick<Polygon, "outer" | "holes">,
   stationary: readonly boolean[] = [],
+  motions: readonly (readonly EdgeMotion[])[] = [],
 ): Skeleton | null {
   const all = [polygon.outer, ...polygon.holes];
   if (all.reduce((n, ring) => n + ring.length, 0) > MAX_SKELETON_VERTICES)
@@ -319,9 +344,16 @@ export function straightSkeleton(
       const dx = b.x - a.x;
       const dy = b.y - a.y;
       const length = Math.sqrt(dx * dx + dy * dy);
+      const motion = motions[r]?.[i];
       return {
+        ...motion,
+        afterSpeed: motion?.afterSpeed ?? 1,
+        changeTime:
+          motion?.changeTime === undefined
+            ? undefined
+            : motion.changeTime / scale,
         normal: { x: -(b.y - a.y) / length, y: (b.x - a.x) / length },
-        speed: r === 0 && stationary[i] ? 0 : 1,
+        speed: motion?.speed ?? (r === 0 && stationary[i] ? 0 : 1),
         start: a,
         end: b,
       };
@@ -345,7 +377,10 @@ export function straightSkeleton(
   loops = initial;
   let time = 0;
   for (let step = 0; loops.length && step < count * 4; step++) {
-    const dt = nextEvent(loops);
+    let dt = nextEvent(loops);
+    for (const loop of loops)
+      for (const edge of loop.edges)
+        dt = Math.min(dt, (edge.changeTime ?? Infinity) - time);
     if (!Number.isFinite(dt)) return null;
     time += dt;
     const next = advance(loops, dt, time, faces);
