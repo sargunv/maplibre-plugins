@@ -142,15 +142,10 @@ interface Program {
   >;
 }
 
-/**
- * One tile's walls and roofs and their paint attributes. The refresh rules
- * follow the native bucket: a new raw tile (or a layout or filter change)
- * lays out again; a new feature-state object, paint generation or attribute
- * layout refills every attribute; a feature-state revision refills the
- * state-dependent ones of the features whose state is or was set.
- */
-interface TileEntry {
-  /** The raw tile laid out, compared by identity; null for an empty tile. */
+/** Geometry shared by overscaled ids with the same canonical tile and raw data. */
+interface TileGeometry {
+  key: string;
+  references: number;
   raw: ArrayBuffer | null;
   canonical: CanonicalTile;
   features: PolygonFeature[];
@@ -159,6 +154,13 @@ interface TileEntry {
   vertexCount: number;
   /** Range indices by feature-state key. */
   byKey: Map<string, number[]>;
+  vertexBuffer: WebGLBuffer | null;
+  indexBuffer: WebGLBuffer | null;
+}
+
+/** Paint attributes, VAO and query state remain private to each overscaled id. */
+interface TileEntry {
+  geometry: TileGeometry;
   /** Keys whose state was not empty at the last fill. */
   statedKeys: Set<string>;
   sfs: FeatureStateLike | null;
@@ -171,9 +173,7 @@ interface TileEntry {
   packed: ArrayBuffer;
   packedLayout: PackedLayout | null;
   vao: WebGLVertexArrayObject | null;
-  vertexBuffer: WebGLBuffer | null;
   paintBuffer: WebGLBuffer | null;
-  indexBuffer: WebGLBuffer | null;
   /** The layout key whose attribute arrays the VAO has enabled. */
   enabledKey: string;
   /** The last render's untranslated mercator tile matrix, for queries. */
@@ -187,6 +187,7 @@ interface Resources {
   gl: WebGL2RenderingContext;
   programs: globalThis.Map<string, Program>;
   tiles: globalThis.Map<string, TileEntry>;
+  geometry: globalThis.Map<string, Set<TileGeometry>>;
   /** One BuildingDrawableUBO per drawn tile, each at an aligned offset. */
   blockBuffer: WebGLBuffer;
   blockBufferBytes: number;
@@ -398,7 +399,7 @@ export class BuildingLayer implements CustomLayerInterface {
     for (const key of last.drawn) {
       const entry = resources.tiles.get(key);
       if (!entry?.matrix) continue;
-      entry.features.forEach((feature, i) => {
+      entry.geometry.features.forEach((feature, i) => {
         const dedupe =
           feature.stateKey === undefined
             ? `${key}:${i}`
@@ -427,7 +428,7 @@ export class BuildingLayer implements CustomLayerInterface {
         if (found && found.distance <= distance) return;
         hits.set(dedupe, {
           distance,
-          feature: this.toFeature(feature, entry.canonical),
+          feature: this.toFeature(feature, entry.geometry.canonical),
         });
       });
     }
@@ -546,7 +547,7 @@ export class BuildingLayer implements CustomLayerInterface {
         generation,
       );
       entry.lastUsed = this.frame;
-      if (!entry.vao || entry.segments.length === 0) continue;
+      if (!entry.vao || entry.geometry.segments.length === 0) continue;
       const projection = args.getProjectionData({
         tileID: { wrap: coord.wrap, canonical: coord.canonical },
         applyGlobeMatrix: true,
@@ -648,7 +649,7 @@ export class BuildingLayer implements CustomLayerInterface {
       block.set(light.color, DRAWABLE_OFFSETS.lightColor / 4);
       block.set(light.position, DRAWABLE_OFFSETS.lightPosition / 4);
       block[DRAWABLE_OFFSETS.metersPerTileUnit / 4] = metersPerTileUnit(
-        entry.canonical,
+        entry.geometry.canonical,
       );
       for (const name of BOUND_NAMES) {
         const value = current[name];
@@ -812,9 +813,35 @@ export class BuildingLayer implements CustomLayerInterface {
     const raw = data?.raw ?? null;
     const sfs = tiles.featureState();
     let entry = resources.tiles.get(coord.key);
-    if (!entry || entry.raw !== raw) {
-      if (entry) this.releaseTile(gl, entry);
-      entry = this.layoutTile(gl, data, tiles.type, coord);
+    if (!entry || entry.geometry.raw !== raw) {
+      if (entry) this.releaseTile(resources, entry);
+      const geometry = this.tileGeometry(resources, data, tiles.type, coord);
+      geometry.references++;
+      entry = {
+        geometry,
+        statedKeys: new Set(),
+        sfs: null,
+        rev: -1,
+        gen: -1,
+        layoutKey: "",
+        floats: new Float32Array(0),
+        packed: new ArrayBuffer(0),
+        packedLayout: null,
+        vao: null,
+        paintBuffer: null,
+        enabledKey: "",
+        matrix: null,
+        translate: [0, 0],
+        lastUsed: this.frame,
+      };
+      if (geometry.vertexCount > 0) {
+        entry.vao = gl.createVertexArray();
+        gl.bindVertexArray(entry.vao);
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, geometry.indexBuffer);
+        gl.enableVertexAttribArray(POS_LOCATION);
+        gl.enableVertexAttribArray(ROOF_LOCATION);
+        gl.bindVertexArray(null);
+      }
       resources.tiles.set(coord.key, entry);
       this.fill(gl, entry, sfs, current, layout, generation, coord.overscaledZ);
     } else if (
@@ -830,12 +857,24 @@ export class BuildingLayer implements CustomLayerInterface {
   }
 
   /** Walls and roofs for the polygons of a tile, segmented like the native bucket. */
-  private layoutTile(
-    gl: WebGL2RenderingContext,
+  private tileGeometry(
+    resources: Resources,
     data: TileData | null,
     sourceType: string,
     coord: OverscaledTileID,
-  ): TileEntry {
+  ): TileGeometry {
+    const { gl } = resources;
+    const { z, x, y } = coord.canonical;
+    // Zoom expressions in filters/layout must keep their existing bucket semantics.
+    const zoomDependent =
+      readsZoom(this.filterJson) ||
+      Object.values(this.layout.toJson()).some(readsZoom);
+    const key = `${z}/${x}/${y}${zoomDependent ? `@${coord.overscaledZ}` : ""}`;
+    const raw = data?.raw ?? null;
+    let shared = resources.geometry.get(key);
+    for (const geometry of shared ?? []) {
+      if (geometry.raw === raw) return geometry;
+    }
     const sourceLayer = this.sourceLayer ?? GEOJSON_SOURCE_LAYER;
     const tile = layoutTile(data?.layers()[sourceLayer], {
       geojson: sourceType === "geojson",
@@ -854,49 +893,34 @@ export class BuildingLayer implements CustomLayerInterface {
       if (list) list.push(r);
       else byKey.set(key, [r]);
     });
-    const entry: TileEntry = {
-      raw: data?.raw ?? null,
-      canonical: {
-        z: coord.canonical.z,
-        x: coord.canonical.x,
-        y: coord.canonical.y,
-      },
+    const geometry: TileGeometry = {
+      key,
+      references: 0,
+      raw,
+      canonical: { z, x, y },
       features,
       ranges: layout.ranges,
       segments: layout.segments,
       vertexCount: tile.vertices.length / FLOATS_PER_VERTEX,
       byKey,
-      statedKeys: new Set(),
-      sfs: null,
-      rev: -1,
-      gen: -1,
-      layoutKey: "",
-      floats: new Float32Array(0),
-      packed: new ArrayBuffer(0),
-      packedLayout: null,
-      vao: null,
       vertexBuffer: null,
-      paintBuffer: null,
       indexBuffer: null,
-      enabledKey: "",
-      matrix: null,
-      translate: [0, 0],
-      lastUsed: this.frame,
     };
-    if (entry.vertexCount > 0) {
-      entry.vao = gl.createVertexArray();
-      entry.vertexBuffer = gl.createBuffer();
-      entry.indexBuffer = gl.createBuffer();
-      gl.bindVertexArray(entry.vao);
-      gl.bindBuffer(gl.ARRAY_BUFFER, entry.vertexBuffer);
-      gl.bufferData(gl.ARRAY_BUFFER, tile.vertices, gl.STATIC_DRAW);
-      gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, entry.indexBuffer);
-      gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, tile.indices, gl.STATIC_DRAW);
-      gl.enableVertexAttribArray(POS_LOCATION);
-      gl.enableVertexAttribArray(ROOF_LOCATION);
+    if (geometry.vertexCount > 0) {
       gl.bindVertexArray(null);
+      geometry.vertexBuffer = gl.createBuffer();
+      geometry.indexBuffer = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, geometry.vertexBuffer);
+      gl.bufferData(gl.ARRAY_BUFFER, tile.vertices, gl.STATIC_DRAW);
+      gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, geometry.indexBuffer);
+      gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, tile.indices, gl.STATIC_DRAW);
     }
-    return entry;
+    if (!shared) {
+      shared = new Set();
+      resources.geometry.set(key, shared);
+    }
+    shared.add(geometry);
+    return geometry;
   }
 
   /** What the paint binder reads of a tile's features and their states. */
@@ -906,8 +930,8 @@ export class BuildingLayer implements CustomLayerInterface {
   ): FeatureSource {
     const states = sfs.state[this.sourceLayer ?? GEOJSON_SOURCE_LAYER];
     return {
-      feature: (index) => entry.features[index]?.evaluation,
-      stateKey: (index) => entry.features[index]?.stateKey,
+      feature: (index) => entry.geometry.features[index]?.evaluation,
+      stateKey: (index) => entry.geometry.features[index]?.stateKey,
       state: (key) => states?.[key] as FeatureState | undefined,
     };
   }
@@ -922,10 +946,10 @@ export class BuildingLayer implements CustomLayerInterface {
     generation: number,
     bucketZoom: number,
   ): void {
-    const floats = entry.vertexCount * layout.stride;
+    const floats = entry.geometry.vertexCount * layout.stride;
     if (entry.floats.length !== floats) entry.floats = new Float32Array(floats);
     const packed = packedLayout(layout);
-    const bytes = entry.vertexCount * packed.stride;
+    const bytes = entry.geometry.vertexCount * packed.stride;
     if (entry.packed.byteLength !== bytes)
       entry.packed = new ArrayBuffer(bytes);
     entry.packedLayout = packed;
@@ -934,7 +958,7 @@ export class BuildingLayer implements CustomLayerInterface {
         entry.floats,
         layout,
         current,
-        entry.ranges,
+        entry.geometry.ranges,
         this.featureSource(entry, sfs),
         bucketZoom,
       );
@@ -945,7 +969,7 @@ export class BuildingLayer implements CustomLayerInterface {
     }
     const states = sfs.state[this.sourceLayer ?? GEOJSON_SOURCE_LAYER];
     entry.statedKeys = new Set();
-    for (const key of entry.byKey.keys()) {
+    for (const key of entry.geometry.byKey.keys()) {
       if (isStated(states?.[key])) entry.statedKeys.add(key);
     }
     entry.sfs = sfs;
@@ -976,14 +1000,14 @@ export class BuildingLayer implements CustomLayerInterface {
     const states = sfs.state[this.sourceLayer ?? GEOJSON_SOURCE_LAYER] ?? {};
     const keys = new Set(entry.statedKeys);
     for (const key of Object.keys(states)) {
-      if (entry.byKey.has(key)) keys.add(key);
+      if (entry.geometry.byKey.has(key)) keys.add(key);
     }
     if (keys.size === 0) return;
     const span = fillAttributes(
       entry.floats,
       layout,
       current,
-      entry.ranges,
+      entry.geometry.ranges,
       this.featureSource(entry, sfs),
       bucketZoom,
       { keys, stateOnly: true },
@@ -1025,11 +1049,11 @@ export class BuildingLayer implements CustomLayerInterface {
       }
       entry.enabledKey = layout.key;
     }
-    for (const segment of entry.segments) {
+    for (const segment of entry.geometry.segments) {
       // Indices are segment-relative, as in the native bucket, so each
       // segment re-bases the attribute pointers.
       const base = segment.vertexOffset * VERTEX_STRIDE;
-      gl.bindBuffer(gl.ARRAY_BUFFER, entry.vertexBuffer);
+      gl.bindBuffer(gl.ARRAY_BUFFER, entry.geometry.vertexBuffer);
       gl.vertexAttribPointer(
         POS_LOCATION,
         3,
@@ -1083,7 +1107,7 @@ export class BuildingLayer implements CustomLayerInterface {
   private evict(resources: Resources): void {
     for (const [key, entry] of resources.tiles) {
       if (this.frame - entry.lastUsed <= EVICT_AFTER_FRAMES) continue;
-      this.releaseTile(resources.gl, entry);
+      this.releaseTile(resources, entry);
       resources.tiles.delete(key);
     }
   }
@@ -1092,19 +1116,25 @@ export class BuildingLayer implements CustomLayerInterface {
     const resources = this.resources;
     if (!resources) return;
     for (const entry of resources.tiles.values())
-      this.releaseTile(resources.gl, entry);
+      this.releaseTile(resources, entry);
     resources.tiles.clear();
     this.lastView = null;
   }
 
-  private releaseTile(gl: WebGL2RenderingContext, entry: TileEntry): void {
+  private releaseTile(resources: Resources, entry: TileEntry): void {
+    const { gl } = resources;
     if (entry.vao) gl.deleteVertexArray(entry.vao);
-    if (entry.vertexBuffer) gl.deleteBuffer(entry.vertexBuffer);
     if (entry.paintBuffer) gl.deleteBuffer(entry.paintBuffer);
-    if (entry.indexBuffer) gl.deleteBuffer(entry.indexBuffer);
-    entry.vao = entry.vertexBuffer = entry.paintBuffer = null;
-    entry.indexBuffer = null;
+    entry.vao = entry.paintBuffer = null;
     entry.matrix = null;
+    const geometry = entry.geometry;
+    if (--geometry.references === 0) {
+      if (geometry.vertexBuffer) gl.deleteBuffer(geometry.vertexBuffer);
+      if (geometry.indexBuffer) gl.deleteBuffer(geometry.indexBuffer);
+      const shared = resources.geometry.get(geometry.key)!;
+      shared.delete(geometry);
+      if (shared.size === 0) resources.geometry.delete(geometry.key);
+    }
   }
 
   private setProjectionUniforms(
@@ -1148,6 +1178,7 @@ export class BuildingLayer implements CustomLayerInterface {
       gl,
       programs: new globalThis.Map(),
       tiles: new globalThis.Map(),
+      geometry: new globalThis.Map(),
       blockBuffer,
       blockBufferBytes: 0,
       blockStride,
@@ -1163,7 +1194,7 @@ export class BuildingLayer implements CustomLayerInterface {
     if (!r || r.gl.isContextLost()) return;
     for (const program of r.programs.values())
       r.gl.deleteProgram(program.handle);
-    for (const entry of r.tiles.values()) this.releaseTile(r.gl, entry);
+    for (const entry of r.tiles.values()) this.releaseTile(r, entry);
     r.gl.deleteBuffer(r.blockBuffer);
   }
 
@@ -1270,4 +1301,17 @@ function compileShader(
 
 function now(): number {
   return typeof performance === "undefined" ? Date.now() : performance.now();
+}
+
+/** Conservative check: even legacy zoom stops must keep separate layouts. */
+function readsZoom(value: unknown): boolean {
+  if (Array.isArray(value)) {
+    return (
+      value[0] !== "literal" && (value[0] === "zoom" || value.some(readsZoom))
+    );
+  }
+  if (value && typeof value === "object") {
+    return "stops" in value || Object.values(value).some(readsZoom);
+  }
+  return false;
 }
